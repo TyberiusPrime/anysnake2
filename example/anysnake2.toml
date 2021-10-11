@@ -1,13 +1,23 @@
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash 
+# url = "https://github.com/NixOS/nixpkgs" # optional
+packages = ["fish"]
+
+
 [python]
-version="3.8.3"
+version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
 ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
 
 [python.packages]
 pypipegraph=">2.3.1"
+mbf_r = "editable/code" # 
+# or mbf_r = "editable/code/mbf_r" #  if you need to rename.
 
-[python.editable_packages]
+[clones.code] # target directory
+dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
+dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
 mbf_r="@mbf"
-
+mbf_sampledata="@mbf/mbf_sampledata"
 
 
 [R]
@@ -18,11 +28,11 @@ packages = [
 	]
 
 [rust]
-version = ["1.56.0"]
+version = "1.56.0" # stable. to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
 
 [volumes_ro]
 	"/opt" = "/opt"
-	"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"]
+	"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
 	"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
 	"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
 
@@ -68,10 +78,11 @@ version = ["1.56.0"]
 	run = """
 	jupyter --PORT=ANYSNAKE2_PORT
 	"""
-	port-range=[8888,8896]
+	port_range=[8888,8896]
 
 
-
-[python.package_regexps]
-"@mbf/(.+)"="@hg+https://mbf.imt.uni-marburg.de/hg/\\1"
-"@mbf"=["@hg+https://mbf.imt.uni-marburg.de/hg/\\1"]
+[clone_regexps]
+"@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
+"@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
+"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
+"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"

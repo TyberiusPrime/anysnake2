@@ -7,3 +7,7 @@ takea
 # Added by cargo
 
 /target
+
+/result
+/code
+/flake

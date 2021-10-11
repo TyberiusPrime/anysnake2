@@ -1,69 +1,45 @@
 {
-  description = "environment to build anysnake2";
-
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    flake-utils.url = "github:numtide/flake-utils";
+    utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nmattia/naersk";
-    naersk.inputs.nixpkgs.follows = "nixpkgs";
-    flake-utils.inputs.nipkgs.follows = "nixpkgs";
-    rust-overlay.inputs.nipkgs.follows = "nixpkgs";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    #mozillapkgs = {
+    #url = "github:mozilla/nixpkgs-mozilla";
+    #flake = false;
+    #};
   };
 
-  outputs = { self, nixpkgs, naersk }:
-    let
-      cargoToml = (builtins.fromTOML (builtins.readFile ./Cargo.toml));
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" ];
-      forAllSystems = f:
-        nixpkgs.lib.genAttrs supportedSystems (system: f system);
-    in {
-      overlay = final: prev: {
-        "${cargoToml.package.name}" = final.callPackage ./. { inherit naersk; };
-      };
+  outputs = { self, nixpkgs, utils, naersk, rust-overlay }:
+    utils.lib.eachDefaultSystem (system:
+      let
+        #pkgs = nixpkgs.legacyPackages."${system}";
 
-      packages = forAllSystems (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ self.overlay ];
-          };
-        in { "${cargoToml.package.name}" = pkgs."${cargoToml.package.name}"; });
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
+        rust = pkgs.rust-bin.stable."1.55.0".default;
 
-      defaultPackage = forAllSystems (system:
-        (import nixpkgs {
-          inherit system;
-          overlays = [ self.overlay ];
-        })."${cargoToml.package.name}");
+        # Override the version used in naersk
+        naersk-lib = naersk.lib."${system}".override {
+          cargo = rust;
+          rustc = rust;
+        };
+      in rec {
+        # `nix build`
+        packages.my-project = naersk-lib.buildPackage {
+          pname = "anysnake2";
+          root = ./.;
+        };
+        defaultPackage = packages.my-project;
 
-      checks = forAllSystems (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ self.overlay ];
-          };
-        in {
-          format = pkgs.runCommand "check-format" {
-            buildInputs = with pkgs; [ rustfmt cargo ];
-          } ''
-            ${pkgs.rustfmt}/bin/cargo-fmt fmt --manifest-path ${
-              ./.
-            }/Cargo.toml -- --check
-            ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt --check ${./.}
-            touch $out # it worked!
-          '';
-          "${cargoToml.package.name}" = pkgs."${cargoToml.package.name}";
-        });
-      devShell = forAllSystems (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ self.overlay ];
-          };
-        in pkgs.mkShell {
-          inputsFrom = with pkgs; [ pkgs."${cargoToml.package.name}" ];
-          buildInputs = with pkgs; [ rustfmt nixpkgs-fmt ];
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-        });
-    };
+        # `nix run`
+        apps.my-project = utils.lib.mkApp { drv = packages.my-project; };
+        defaultApp = apps.my-project;
+
+        # `nix develop`
+        devShell = pkgs.mkShell {
+          # supply the specific rust version
+          nativeBuildInputs = [ rust ];
+        };
+      });
 }
+# {
