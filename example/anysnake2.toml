@@ -1,0 +1,77 @@
+[python]
+version="3.8.3"
+ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+
+[python.packages]
+pypipegraph=">2.3.1"
+
+[python.editable_packages]
+mbf_r="@mbf"
+
+
+
+[R]
+ecosystem_date="2021-10-11" # you get whatever packages were current that day.
+packages = [
+	"ggplot2",
+	"affy",
+	]
+
+[rust]
+version = ["1.56.0"]
+
+[volumes_ro]
+	"/opt" = "/opt"
+	"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"]
+	"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
+	"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
+
+
+[volumes_rw]
+	"." = "/project"
+	"$HOME/.config" = "$HOME/.config"
+	"/var/run/docker.sock" = "/var/run/docker.sock"
+
+
+[env]
+	MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
+	MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
+	MBF_AUTH_USER = "feed"
+	MBF_AUTH_PASSWORD = "feed"
+
+
+[cmd.default]
+    run = """
+	echo 'run_inside'
+	cd /project
+	python run.py
+	no_such-command
+	"""
+
+	post_run_inside = """
+	echo "post run inside"
+	"""
+
+	pre_run_outside = """
+	echo "pre run outside"
+	"""
+
+	post_run_outside = """
+	echo 'post run outside'
+	"""
+
+[cmd.shell]
+	run = """fish
+	"""
+
+[cmd.jupyter]
+	run = """
+	jupyter --PORT=ANYSNAKE2_PORT
+	"""
+	port-range=[8888,8896]
+
+
+
+[python.package_regexps]
+"@mbf/(.+)"="@hg+https://mbf.imt.uni-marburg.de/hg/\\1"
+"@mbf"=["@hg+https://mbf.imt.uni-marburg.de/hg/\\1"]

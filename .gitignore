@@ -1,0 +1,9 @@
+build/
+dist/
+src/anysnake2.egg-info/
+takea
+
+
+# Added by cargo
+
+/target
