@@ -1,6 +1,8 @@
 extern crate clap;
 use anyhow::{anyhow, Context, Result};
+use chrono::{NaiveDate, NaiveDateTime};
 use clap::{App, AppSettings, Arg};
+use const_format::concatcp;
 use fstrings::{format_args_f, format_f, println_f};
 use regex::Regex;
 use serde_derive::Deserialize;
@@ -9,9 +11,31 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
+/* TODO
+ *
+ * nix build when flake changes
+ * running container managment
+ * R
+ * Bootstrapping - using a defined anysnake2 version
+ *
+*/
+
+const DEFAULT_MACH_NIX_REPO: &str = "DavHau/mach-nix";
+const DEFAULT_MACH_NIX_URL: &str = concatcp!("github:", DEFAULT_MACH_NIX_REPO);
+const DEFAULT_MACH_NIX_REV: &str = "3.3.0";
+
+const DEFAULT_RUST_OVERLAY_REPO: &str = "oxalica/rust-overlay";
+const DEFAULT_RUST_OVERLAY_URL: &str = concatcp!("github:", DEFAULT_RUST_OVERLAY_REPO);
+const DEFAULT_RUST_OVERLAY_REV: &str = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec";
+
+const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
+const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
+const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
+
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
     nixpkgs: Nix,
+    flake_util: Option<FlakeUtil>,
     clone_regexps: Option<HashMap<String, String>>,
     clones: Option<HashMap<String, HashMap<String, String>>>,
     cmd: HashMap<String, Cmd>,
@@ -19,15 +43,15 @@ struct ConfigToml {
     python: Option<Python>,
 }
 
-fn default_nixpkgs_url() -> String {
-    "https://github.com/NixOS/nixpkgs".to_string()
-}
 #[derive(Deserialize, Debug)]
 struct Nix {
     rev: String,
-    #[serde(default = "default_nixpkgs_url")]
-    url: String,
+    url: Option<String>,
     packages: Option<Vec<String>>,
+}
+#[derive(Deserialize, Debug)]
+struct FlakeUtil {
+    rev: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -41,23 +65,36 @@ struct Cmd {
 #[derive(Deserialize, Debug)]
 struct Rust {
     version: String,
+    rust_overlay_rev: Option<String>,
+    rust_overlay_url: Option<String>,
 }
+
 #[derive(Deserialize, Debug)]
 struct Python {
     version: String,
+    //#[serde(with = "my_date_format")]
+    //ecosystem_date: DateTime<Utc>,
     ecosystem_date: String,
     pypideps_rev: Option<String>,
     packages: HashMap<String, String>,
+    mach_nix_rev: Option<String>,
+    mach_nix_url: Option<String>,
+}
+
+fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
+    const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
+    use chrono::TimeZone;
+    Ok(chrono::Utc
+        .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
+        .naive_utc()
+        .date())
 }
 
 fn main() -> Result<()> {
-    let date = "2021-01-04";
-    println!("{} {:?}", date, pypydeb_date_to_commit(date));
-    return Ok(());
-    let matches = App::new("My Super Program")
-        .version("1.0")
-        .author("Kevin K. <kbknapp@gmail.com>")
-        .about("Does awesome things")
+    let matches = App::new("Anysnake2")
+        .version("0.1")
+        .author("Florian Finkernagel <finkernagel@imt.uni-marburg.de>")
+        .about("Sane version declaration and container generation using nix")
         .setting(AppSettings::AllowExternalSubcommands)
         .arg(
             Arg::with_name("config_file")
@@ -105,6 +142,12 @@ fn main() -> Result<()> {
 
     perform_clones(&parsed_config)?;
     let flake_changed = write_flake(&parsed_config)?;
+    let build_output: PathBuf = ["flake", "result"].iter().collect();
+    if flake_changed || !build_output.exists() {
+        println!("{}", "Rebuilding");
+        rebuild_flake()?;
+    }
+
     println_f!("Done");
 
     Ok(())
@@ -215,7 +258,10 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                         }
                     }
                 }
-                std::fs::write(clone_log, serde_json::to_string_pretty(&json!(known_clones))?)?;
+                std::fs::write(
+                    clone_log,
+                    serde_json::to_string_pretty(&json!(known_clones))?,
+                )?;
             }
         }
         None => {}
@@ -237,8 +283,29 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
         }
     };
     let mut flake_contents = template
-        .replace("%NIXPKG_URL%", &parsed_config.nixpkgs.url)
-        .replace("%NIXPKG_REV%", &parsed_config.nixpkgs.rev);
+        .replace(
+            "%NIXPKG_URL%",
+            &parsed_config
+                .nixpkgs
+                .url
+                .as_deref()
+                .unwrap_or(DEFAULT_NIXPKGS_URL),
+        )
+        .replace(
+            "%NIXPKG_REV%",
+            &(if &parsed_config
+                .nixpkgs
+                .url
+                .as_deref()
+                .unwrap_or(DEFAULT_NIXPKGS_URL)
+                == &DEFAULT_NIXPKGS_URL
+            {
+                // if you change the url, you are on your own for the tags. Sorry.
+                lookup_nix_rev(&parsed_config.nixpkgs.rev)?
+            } else {
+                parsed_config.nixpkgs.rev.to_string()
+            }),
+        );
     flake_contents = match &parsed_config.nixpkgs.packages {
         Some(pkgs) => {
             let pkgs: String = pkgs
@@ -250,13 +317,35 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
         }
         None => flake_contents,
     };
-    flake_contents = match &parsed_config.rust {
-        Some(rust) => flake_contents.replace(
-            "%RUST%",
-            &format!("${{rust-bin.stable.\"{}\".default}}", &rust.version),
+    flake_contents = flake_contents.replace(
+        "%FLAKE_UTIL_REV%",
+        match &parsed_config.flake_util {
+            Some(fu) => &fu.rev,
+            None => &DEFAULT_FLAKE_UTIL_REV,
+        },
+    );
+    let (mut flake_contents, rust_overlay_rev, rust_overlay_url) = match &parsed_config.rust {
+        Some(rust) => (
+            flake_contents.replace(
+                "%RUST%",
+                &format!("${{rust-bin.stable.\"{}\".default}}", &rust.version),
+            ),
+            rust.rust_overlay_rev
+                .as_deref()
+                .unwrap_or(DEFAULT_RUST_OVERLAY_REV),
+            rust.rust_overlay_url
+                .as_deref()
+                .unwrap_or(DEFAULT_RUST_OVERLAY_URL),
         ),
-        None => flake_contents,
+        None => (
+            flake_contents,
+            DEFAULT_RUST_OVERLAY_REV,
+            DEFAULT_RUST_OVERLAY_URL,
+        ),
     };
+    flake_contents = flake_contents
+        .replace("%RUST_OVERLAY_REV%", rust_overlay_rev)
+        .replace("%RUST_OVERLAY_URL%", rust_overlay_url);
     flake_contents = match &parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
@@ -268,18 +357,41 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
             let python_packages = extract_non_editable_python_packages(&python.packages)?;
             let python_packages = python_packages.join("\n");
 
+            let ecosystem_date = parse_my_date(&python.ecosystem_date)
+                .context("Failed to parse python.ecosystem-date")?;
+            let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date)?;
+            let mach_nix_rev = python
+                .mach_nix_rev
+                .as_deref()
+                .unwrap_or(DEFAULT_MACH_NIX_REV);
+            let mach_nix_url = python
+                .mach_nix_url
+                .as_deref()
+                .unwrap_or(DEFAULT_MACH_NIX_URL);
+
+            let mach_nix_rev = if mach_nix_url == DEFAULT_MACH_NIX_URL {
+                lookup_mach_nix_rev(mach_nix_rev)? //todo: turn into cow
+            } else {
+                mach_nix_rev.to_string()
+            };
+
             flake_contents
                 .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &python_packages)
+                .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
+                .replace("%MACH_NIX_REV%", &mach_nix_rev)
+                .replace("%MACH_NIX_URL%", &mach_nix_url)
         }
         None => flake_contents,
     };
 
-    print!("{}", flake_contents);
+    //print!("{}", flake_contents);
     let res = if old_flake_contents != flake_contents {
-        std::fs::write(flake_filename, template)?;
+        std::fs::write(flake_filename, flake_contents)?;
+        println!("writing flake");
         Ok(true)
     } else {
+        println!("flake unchanged");
         Ok(false)
     };
     let mut git_path = flake_dir.clone();
@@ -331,10 +443,10 @@ fn extract_non_editable_python_packages(input: &HashMap<String, String>) -> Resu
     Ok(res)
 }
 
-fn pypydeb_date_to_commit(date: &str) -> Result<String> {
-    let query_date =
-        chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
-            .context("Failed to parse pypi-deb-db date")?;
+fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
+    let query_date = date.and_hms(0, 0, 0);
+    //chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
+    //.context("Failed to parse pypi-deb-db date")?;
     let lowest =
         chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
             .unwrap();
@@ -349,89 +461,86 @@ fn pypydeb_date_to_commit(date: &str) -> Result<String> {
     }
 
     let store_path: PathBuf = ["flake", ".pypi-debs-db.lookup.json"].iter().collect();
-    let mut known_mappings: HashMap<String, String> = match store_path.exists() {
-        true => serde_json::from_str(&std::fs::read_to_string(&store_path)?)?,
-        false => HashMap::new(),
-    };
     let query_date_str = query_date.format("%Y%m%d").to_string();
-    if known_mappings.contains_key(&query_date_str) {
-        return Ok(known_mappings.get(&query_date_str).unwrap().to_string());
-    } else {
-        let mut page = now.signed_duration_since(query_date).num_days() / 35; //empirically...
-        while true {
-            let new_mappings = pypi_deps_db_retrieve(page)?;
+    fetch_cached(
+        store_path,
+        &query_date_str,
+        PyPiDepsDBRetriever {
+            query_date,
+            query_date_str: query_date_str.to_string(),
+        },
+    )
+}
+
+struct PyPiDepsDBRetriever {
+    query_date: NaiveDateTime,
+    query_date_str: String,
+}
+
+impl PyPiDepsDBRetriever {
+    fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
+        let url = format!(
+            "http://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
+            page
+        );
+        let body: String = ureq::get(&url).call()?.into_string()?;
+        let json: serde_json::Value =
+            serde_json::from_str(&body).context("Failed to parse github commits api")?;
+        let json = json
+            .as_array()
+            .context("No entries in github commits api?")?;
+        let mut res = HashMap::new();
+        for entry in json.iter() {
+            let date = chrono::DateTime::parse_from_rfc3339(
+                entry["commit"]["committer"]["date"]
+                    .as_str()
+                    .context("Empty committer date?")?,
+            )?;
+            let sha = entry["sha"].as_str().context("no sha on commit?")?;
+            let str_date = date.format("%Y%m%d").to_string();
+            println!("{}, {}", &str_date, &sha);
+            res.insert(str_date, sha.to_string());
+        }
+        Ok(res)
+    }
+}
+
+impl Retriever for PyPiDepsDBRetriever {
+    fn retrieve(&self) -> Result<HashMap<String, String>> {
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let mut page = now.signed_duration_since(self.query_date).num_days() / 35; //empirically..., just has to be close, not exact
+        let mut known_mappings = HashMap::new();
+        loop {
+            let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
             if new_mappings.len() == 0 {
                 return Err(anyhow!(
                     "Could not find entry in pypi-deps-db (no more pages)"
                 ));
             }
-            for (k, v) in new_mappings.iter() {
-                known_mappings.insert(k.to_string(), v.to_string());
+            let newest = newest_date(&new_mappings)?;
+            let oldest = oldest_date(&new_mappings)?;
+            for (k, v) in new_mappings.drain() {
+                known_mappings.insert(k, v);
             }
-            if known_mappings.contains_key(&query_date_str) {
-                std::fs::write(store_path, serde_json::to_string_pretty(&json!(known_mappings))?)?;
-                return Ok(known_mappings.get(&query_date_str).unwrap().to_string());
+            if known_mappings.contains_key(&self.query_date_str) {
+                return Ok(known_mappings);
             } else {
                 //it is not in there...
-                if newest_date(&new_mappings)? < query_date {
-                    println!("{:?} too old", query_date);
+                if newest < self.query_date {
+                    println!("{:?} too old", &self.query_date);
                     page -= 1;
                     if page == 0 {
                         return Err(anyhow!(
                             "Could not find entry in pypi-deps-db (arrived at latest entry)"
                         ));
                     }
-                } else if oldest_date(&new_mappings)? > query_date {
-                    println!("{:?} too new", query_date);
+                } else if oldest > self.query_date {
+                    println!("{:?} too new", &self.query_date);
                     page += 1;
                 }
             }
         }
     }
-    Err(anyhow!("Not found"))
-}
-
-#[derive(Deserialize, Debug)]
-struct CommitEntry {
-    sha: String,
-    commit: Commit,
-}
-#[derive(Deserialize, Debug)]
-struct Commit {
-    committer: Commiter,
-}
-#[derive(Deserialize, Debug)]
-struct Commiter {
-    date: String,
-}
-
-fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
-    let url = format!(
-        "http://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
-        page
-    );
-    println!("{}", url);
-    let body: String = ureq::get(&url)
-        //.set("Example-Header", "header value")
-        .call()?
-        .into_string()?;
-    let json = serde_json::from_str(&body);
-    let json: Vec<CommitEntry> = match json {
-        Ok(x) => Ok(x),
-        Err(e) => {
-            println!("{}", body);
-            Err(e)
-        }
-    }?;
-
-    let mut res = HashMap::new();
-    for entry in json.iter() {
-        let date = chrono::DateTime::parse_from_rfc3339(&entry.commit.committer.date)?;
-        let str_date = date.format("%Y%m%d").to_string();
-        println!("{}, {}", &str_date, &entry.sha);
-        res.insert(str_date, entry.sha.clone());
-    }
-    Ok(res)
 }
 
 fn oldest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
@@ -448,4 +557,100 @@ fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
         &format!("{} 00:00", oldest),
         "%Y%m%d %H:%M",
     )?)
+}
+
+fn lookup_github_tag(repo: &str, tag_or_rev: &str) -> Result<String> {
+    if tag_or_rev.len() == 40 {
+        Ok(tag_or_rev.to_string())
+    } else {
+        fetch_cached(
+            [format!("flake/.github_{}.json", repo.replace("/", "_"))]
+                .iter()
+                .collect(),
+            tag_or_rev,
+            GitHubTagRetriever {
+                repo: repo.to_string(),
+            },
+        )
+    }
+}
+
+fn lookup_nix_rev(tag_or_rev: &str) -> Result<String> {
+    lookup_github_tag(DEFAULT_NIXPKGS_REPO, tag_or_rev).context("Failed to lookup nixpkgs tag")
+}
+
+fn lookup_mach_nix_rev(tag_or_rev: &str) -> Result<String> {
+    lookup_github_tag(DEFAULT_MACH_NIX_REPO, tag_or_rev).context("Failed to lookup mach-nix tag")
+}
+
+trait Retriever {
+    fn retrieve(&self) -> Result<HashMap<String, String>>;
+}
+
+fn fetch_cached(cache_filename: PathBuf, query: &str, retriever: impl Retriever) -> Result<String> {
+    let mut known: HashMap<String, String> = match cache_filename.exists() {
+        true => serde_json::from_str(&std::fs::read_to_string(&cache_filename)?)?,
+        false => HashMap::new(),
+    };
+    if known.contains_key(query) {
+        return Ok(known.get(query).unwrap().to_string());
+    } else {
+        let mut new = retriever.retrieve()?;
+        for (k, v) in new.drain() {
+            known.insert(k, v);
+        }
+        std::fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
+        return Ok(known
+            .get(query)
+            .context(format!("Could not find query value: {}", query))?
+            .to_string());
+    }
+}
+
+struct GitHubTagRetriever {
+    repo: String,
+}
+
+impl Retriever for GitHubTagRetriever {
+    fn retrieve(&self) -> Result<HashMap<String, String>> {
+        let mut res = HashMap::new();
+        for page in 0..30 {
+            let url = format!(
+                "https://api.github.com/repos/{}/tags?per_page=100&page={}",
+                &self.repo, page
+            );
+            let body: String = ureq::get(&url).call()?.into_string()?;
+            let json: serde_json::Value =
+                serde_json::from_str(&body).context("Failed to parse github tags api")?;
+            let json = json.as_array().context("No entries in github tags api?")?;
+            if json.is_empty() {
+                break;
+            }
+            for entry in json {
+                let name: String = entry["name"]
+                    .as_str()
+                    .context("No name found in github tags")?
+                    .to_string();
+                let sha: String = entry["commit"]["sha"]
+                    .as_str()
+                    .context("No sha found in github tags")?
+                    .to_string();
+                res.insert(name, sha);
+            }
+        }
+        Ok(res)
+    }
+}
+
+fn rebuild_flake() -> Result<()> {
+    if Command::new("nix")
+        .args(["build", "-v", "--show-trace"])
+        .current_dir("flake")
+        .status()?
+        .success()
+    {
+        Ok(())
+    } else {
+        Err(anyhow!("flake building failed"))
+    }
 }
