@@ -21,12 +21,11 @@ use std::process::{Command, Stdio};
    just all use screen all the time?)
 
  * R
-
- * Bootstrapping - using a defined anysnake2 version
- *  ( easy: if a parameter is passed and it matches the toml, or if anysnake2.version = 'dev' do
- *  nothing. otheriwise nix flake run...
-
+ 
  * sensible verbosity...
+ *
+ * Get rid of walkdir
+ * refactor
 
 */
 
@@ -63,7 +62,7 @@ struct ConfigToml {
 #[derive(Deserialize, Debug)]
 struct Anysnake2 {
     rev: String,
-    anysnake_repo: Option<String>,
+    url: Option<String>,
     do_not_modify_flake: Option<bool>,
 }
 
@@ -143,17 +142,17 @@ fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("cwd")
-                .long("cwd")
-                .value_name("DIRECTORY")
-                .help("change working directory before executing")
-                .takes_value(true),
-        )
-        .arg(
             Arg::with_name("v")
                 .short("v")
                 .multiple(true)
                 .help("Sets the level of verbosity (can be passed up to three times)"),
+        )
+        .arg(
+            Arg::with_name("_running_version")
+                .long("_running_version")
+                .help("internal use only")
+                .hidden(true)
+                .takes_value(true),
         )
         .subcommand(
             SubCommand::with_name("build").about("build container, but do not run anything"),
@@ -165,13 +164,6 @@ fn main() -> Result<()> {
         .subcommand(SubCommand::with_name("version").about("output version of this build"))
         .get_matches();
 
-    match matches.value_of("cwd") {
-        Some(cwd) => {
-            println!("changing working directory to {}", &cwd);
-            std::env::set_current_dir(cwd)?
-        }
-        None => {}
-    }
     let cmd = match matches.subcommand() {
         (name, Some(_subcommand)) => name,
         _ => "default",
@@ -181,18 +173,64 @@ fn main() -> Result<()> {
         println!("# dump this to anysnake2.toml (default filename)");
         println!("{}", std::include_str!("../example/anysnake2.toml"));
         std::process::exit(0);
-    } else if cmd == "version" {
-        println!("anysnake2 version: {}", VERSION);
-        std::process::exit(0);
+    }
+    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
+    let config_file_path: PathBuf = [config_file].iter().collect();
+    if !config_file_path.exists() && cmd == "version" {
+        print_version();
     }
 
-    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
     let raw_config = std::fs::read_to_string(config_file).context(format!(
         "Could not find config file {}. Use --help for help",
         config_file
     ))?;
     let mut parsed_config: ConfigToml =
         toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
+    if parsed_config.anysnake2.rev == "dev" {
+        println!("Using development version of anysnake");
+    } else if parsed_config.anysnake2.rev
+        != matches
+            .value_of("_running_version")
+            .unwrap_or("noversionspecified")
+    {
+        println!("restarting with version {}", &parsed_config.anysnake2.rev);
+        let anysnake_url = parsed_config
+            .anysnake2
+            .url
+            .as_deref()
+            .unwrap_or(DEFAULT_ANYSNAKE_URL);
+        let repo = format!(
+            "{}?rev={}",
+            anysnake_url,
+            if anysnake_url == DEFAULT_ANYSNAKE_URL {
+                lookup_anysnake_rev(&parsed_config.anysnake2.rev)?
+            } else {
+                parsed_config.anysnake2.rev.clone()
+            }
+        );
+
+        let mut args = vec![
+            "shell",
+            &repo,
+            "-c",
+            "anysnake2",
+            "--_running_version",
+            &parsed_config.anysnake2.rev,
+        ];
+        let input_args: Vec<String> = std::env::args().collect();
+        {
+            for argument in input_args.iter().skip(1) {
+                args.push(argument);
+            }
+            println!("new args {:?}", args);
+            let status = Command::new("nix").args(args).status()?;
+            //now push
+            std::process::exit(status.code().unwrap());
+        }
+    }
+    if cmd == "version" {
+        print_version();
+    }
 
     if !parsed_config.cmd.contains_key(cmd) && cmd != "build" {
         return Err(anyhow!(
@@ -429,6 +467,11 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_version() -> () {
+    println!("anysnake2 version: {}", VERSION);
+    std::process::exit(0);
 }
 
 fn pretty_print_singularity_call(args: &Vec<String>) -> String {
@@ -1050,6 +1093,9 @@ fn lookup_nix_rev(tag_or_rev: &str) -> Result<String> {
 
 fn lookup_mach_nix_rev(tag_or_rev: &str) -> Result<String> {
     lookup_github_tag(DEFAULT_MACH_NIX_REPO, tag_or_rev).context("Failed to lookup mach-nix tag")
+}
+fn lookup_anysnake_rev(tag_or_rev: &str) -> Result<String> {
+    lookup_github_tag(DEFAULT_ANYSNAKE_REPO, tag_or_rev).context("Failed to lookup anysnake tag")
 }
 
 trait Retriever {
