@@ -19,10 +19,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.mach-nix.follows = "mach-nix";
     };
+    %FURTHER_FLAKES%
   };
 
   outputs =
-    { self, nixpkgs, flake-utils, mach-nix, pypi-deps-db, rust-overlay }:
+    { self, nixpkgs, flake-utils, mach-nix, pypi-deps-db, rust-overlay, %FURTHER_FLAKE_PARAMS% }:
 
     flake-utils.lib.eachDefaultSystem (system:
       let
@@ -143,6 +144,7 @@
             ${bashInteractive_5}
             ${my_rust}
             %NIXPKGSPKGS%
+            %FURTHER_FLAKE_PACKAGES%
           '';
           python_requirements = ''
             %PYTHON_PACKAGES%

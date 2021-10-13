@@ -17,10 +17,10 @@ use std::process::{Command, Stdio};
 
 /* TODO
  *
- * running container managment
- * no flake-write-mode
+ * running container managment (does it die when you quit the shell? can we reattach? should we
+   just all use screen all the time?)
+ * no flake-write-mode (nah, no escape hatches for you)
  * arbitrary flake inclusion
- * python requirements parsing
  * gitignore & commit for flake
  * R
  * Bootstrapping - using a defined anysnake2 version
@@ -54,6 +54,7 @@ struct ConfigToml {
     python: Option<Python>,
     volumes_ro: Option<HashMap<String, String>>,
     volumes_rw: Option<HashMap<String, String>>,
+    flakes: Option<HashMap<String, Flake>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -93,6 +94,13 @@ struct Python {
     packages: HashMap<String, String>,
     mach_nix_rev: Option<String>,
     mach_nix_url: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Flake {
+    url: String,
+    follows: Option<Vec<String>>,
+    packages: Vec<String>,
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
@@ -739,6 +747,45 @@ fn write_flake(
                 .replace("%MACH_NIX_URL%", &mach_nix_url)
         }
         None => flake_contents,
+    };
+
+    flake_contents = match &parsed_config.flakes {
+        Some(flakes) => {
+            let mut repl = "".to_string();
+            let mut repl_params = Vec::new();
+            let mut repl_packages = "".to_string();
+            for (name, flake) in flakes.iter() {
+                repl_params.push(name.to_string());
+                repl += &format!(
+                    "
+    {} = {{
+        url = \"{}\";
+",
+                    name, flake.url
+                );
+                match &flake.follows {
+                    Some(follows) => {
+                        for f in follows {
+                            repl += &format!("        inputs.{}.follows = \"{}\";\n", f, f);
+                        }
+                    }
+                    None => {}
+                }
+                repl += "    };";
+
+                for pkg in &flake.packages {
+                    repl_packages += &format!("${{{}.{}}}", name, pkg);
+                }
+            }
+            flake_contents
+                .replace("%FURTHER_FLAKES%", &repl)
+                .replace("%FURTHER_FLAKE_PARAMS%", &repl_params.join(", "))
+                .replace("%FURTHER_FLAKE_PACKAGES%", &repl_packages)
+        }
+        None => flake_contents
+            .replace("%FURTHER_FLAKES%", "")
+            .replace("%FURTHER_FLAKE_PARAMS%", "")
+            .replace("%FURTHER_FLAKE_PACKAGES%", ""),
     };
 
     //print!("{}", flake_contents);

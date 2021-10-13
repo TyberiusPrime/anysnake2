@@ -42,6 +42,11 @@ packages = [
 	"affy",
 	]
 
+[flakes.hello]
+	url = "path:./../../hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	packages = ["defaultPackage.x86_64-linux"]
+
 [rust]
 version = "1.55.0" # stable. to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
 # rust_overlay_rev = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec" #https://github.com/oxalica/rust-overlay, optional
@@ -74,6 +79,7 @@ set -x # show what we're executing
 cd /project
 echo 'pythonpath $PYTHONPATH'
 python run.py
+hello
 no_such-command
 """
 
