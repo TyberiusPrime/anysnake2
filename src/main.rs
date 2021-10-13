@@ -45,6 +45,9 @@ const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
 const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
 const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
+use git_version::git_version;
+const GIT_VERSION: &str = git_version!();
+
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
     nixpkgs: Nix,
@@ -147,13 +150,13 @@ fn main() -> Result<()> {
                 .help("Sets the level of verbosity (can be passed up to three times)"),
         )
         .subcommand(
-            SubCommand::with_name("build")
-                .about("build container, but do not run anything")
+            SubCommand::with_name("build").about("build container, but do not run anything"),
         )
         .subcommand(
             SubCommand::with_name("example-config")
-                .about("dump an example anysnake2.toml to stdout")
+                .about("dump an example anysnake2.toml to stdout"),
         )
+        .subcommand(SubCommand::with_name("version").about("output version of this build"))
         .get_matches();
 
     match matches.value_of("cwd") {
@@ -172,11 +175,16 @@ fn main() -> Result<()> {
         println!("# dump this to anysnake2.toml (default filename)");
         println!("{}", std::include_str!("../example/anysnake2.toml"));
         std::process::exit(0);
+    } else if cmd == "version" {
+        println!("anysnake2 version: {}", GIT_VERSION);
+        std::process::exit(0);
     }
 
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
-    let raw_config = std::fs::read_to_string(config_file)
-        .context(format!("Could not find config file {}. Use --help for help", config_file))?;
+    let raw_config = std::fs::read_to_string(config_file).context(format!(
+        "Could not find config file {}. Use --help for help",
+        config_file
+    ))?;
     let mut parsed_config: ConfigToml =
         toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
 
