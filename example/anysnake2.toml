@@ -1,9 +1,13 @@
+home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash 
 # rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
 # url = "git+https://github.com/NixOS/nixpkgs" # optional
 # url = "github:NixOS/nixpkgs" # optional
-packages = ["fish"] # optional
+packages = [ # use https://search.nixos.org/packages to search
+	"fish",
+	"netcat"] # optional
 
 [flake-util]
 # rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
@@ -20,6 +24,7 @@ mbf_r = "editable/code" #
 # or mbf_r = "editable/code/mbf_r" #  if you need to rename.
 
 [clones.code] # target directory
+# seperate from python packages so you can clone other stuff as well
 dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
 dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
 mbf_r="@mbf"
@@ -39,54 +44,58 @@ version = "1.55.0" # stable. to use nightly, add to nipkgs.packages 'rust-bin.ni
 # rust_overlay_url = "github:oxalica/rust-overlay"
 
 [volumes_ro]
-	"/opt" = "/opt"
-	"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
-	"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
-	"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
+"/opt" = "/opt"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
 
 
 [volumes_rw]
-	"." = "/project"
-	"$HOME/.config" = "$HOME/.config"
-	"/var/run/docker.sock" = "/var/run/docker.sock"
+# home get's special treatment, see first line
+"." = "/project"
+"/var/run/docker.sock" = "/var/run/docker.sock"
 
 
 [env]
-	MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
-	MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
-	MBF_AUTH_USER = "feed"
-	MBF_AUTH_PASSWORD = "feed"
+MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
+MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
+MBF_AUTH_USER = "feed"
+MBF_AUTH_PASSWORD = "feed"
 
 
 [cmd.default]
-    run = """
-	echo 'run_inside'
-	cd /project
-	python run.py
-	no_such-command
-	"""
+run = """
+echo 'run_inside'
+set -x # show what we're executing
+cd /project
+python run.py
+no_such-command
+"""
 
-	post_run_inside = """
-	echo "post run inside"
-	"""
+# the post run runs even if the run failed
+post_run_inside = """
+echo "post run inside - status was $ANYSNAKE_RUN_STATUS"
+"""
 
-	pre_run_outside = """
-	echo "pre run outside"
-	"""
+# if this one fails, execution stops
+pre_run_outside = """
+echo "pre run outside"
+"""
 
-	post_run_outside = """
-	echo 'post run outside'
-	"""
+# runs independend of the sucess inside
+post_run_outside = """
+echo 'post run outside'
+"""
 
 [cmd.shell]
-	run = """fish
-	"""
+run = """fish
+"""
 
 [cmd.jupyter]
-	run = """
-	jupyter --PORT=ANYSNAKE2_PORT
-	"""
-	port_range=[8888,8896]
+run = """
+jupyter 
+"""
+# ports are exposed by default (using host network!)
 
 
 [clone_regexps]

@@ -9,5 +9,6 @@ takea
 /target
 
 /result
-/code
-/flake
+/example/result
+/example/code
+/example/flake

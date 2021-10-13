@@ -51,6 +51,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "configparser",
  "const_format",
  "fstrings",
  "regex",
@@ -156,6 +157,12 @@ dependencies = [
  "unicode-width",
  "vec_map",
 ]
+
+[[package]]
+name = "configparser"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7201ee416d124d589a820111ba755930df8b75855321a9a1b87312a0597ec8f"
 
 [[package]]
 name = "const_format"

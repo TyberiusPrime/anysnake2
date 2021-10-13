@@ -36,10 +36,6 @@
           python = "%PYTHON_MAJOR_MINOR%";
         };
 
-        #buildContainer = (pkgs.callPackage ./buildContainer.nix {
-        #inherit system;
-        #mach-nix = mach-nix_;
-        #}).buildSymlinkImage;
         buildContainer = let
           _buildSymlinkImage = { name, script, python_requirements
             , additional_mkPythonArgs ? { } }:
@@ -136,15 +132,17 @@
               # rm -rf $out/rootfs
             '';
         in buildSingularityImage;
+      my_rust = %RUST%;
       in with pkgs; {
         defaultPackage = buildContainer {
           #name = "first_container" + builtins.trace (pypi-deps-db.narHash) "";
           name = "anysnake2_container";
           #later entries beat earlier entries in terms of /bin symlinks
           script = ''
+            ${coreutils}
             ${bashInteractive_5}
+            ${my_rust}
             %NIXPKGSPKGS%
-            %RUST%
           '';
           python_requirements = ''
             %PYTHON_PACKAGES%

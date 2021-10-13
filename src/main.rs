@@ -8,15 +8,25 @@ use regex::Regex;
 use serde_derive::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use std::io::{self, BufRead};
+use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /* TODO
  *
- * nix build when flake changes
  * running container managment
+ * no flake-write-mode
+ * arbitrary flake inclusion
+ * python requirements parsing 
+ * run_scripts in flakes/run_scripts
+ * Python venv
  * R
  * Bootstrapping - using a defined anysnake2 version
+ *  ( easy: if a parameter is passed and it matches the toml, or if anysnake2.version = 'dev' do
+ *  nothing. otheriwise nix flake run...
  *
 */
 
@@ -34,6 +44,7 @@ const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
+    home: Option<String>,
     nixpkgs: Nix,
     flake_util: Option<FlakeUtil>,
     clone_regexps: Option<HashMap<String, String>>,
@@ -41,6 +52,8 @@ struct ConfigToml {
     cmd: HashMap<String, Cmd>,
     rust: Option<Rust>,
     python: Option<Python>,
+    volumes_ro: Option<HashMap<String, String>>,
+    volumes_rw: Option<HashMap<String, String>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -105,6 +118,13 @@ fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("cwd")
+                .long("cwd")
+                .value_name("DIRECTORY")
+                .help("change working directory before executing")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("v")
                 .short("v")
                 .multiple(true)
@@ -120,6 +140,14 @@ fn main() -> Result<()> {
             */
         .get_matches();
 
+    match matches.value_of("cwd") {
+        Some(cwd) => {
+            println!("changing working directory to {}", &cwd);
+            std::env::set_current_dir(cwd)?
+        }
+        None => {}
+    }
+
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
     let raw_config = std::fs::read_to_string(config_file)?;
     let mut parsed_config: ConfigToml =
@@ -129,7 +157,7 @@ fn main() -> Result<()> {
         (name, Some(_subcommand)) => name,
         _ => "default",
     };
-    if !parsed_config.cmd.contains_key(cmd) {
+    if !parsed_config.cmd.contains_key(cmd) && cmd != "build" {
         return Err(anyhow!(
             "Cmd {} not found. Available: {:?}",
             cmd,
@@ -138,9 +166,9 @@ fn main() -> Result<()> {
     }
 
     lookup_clones(&mut parsed_config)?;
-    println_f!("Hello, world! ");
-
     perform_clones(&parsed_config)?;
+    let python_requirements_from_clones = find_python_requirements_for_clones(&parsed_config)?;
+
     let flake_changed = write_flake(&parsed_config)?;
     let build_output: PathBuf = ["flake", "result"].iter().collect();
     if flake_changed || !build_output.exists() {
@@ -148,7 +176,139 @@ fn main() -> Result<()> {
         rebuild_flake()?;
     }
 
-    println_f!("Done");
+    let home_dir: PathBuf = {
+        [replace_env_vars(
+            parsed_config.home.as_deref().unwrap_or("$HOME"),
+        )]
+        .iter()
+        .collect()
+    };
+    let home_dir_str: String = home_dir
+        .clone()
+        .into_os_string()
+        .to_string_lossy()
+        .to_string();
+    println_f!("Using {home_dir:?} as home");
+    std::fs::create_dir_all(home_dir).context("Failed to create home dir")?;
+
+    if cmd == "build" {
+        println_f!("Build only - done");
+    } else {
+        println_f!("Running singularity - cmd {cmd}");
+        let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
+        match &cmd_info.pre_run_outside {
+            Some(bash_script) => {
+                run_bash(bash_script).context("pre run outside failed")?;
+            }
+            None => {}
+        };
+        let run_template = std::include_str!("run.sh");
+        let run_script = run_template.replace("%RUN%", &cmd_info.run);
+        let post_run_script =
+            run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
+
+        let outer_run_sh: PathBuf = [".outer_run.sh"].iter().collect(); //todo: tempfile
+        let outer_run_sh_str: String = outer_run_sh
+            .clone()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string();
+        let run_sh: PathBuf = [".run.sh"].iter().collect(); //todo: tempfile
+        let run_sh_str: String = run_sh
+            .clone()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string();
+        let post_run_sh: PathBuf = [".post_run.sh"].iter().collect(); //todo: tempfile
+        let post_run_sh_str: String = post_run_sh
+            .clone()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string();
+        std::fs::write(
+            &outer_run_sh,
+            "#/bin/bash\nbash /anysnake2/run.sh\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
+        )?;
+        std::fs::write(&run_sh, run_script)?;
+        std::fs::write(&post_run_sh, post_run_script)?;
+
+        let mut singularity_args: Vec<String> = vec![
+            "exec".into(),
+            "--userns".into(),
+            "--home".into(),
+            (home_dir_str).into(),
+        ];
+        let mut binds = Vec::new();
+        binds.push((
+            run_sh_str,
+            "/anysnake2/run.sh".to_string(),
+            "ro".to_string(),
+        ));
+        binds.push((
+            post_run_sh_str,
+            "/anysnake2/post_run.sh".to_string(),
+            "ro".to_string(),
+        ));
+        binds.push((
+            outer_run_sh_str,
+            "/anysnake2/outer_run.sh".to_string(),
+            "ro".to_string(),
+        ));
+
+        match parsed_config.volumes_ro {
+            Some(volumes_ro) => {
+                for (from, to) in volumes_ro {
+                    let from: PathBuf =
+                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "ro".to_string()));
+                }
+            }
+            None => {}
+        };
+        match parsed_config.volumes_rw {
+            Some(volumes_ro) => {
+                for (from, to) in volumes_ro {
+                    let from: PathBuf =
+                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "rw".to_string()));
+                }
+            }
+            None => {}
+        }
+        for (from, to, opts) in binds {
+            singularity_args.push("--bind".into());
+            singularity_args.push(format!("{}:{}:{}", from, to, opts).into());
+        }
+
+        singularity_args.push("flake/result/rootfs".into());
+        singularity_args.push("/bin/bash".into());
+        singularity_args.push("/anysnake2/outer_run.sh".into());
+        println!("{}", "Singularity cmd:\n\tsingularity \\");
+        for s in &singularity_args {
+            println!("\t\t{} \\", s);
+        }
+        println!("{}", "");
+        let singularity_result = Command::new("singularity")
+            .args(singularity_args)
+            .status()?;
+
+        match &cmd_info.post_run_outside {
+            Some(bash_script) => match run_bash(bash_script) {
+                Ok(()) => {}
+                Err(e) => {
+                    println!("Warning: an error occured when running the post_run_outside bash script: {}", e)
+                }
+            },
+            None => {}
+        };
+        std::process::exit(
+            singularity_result
+                .code()
+                .context("No exit code inside container?")?,
+        );
+    }
 
     Ok(())
 }
@@ -241,7 +401,7 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                             ));
                         };
                         let output = Command::new(cmd)
-                            .args(["clone", furl])
+                            .args(["clone", furl, "."])
                             .current_dir(final_dir)
                             .output()
                             .context(format_f!(
@@ -268,6 +428,68 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
     };
 
     Ok(())
+}
+
+// The output is wrapped in a Result to allow matching on errors
+// Returns an Iterator to the Reader of the lines of the file.
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
+fn find_python_requirements_for_clones(parsed_config: &ConfigToml) -> Result<Vec<String>> {
+    let mut res = Vec::new();
+    match &parsed_config.clones {
+        Some(clones) => {
+            for (target_dir, name_urls) in clones.iter() {
+                for (name, url) in name_urls.iter() {
+                    let requirement_file: PathBuf =
+                        [target_dir, name, "requirements.txt"].iter().collect();
+                    if requirement_file.exists() {
+                        for line in read_lines(requirement_file)?
+                            .map(|line| line.unwrap_or_else(|_| "".to_string()))
+                            .map(|line| line.trim().to_string())
+                            .filter(|line| !line.is_empty() && !line.starts_with("#"))
+                        {
+                            res.push(line);
+                        }
+                    }
+
+                    let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
+                    println!("looking for {:?}", &setup_cfg_file);
+                    if setup_cfg_file.exists() {
+                        let reqs = parse_python_config_file(&setup_cfg_file);
+                        match reqs {
+                            Err(e) => {
+                                println!("Warning: failed to parse {:?}: {}", setup_cfg_file, e)
+                            }
+                            Ok(mut reqs) => {
+                                for k in reqs.drain(..) {
+                                    res.push(k);
+                                }
+                            }
+                        };
+                    }
+                }
+            }
+        }
+        None => {}
+    }
+    Ok(res)
+}
+
+fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
+    println!("Parsing {:?}", &setup_cfg_file);
+    let mut setup_cfg = configparser::ini::Ini::new();
+    setup_cfg
+        .load(setup_cfg_file)
+        .map_err(|e| anyhow!("{}", e))?;
+    let install_requires = setup_cfg.get("options", "install_requires").ok_or(anyhow!("No install_requires section"))?;
+    println!("install reqs: {}", install_requires);
+    Err(anyhow!("Could not parse"))
 }
 
 fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
@@ -328,7 +550,8 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
         Some(rust) => (
             flake_contents.replace(
                 "%RUST%",
-                &format!("${{rust-bin.stable.\"{}\".default}}", &rust.version),
+                // skipping the rust-docs saves about 270 mb ¯\_(ツ)_/¯
+                &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", &rust.version),
             ),
             rust.rust_overlay_rev
                 .as_deref()
@@ -338,7 +561,11 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
                 .unwrap_or(DEFAULT_RUST_OVERLAY_URL),
         ),
         None => (
-            flake_contents,
+                 flake_contents.replace(
+                "%RUST%",
+                "null",
+            ),
+
             DEFAULT_RUST_OVERLAY_REV,
             DEFAULT_RUST_OVERLAY_URL,
         ),
@@ -653,4 +880,28 @@ fn rebuild_flake() -> Result<()> {
     } else {
         Err(anyhow!("flake building failed"))
     }
+}
+
+fn run_bash(script: &str) -> Result<()> {
+    let mut child = Command::new("bash").stdin(Stdio::piped()).spawn()?;
+    let child_stdin = child.stdin.as_mut().unwrap();
+    child_stdin.write_all(b"set -euo pipefail\n")?;
+    child_stdin.write_all(script.as_bytes())?;
+    child_stdin.write_all(b"\n")?;
+    drop(child_stdin); // close
+    let ecode = child.wait().context("Failed to wait on bash")?;
+    if ecode.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("Bash error return code {}", ecode))
+    }
+}
+
+fn replace_env_vars(input: &str) -> String {
+    let mut output = input.to_string();
+    for (k, v) in std::env::vars() {
+        output = output.replace(&format!("${}", k), &v);
+        output = output.replace(&format!("${{{}}}", k), &v);
+    }
+    output
 }

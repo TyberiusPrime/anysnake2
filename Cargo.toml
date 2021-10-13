@@ -18,3 +18,4 @@ ureq = "2.0"
 const_format = "0.2.21"
 anyhow = {version="1.0.44", features=["backtrace"]}
 regex = "1"
+configparser = "2.1.0"
