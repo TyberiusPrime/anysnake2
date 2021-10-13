@@ -20,8 +20,6 @@ use std::process::{Command, Stdio};
  * running container managment (does it die when you quit the shell? can we reattach? should we
    just all use screen all the time?)
 
- * no flake-write-mode (nah, no escape hatches for you)
-
  * R
 
  * Bootstrapping - using a defined anysnake2 version
@@ -47,9 +45,7 @@ const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
 const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
 const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
-use git_version::git_version;
-const GIT_VERSION: &str =
-    git_version!(args = ["--abbrev=40", "--always", "--tags", "--dirty=~modified"]);
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
@@ -186,7 +182,7 @@ fn main() -> Result<()> {
         println!("{}", std::include_str!("../example/anysnake2.toml"));
         std::process::exit(0);
     } else if cmd == "version" {
-        println!("anysnake2 version: {}", GIT_VERSION);
+        println!("anysnake2 version: {}", VERSION);
         std::process::exit(0);
     }
 
