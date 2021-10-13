@@ -30,8 +30,10 @@ use std::process::{Command, Stdio};
 
  * sensible verbosity...
 
- * version cmd
 */
+
+const DEFAULT_ANYSNAKE_REPO: &str = "TyberiusPrime/anysnake2";
+const DEFAULT_ANYSNAKE_URL: &str = concatcp!("github:", DEFAULT_ANYSNAKE_REPO);
 
 const DEFAULT_MACH_NIX_REPO: &str = "DavHau/mach-nix";
 const DEFAULT_MACH_NIX_URL: &str = concatcp!("github:", DEFAULT_MACH_NIX_REPO);
@@ -46,10 +48,12 @@ const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
 const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
 use git_version::git_version;
-const GIT_VERSION: &str = git_version!(args = ["--abbrev=40", "--always", "--tags", "--dirty=~modified"]);
+const GIT_VERSION: &str =
+    git_version!(args = ["--abbrev=40", "--always", "--tags", "--dirty=~modified"]);
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
+    anysnake2: Anysnake2,
     nixpkgs: Nix,
     flake_util: Option<FlakeUtil>,
     clone_regexps: Option<HashMap<String, String>>,
@@ -59,6 +63,12 @@ struct ConfigToml {
     python: Option<Python>,
     container: Option<Container>,
     flakes: Option<HashMap<String, Flake>>,
+}
+#[derive(Deserialize, Debug)]
+struct Anysnake2 {
+    rev: String,
+    anysnake_repo: Option<String>,
+    do_not_modify_flake: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -224,12 +234,13 @@ fn main() -> Result<()> {
         }
     };
     println!("python packages: {:?}", python_packages);
+    let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
-    let flake_changed = write_flake(&parsed_config, &python_packages)?;
+    let flake_changed = write_flake(&parsed_config, &python_packages, use_generated_file_instead)?;
     let build_output: PathBuf = ["flake", "result"].iter().collect();
     if flake_changed || !build_output.exists() {
         println!("{}", "Rebuilding");
-        rebuild_flake()?;
+        rebuild_flake(use_generated_file_instead)?;
     }
 
     match &parsed_config.python {
@@ -675,11 +686,16 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
 fn write_flake(
     parsed_config: &ConfigToml,
     python_packages: &Vec<(String, String)>,
+    use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?;
-    let flake_filename: PathBuf = ["flake", "flake.nix"].iter().collect();
+    let flake_filename: PathBuf = if use_generated_file_instead {
+        ["flake", "flake.generated.nix"].iter().collect()
+    } else {
+        ["flake", "flake.nix"].iter().collect()
+    };
     let old_flake_contents = {
         if flake_filename.exists() {
             std::fs::read_to_string(&flake_filename)?
@@ -855,16 +871,21 @@ fn write_flake(
         }
     }
 
-    let res = if old_flake_contents != flake_contents {
-        std::fs::write(flake_filename, flake_contents)?;
-
+    if use_generated_file_instead {
+        if old_flake_contents != flake_contents {
+            std::fs::write(flake_filename, flake_contents)?;
+        }
         Ok(true)
     } else {
-        println!("flake unchanged");
-        Ok(false)
-    };
+        if old_flake_contents != flake_contents {
+            std::fs::write(flake_filename, flake_contents)?;
 
-    res
+            Ok(true)
+        } else {
+            println!("flake unchanged");
+            Ok(false)
+        }
+    }
 }
 
 fn extract_non_editable_python_packages(input: &Vec<(String, String)>) -> Result<Vec<String>> {
@@ -1094,7 +1115,7 @@ impl Retriever for GitHubTagRetriever {
     }
 }
 
-fn rebuild_flake() -> Result<()> {
+fn rebuild_flake(use_generated_file_instead: bool) -> Result<()> {
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::write(
         flake_dir.join(".gitignore"),
@@ -1120,11 +1141,13 @@ run_scripts/
         return Err(anyhow!(msg));
     }
 
-    let output = Command::new("git")
-        .args(["commit", "-m", "autocommit"])
-        .current_dir(&flake_dir)
-        .output()
-        .context(format_f!("Failed git add flake.nix"))?;
+    if !use_generated_file_instead {
+        let output = Command::new("git")
+            .args(["commit", "-m", "autocommit"])
+            .current_dir(&flake_dir)
+            .output()
+            .context(format_f!("Failed git add flake.nix"))?;
+    }
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

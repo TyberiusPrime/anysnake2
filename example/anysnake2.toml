@@ -1,3 +1,15 @@
+[anysnake2]
+rev = "dev" # dev = whatever, used in development. 
+# If a tag or hash from the anysnake github repo at https://github.com/TyberiusPrime/anysnake2,
+# we leverage nix to run exactly that version.
+# anysnake_repo = "https://github.com/TyberiusPrime/anysnake2" # if you want to override this.
+
+# do_not_modify_flake = true # if set to true, 
+                             # flake/flake.nix is *never* overwritten, 
+							 # but stored in flake/flake.generated.nix.
+							 # And nix build is called every run
+							 # This is an escape hatch
+
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash 
