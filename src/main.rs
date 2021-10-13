@@ -21,7 +21,6 @@ use std::process::{Command, Stdio};
  * no flake-write-mode
  * arbitrary flake inclusion
  * python requirements parsing 
- * run_scripts in flakes/run_scripts
  * Python venv
  * R
  * Bootstrapping - using a defined anysnake2 version
@@ -203,23 +202,25 @@ fn main() -> Result<()> {
             None => {}
         };
         let run_template = std::include_str!("run.sh");
+        let run_dir = format!("flake/run_scripts/{}", cmd);
+        std::fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
         let run_script = run_template.replace("%RUN%", &cmd_info.run);
         let post_run_script =
             run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
 
-        let outer_run_sh: PathBuf = [".outer_run.sh"].iter().collect(); //todo: tempfile
+        let outer_run_sh: PathBuf = [&run_dir, "outer_run.sh"].iter().collect(); //todo: tempfile
         let outer_run_sh_str: String = outer_run_sh
             .clone()
             .into_os_string()
             .to_string_lossy()
             .to_string();
-        let run_sh: PathBuf = [".run.sh"].iter().collect(); //todo: tempfile
+        let run_sh: PathBuf = [&run_dir, "run.sh"].iter().collect(); //todo: tempfile
         let run_sh_str: String = run_sh
             .clone()
             .into_os_string()
             .to_string_lossy()
             .to_string();
-        let post_run_sh: PathBuf = [".post_run.sh"].iter().collect(); //todo: tempfile
+        let post_run_sh: PathBuf = [&run_dir, "post_run.sh"].iter().collect(); //todo: tempfile
         let post_run_sh_str: String = post_run_sh
             .clone()
             .into_os_string()
