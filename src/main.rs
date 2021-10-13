@@ -1,7 +1,7 @@
 extern crate clap;
 use anyhow::{anyhow, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
-use clap::{App, AppSettings, Arg};
+use clap::{App, AppSettings, Arg, SubCommand};
 use const_format::concatcp;
 use fstrings::{format_args_f, format_f, println_f};
 use regex::Regex;
@@ -19,13 +19,18 @@ use std::process::{Command, Stdio};
  *
  * running container managment (does it die when you quit the shell? can we reattach? should we
    just all use screen all the time?)
+
  * no flake-write-mode (nah, no escape hatches for you)
+
  * R
+
  * Bootstrapping - using a defined anysnake2 version
  *  ( easy: if a parameter is passed and it matches the toml, or if anysnake2.version = 'dev' do
  *  nothing. otheriwise nix flake run...
- *
+
  * sensible verbosity...
+
+ * version cmd
 */
 
 const DEFAULT_MACH_NIX_REPO: &str = "DavHau/mach-nix";
@@ -139,16 +144,16 @@ fn main() -> Result<()> {
             Arg::with_name("v")
                 .short("v")
                 .multiple(true)
-                .help("Sets the level of verbosity"),
+                .help("Sets the level of verbosity (can be passed up to three times)"),
         )
-        /* .subcommand(SubCommand::with_name("test")
-        .about("controls testing features")
-        .version("1.3")
-        .author("Someone E. <someone_else@other.com>")
-        .arg(Arg::with_name("debug")
-            .short("d")
-            .help("print debug information verbosely")))
-            */
+        .subcommand(
+            SubCommand::with_name("build")
+                .about("build container, but do not run anything")
+        )
+        .subcommand(
+            SubCommand::with_name("example-config")
+                .about("dump an example anysnake2.toml to stdout")
+        )
         .get_matches();
 
     match matches.value_of("cwd") {
@@ -158,16 +163,23 @@ fn main() -> Result<()> {
         }
         None => {}
     }
-
-    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
-    let raw_config = std::fs::read_to_string(config_file)?;
-    let mut parsed_config: ConfigToml =
-        toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
-
     let cmd = match matches.subcommand() {
         (name, Some(_subcommand)) => name,
         _ => "default",
     };
+
+    if cmd == "example-config" {
+        println!("# dump this to anysnake2.toml (default filename)");
+        println!("{}", std::include_str!("../example/anysnake2.toml"));
+        std::process::exit(0);
+    }
+
+    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
+    let raw_config = std::fs::read_to_string(config_file)
+        .context(format!("Could not find config file {}. Use --help for help", config_file))?;
+    let mut parsed_config: ConfigToml =
+        toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
+
     if !parsed_config.cmd.contains_key(cmd) && cmd != "build" {
         return Err(anyhow!(
             "Cmd {} not found. Available: {:?}",
@@ -417,7 +429,7 @@ fn pretty_print_singularity_call(args: &Vec<String>) -> String {
         if !(arg == "--bind" || arg == "--env" || arg == "--home") {
             res += " \\\n";
         } else {
-            skip_space=true;
+            skip_space = true;
             res += " ";
         }
     }
