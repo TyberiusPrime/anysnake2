@@ -116,16 +116,16 @@
 
               # # also consider NIX_REDIRECT and libredirect for this
               # the bash binding is needed for singularity to find 'sh'
-              ${pkgs.bubblewrap}/bin/bwrap \
-                 --proc /proc \
-                 --dev /dev \
-                --bind $out/ $out/ \
-                --bind $out/build /build \
-                --ro-bind $out/etc /etc \
-                --ro-bind /nix /nix \
-                --ro-bind "${pkgs.bash}/bin" /usr/bin \
-                ${pkgs.singularity}/bin/singularity build  /build/${name}.sif $out/rootfs
-              mv $out/build/*.sif $out/
+              #${pkgs.bubblewrap}/bin/bwrap \
+                 #--proc /proc \
+                 #--dev /dev \
+                #--bind $out/ $out/ \
+                #--bind $out/build /build \
+                #--ro-bind $out/etc /etc \
+                #--ro-bind /nix /nix \
+                #--ro-bind "${pkgs.bash}/bin" /usr/bin \
+                #${pkgs.singularity}/bin/singularity build  /build/${name}.sif $out/rootfs
+              #mv $out/build/*.sif $out/
               rm -rf $out/build
               rm -rf $out/etc
               # chmod +w $out/rootfs -R # because we don't have write on the directories

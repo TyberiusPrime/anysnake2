@@ -7,7 +7,7 @@ use fstrings::{format_args_f, format_f, println_f};
 use regex::Regex;
 use serde_derive::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::io::{self, BufRead};
@@ -20,13 +20,14 @@ use std::process::{Command, Stdio};
  * running container managment
  * no flake-write-mode
  * arbitrary flake inclusion
- * python requirements parsing 
- * Python venv
+ * python requirements parsing
+ * gitignore & commit for flake
  * R
  * Bootstrapping - using a defined anysnake2 version
  *  ( easy: if a parameter is passed and it matches the toml, or if anysnake2.version = 'dev' do
  *  nothing. otheriwise nix flake run...
  *
+ * sensible verbosity...
 */
 
 const DEFAULT_MACH_NIX_REPO: &str = "DavHau/mach-nix";
@@ -88,6 +89,7 @@ struct Python {
     //ecosystem_date: DateTime<Utc>,
     ecosystem_date: String,
     pypideps_rev: Option<String>,
+    #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
     packages: HashMap<String, String>,
     mach_nix_rev: Option<String>,
     mach_nix_url: Option<String>,
@@ -166,14 +168,46 @@ fn main() -> Result<()> {
 
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
-    let python_requirements_from_clones = find_python_requirements_for_clones(&parsed_config)?;
 
-    let flake_changed = write_flake(&parsed_config)?;
+    let python_packages: Vec<(String, String)> = {
+        match &mut parsed_config.python {
+            Some(python) => {
+                let mut res: Vec<(String, String)> = python.packages.drain().collect();
+                if !res.is_empty() {
+                    //don't need pip if we ain't got no packages (and therefore no editable packages
+                    res.push(("pip".into(), "".into())); // we use pip to build editable packages
+                    res.push(("setuptools".into(), "".into())); // we use pip to build editable packages
+                }
+                match &parsed_config.clones {
+                    Some(clones) => {
+                        let python_requirements_from_clones =
+                            find_python_requirements_for_clones(clones)?;
+                        for (pkg, version_spec) in python_requirements_from_clones.into_iter() {
+                            res.push((pkg, version_spec));
+                        }
+                    }
+                    None => {}
+                };
+                res
+            }
+            None => Vec::new(),
+        }
+    };
+    println!("python packages: {:?}", python_packages);
+
+    let flake_changed = write_flake(&parsed_config, &python_packages)?;
     let build_output: PathBuf = ["flake", "result"].iter().collect();
     if flake_changed || !build_output.exists() {
         println!("{}", "Rebuilding");
         rebuild_flake()?;
     }
+
+    match &parsed_config.python {
+        Some(python) => {
+            fill_venv(&python.version, &python_packages)?;
+        }
+        None => {}
+    };
 
     let home_dir: PathBuf = {
         [replace_env_vars(
@@ -240,6 +274,7 @@ fn main() -> Result<()> {
             (home_dir_str).into(),
         ];
         let mut binds = Vec::new();
+        let mut envs = Vec::new();
         binds.push((
             run_sh_str,
             "/anysnake2/run.sh".to_string(),
@@ -255,6 +290,41 @@ fn main() -> Result<()> {
             "/anysnake2/outer_run.sh".to_string(),
             "ro".to_string(),
         ));
+        match parsed_config.python {
+            Some(python) => {
+                let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
+                binds.push((
+                    format!("venv/{}", python.version),
+                    "/anysnake2/venv".to_string(),
+                    "ro".to_string(),
+                ));
+                let mut python_paths = Vec::new();
+                for (pkg, spec) in python_packages
+                    .iter()
+                    .filter(|(_, spec)| spec.starts_with("editable/"))
+                {
+                    let safe_pkg = safe_python_package_name(pkg);
+                    let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), &pkg]
+                        .iter()
+                        .collect();
+                    binds.push((
+                        target_dir.into_os_string().to_string_lossy().to_string(),
+                        format!("/anysnake2/venv/linked_in/{}", safe_pkg),
+                        "ro".to_string(),
+                    ));
+                    let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+                    let egg_target = std::fs::read_to_string(egg_link)?
+                        .split_once("\n")
+                        .context("No newline in egg-link?")?
+                        .0
+                        .to_string();
+                    python_paths.push(egg_target)
+                }
+
+                envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+            }
+            None => {}
+        };
 
         match parsed_config.volumes_ro {
             Some(volumes_ro) => {
@@ -281,6 +351,11 @@ fn main() -> Result<()> {
         for (from, to, opts) in binds {
             singularity_args.push("--bind".into());
             singularity_args.push(format!("{}:{}:{}", from, to, opts).into());
+        }
+
+        for e in envs.into_iter() {
+            singularity_args.push("--env".into());
+            singularity_args.push(e);
         }
 
         singularity_args.push("flake/result/rootfs".into());
@@ -441,59 +516,110 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
-fn find_python_requirements_for_clones(parsed_config: &ConfigToml) -> Result<Vec<String>> {
-    let mut res = Vec::new();
-    match &parsed_config.clones {
-        Some(clones) => {
-            for (target_dir, name_urls) in clones.iter() {
-                for (name, url) in name_urls.iter() {
-                    let requirement_file: PathBuf =
-                        [target_dir, name, "requirements.txt"].iter().collect();
-                    if requirement_file.exists() {
-                        for line in read_lines(requirement_file)?
-                            .map(|line| line.unwrap_or_else(|_| "".to_string()))
-                            .map(|line| line.trim().to_string())
-                            .filter(|line| !line.is_empty() && !line.starts_with("#"))
-                        {
-                            res.push(line);
-                        }
-                    }
-
-                    let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
-                    println!("looking for {:?}", &setup_cfg_file);
-                    if setup_cfg_file.exists() {
-                        let reqs = parse_python_config_file(&setup_cfg_file);
-                        match reqs {
-                            Err(e) => {
-                                println!("Warning: failed to parse {:?}: {}", setup_cfg_file, e)
-                            }
-                            Ok(mut reqs) => {
-                                for k in reqs.drain(..) {
-                                    res.push(k);
-                                }
-                            }
-                        };
-                    }
+fn find_python_requirements_for_clones(
+    clones: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<(String, String)>> {
+    let mut res = HashSet::new();
+    for (target_dir, name_urls) in clones.iter() {
+        for (name, _url) in name_urls.iter() {
+            let requirement_file: PathBuf = [target_dir, name, "requirements.txt"].iter().collect();
+            if requirement_file.exists() {
+                for line in read_lines(requirement_file)?
+                    .map(|line| line.unwrap_or_else(|_| "".to_string()))
+                    .map(|line| line.trim().to_string())
+                    .filter(|line| !line.is_empty() && !line.starts_with("#"))
+                {
+                    res.insert(line);
                 }
             }
+
+            let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
+            println!("looking for {:?}", &setup_cfg_file);
+            if setup_cfg_file.exists() {
+                let reqs = parse_python_config_file(&setup_cfg_file);
+                match reqs {
+                    Err(e) => {
+                        println!("Warning: failed to parse {:?}: {}", setup_cfg_file, e)
+                    }
+                    Ok(mut reqs) => {
+                        println!("requirements {:?}", reqs);
+                        for k in reqs.drain(..) {
+                            res.insert(k); // identical lines!
+                        }
+                    }
+                };
+            }
         }
-        None => {}
     }
-    Ok(res)
+    Ok(res.into_iter().map(parse_python_package_spec).collect())
+}
+
+fn parse_python_package_spec(spec_line: String) -> (String, String) {
+    let pos = spec_line.find(&['>', '<', '=', '!'][..]);
+    match pos {
+        Some(pos) => {
+            let (name, spec) = spec_line.split_at(pos);
+            return (name.to_string(), spec.to_string());
+        }
+        None => return (spec_line, "".to_string()),
+    }
 }
 
 fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
+    //configparser does not do multi line values
+    //ini dies on them as well.
+    //so we do our own poor man's parsing
     println!("Parsing {:?}", &setup_cfg_file);
-    let mut setup_cfg = configparser::ini::Ini::new();
-    setup_cfg
-        .load(setup_cfg_file)
-        .map_err(|e| anyhow!("{}", e))?;
-    let install_requires = setup_cfg.get("options", "install_requires").ok_or(anyhow!("No install_requires section"))?;
-    println!("install reqs: {}", install_requires);
-    Err(anyhow!("Could not parse"))
+    let raw = std::fs::read_to_string(&setup_cfg_file)?;
+    let mut res = Vec::new();
+    match raw.find("[options]") {
+        Some(options_start) => {
+            let mut inside_value = false;
+            let mut value_indention = 0;
+            let mut value = "".to_string();
+            for line in raw[options_start..].split("\n") {
+                if !inside_value {
+                    if line.contains("install_requires") {
+                        let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
+                        value_indention = line.len() - wo_indent_len;
+                        match line.find("=") {
+                            Some(equal_pos) => {
+                                let v = line[equal_pos + 1..].trim_end();
+                                value += v;
+                                value += "\n";
+                                inside_value = true;
+                            }
+                            None => return Err(anyhow!("No = in install_requires line")),
+                        }
+                    }
+                } else {
+                    // inside value
+                    let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
+                    let indent = line.len() - wo_indent_len;
+                    if indent > value_indention {
+                        value += line.trim_start();
+                        value += "\n"
+                    } else {
+                        break;
+                    }
+                }
+            }
+            for line in value.split("\n") {
+                if !line.trim().is_empty() {
+                    res.push(line.trim().to_string())
+                }
+            }
+        }
+        None => return Err(anyhow!("no [options] in setup.cfg")),
+    };
+    Ok(res)
+    //Err(anyhow!("Could not parse"))
 }
 
-fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
+fn write_flake(
+    parsed_config: &ConfigToml,
+    python_packages: &Vec<(String, String)>,
+) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?;
@@ -574,6 +700,7 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
     flake_contents = flake_contents
         .replace("%RUST_OVERLAY_REV%", rust_overlay_rev)
         .replace("%RUST_OVERLAY_URL%", rust_overlay_url);
+
     flake_contents = match &parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
@@ -582,8 +709,9 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
             }
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
-            let python_packages = extract_non_editable_python_packages(&python.packages)?;
-            let python_packages = python_packages.join("\n");
+            let mut out_python_packages = extract_non_editable_python_packages(&python_packages)?;
+            out_python_packages.sort();
+            let out_python_packages = out_python_packages.join("\n");
 
             let ecosystem_date = parse_my_date(&python.ecosystem_date)
                 .context("Failed to parse python.ecosystem-date")?;
@@ -605,7 +733,7 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
 
             flake_contents
                 .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
-                .replace("%PYTHON_PACKAGES%", &python_packages)
+                .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace("%MACH_NIX_REV%", &mach_nix_rev)
                 .replace("%MACH_NIX_URL%", &mach_nix_url)
@@ -656,16 +784,29 @@ fn write_flake(parsed_config: &ConfigToml) -> Result<bool> {
     res
 }
 
-fn extract_non_editable_python_packages(input: &HashMap<String, String>) -> Result<Vec<String>> {
+fn extract_non_editable_python_packages(input: &Vec<(String, String)>) -> Result<Vec<String>> {
     let mut res = Vec::new();
     for (name, version_constraint) in input.iter() {
         if version_constraint.starts_with("editable") {
             continue;
         }
-        if version_constraint.contains(">") {
+
+        if version_constraint.contains("==")
+            || version_constraint.contains(">")
+            || version_constraint.contains("<")
+            || version_constraint.contains("!")
+        {
             res.push(format!("{}{}", name, version_constraint));
+        } else if version_constraint.contains("=") {
+            res.push(format!("{}={}", name, version_constraint));
+        } else if version_constraint.is_empty() {
+            res.push(name.to_string())
         } else {
-            res.push(format!("{}=={}", name, version_constraint));
+            return Err(anyhow!(
+                "invalid python version spec {}{}",
+                name,
+                version_constraint
+            ));
         }
     }
     Ok(res)
@@ -905,4 +1046,104 @@ fn replace_env_vars(input: &str) -> String {
         output = output.replace(&format!("${{{}}}", k), &v);
     }
     output
+}
+
+fn safe_python_package_name(input: &str) -> String {
+    input.replace("_", "-")
+}
+
+fn fill_venv(
+    python_version: &str,
+    python: &Vec<(String, String)>,
+    //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
+) -> Result<()> {
+    let venv_dir: PathBuf = ["venv", python_version].iter().collect();
+    std::fs::create_dir_all(&venv_dir)?;
+    let mut to_build = Vec::new();
+    for (pkg, spec) in python
+        .iter()
+        .filter(|(_, spec)| spec.starts_with("editable/"))
+    {
+        let safe_pkg = safe_python_package_name(pkg);
+        let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), &pkg]
+            .iter()
+            .collect();
+        if !target_dir.exists() {
+            return Err(anyhow!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}", 
+                               pkg, target_dir));
+        }
+        let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+        if !egg_link.exists() {
+            // so that changing python versions triggers a rebuild.
+            to_build.push((safe_pkg, target_dir));
+        }
+    }
+    if !to_build.is_empty() {
+        for (safe_pkg, target_dir) in to_build.iter() {
+            println!("Pip install {:?}", &target_dir);
+            let td = tempdir::TempDir::new("anysnake_venv")?;
+            let mut singularity_args: Vec<String> = vec![
+                "exec".into(),
+                "--userns".into(),
+                "--no-home".into(),
+                "--bind".into(),
+                format!("{}:/tmp:rw", &td.path().to_string_lossy()),
+                "--bind".into(),
+                format!(
+                    "{}:/anysnake2/venv:rw",
+                    venv_dir.clone().into_os_string().to_string_lossy()
+                ),
+                "--bind".into(),
+                format!(
+                    "{}:/anysnake2/venv/linked_in/{}:rw",
+                    target_dir.clone().into_os_string().to_string_lossy(),
+                    &safe_pkg
+                ),
+            ];
+            singularity_args.push("flake/result/rootfs".into());
+            singularity_args.push("bash".into());
+            singularity_args.push("-c".into());
+            singularity_args.push(format!(
+                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv",
+                &safe_pkg
+            ));
+            println!("{}", "Singularity cmd:\n\tsingularity \\");
+            for s in &singularity_args {
+                println!("\t\t{} \\", s);
+            }
+            println!("{}", "");
+            let singularity_result = Command::new("singularity")
+                .args(singularity_args)
+                .status()?;
+            if !singularity_result.success() {
+                return Err(anyhow!(
+                    "Singularity pip install failed with exit code {}",
+                    singularity_result.code().unwrap()
+                ));
+            }
+            let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+            for dir_entry in walkdir::WalkDir::new(td.path()) {
+                let dir_entry = dir_entry?;
+                match dir_entry.file_name().to_str() {
+                    Some(filename) => {
+                        if filename.ends_with(".egg-link") {
+                            std::fs::write(
+                                target_egg_link,
+                                std::fs::read_to_string(dir_entry.path())?,
+                            )?;
+                            break;
+                        }
+                    }
+                    None => {}
+                };
+            }
+            //now clean up the empty directory we used to map the package
+            //std::fs::remove_dir(venv_dir.join(safe_pkg))?;
+
+            //st::fs::write(egg_link, format!("/venv/{}\n../
+        }
+    }
+    //for (name, version_constraint) in input.iter() {
+    //if version_constraint.starts_with("editable") {
+    Ok(())
 }

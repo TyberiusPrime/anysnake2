@@ -19,9 +19,13 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 # mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
 
 [python.packages]
+scipy=""
 pypipegraph=">2."
-mbf_r = "editable/code" # 
-# or mbf_r = "editable/code/mbf_r" #  if you need to rename.
+mbf_r = "editable/code"  # see [clones.code] below
+mbf_sampledata = "editable/code" 
+dppd = "editable/code" 
+dppd_plotnine = "editable/code" 
+# pandas="<1.0"
 
 [clones.code] # target directory
 # seperate from python packages so you can clone other stuff as well
@@ -68,6 +72,7 @@ run = """
 echo 'run_inside'
 set -x # show what we're executing
 cd /project
+echo 'pythonpath $PYTHONPATH'
 python run.py
 no_such-command
 """
