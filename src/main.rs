@@ -20,8 +20,6 @@ use std::process::{Command, Stdio};
  * running container managment (does it die when you quit the shell? can we reattach? should we
    just all use screen all the time?)
  * no flake-write-mode (nah, no escape hatches for you)
- * arbitrary flake inclusion
- * gitignore & commit for flake
  * R
  * Bootstrapping - using a defined anysnake2 version
  *  ( easy: if a parameter is passed and it matches the toml, or if anysnake2.version = 'dev' do
@@ -44,7 +42,6 @@ const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
-    home: Option<String>,
     nixpkgs: Nix,
     flake_util: Option<FlakeUtil>,
     clone_regexps: Option<HashMap<String, String>>,
@@ -52,8 +49,7 @@ struct ConfigToml {
     cmd: HashMap<String, Cmd>,
     rust: Option<Rust>,
     python: Option<Python>,
-    volumes_ro: Option<HashMap<String, String>>,
-    volumes_rw: Option<HashMap<String, String>>,
+    container: Option<Container>,
     flakes: Option<HashMap<String, Flake>>,
 }
 
@@ -101,6 +97,12 @@ struct Flake {
     url: String,
     follows: Option<Vec<String>>,
     packages: Vec<String>,
+}
+#[derive(Deserialize, Debug)]
+struct Container {
+    home: Option<String>,
+    volumes_ro: Option<HashMap<String, String>>,
+    volumes_rw: Option<HashMap<String, String>>,
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
@@ -219,7 +221,7 @@ fn main() -> Result<()> {
 
     let home_dir: PathBuf = {
         [replace_env_vars(
-            parsed_config.home.as_deref().unwrap_or("$HOME"),
+            ((|| parsed_config.container.as_ref()?.home.as_deref())()).unwrap_or("$HOME"),
         )]
         .iter()
         .collect()
@@ -334,28 +336,33 @@ fn main() -> Result<()> {
             None => {}
         };
 
-        match parsed_config.volumes_ro {
-            Some(volumes_ro) => {
-                for (from, to) in volumes_ro {
-                    let from: PathBuf =
-                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
-                    let from = from.into_os_string().to_string_lossy().to_string();
-                    binds.push((from, to.to_string(), "ro".to_string()));
+        match &parsed_config.container {
+            Some(container) => {
+                match &container.volumes_ro {
+                    Some(volumes_ro) => {
+                        for (from, to) in volumes_ro {
+                            let from: PathBuf = std::fs::canonicalize(&from)
+                                .context(format!("abs_path on {}", &from))?;
+                            let from = from.into_os_string().to_string_lossy().to_string();
+                            binds.push((from, to.to_string(), "ro".to_string()));
+                        }
+                    }
+                    None => {}
+                };
+                match &container.volumes_rw {
+                    Some(volumes_ro) => {
+                        for (from, to) in volumes_ro {
+                            let from: PathBuf = std::fs::canonicalize(&from)
+                                .context(format!("abs_path on {}", &from))?;
+                            let from = from.into_os_string().to_string_lossy().to_string();
+                            binds.push((from, to.to_string(), "rw".to_string()));
+                        }
+                    }
+                    None => {}
                 }
             }
             None => {}
         };
-        match parsed_config.volumes_rw {
-            Some(volumes_ro) => {
-                for (from, to) in volumes_ro {
-                    let from: PathBuf =
-                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
-                    let from = from.into_os_string().to_string_lossy().to_string();
-                    binds.push((from, to.to_string(), "rw".to_string()));
-                }
-            }
-            None => {}
-        }
         for (from, to, opts) in binds {
             singularity_args.push("--bind".into());
             singularity_args.push(format!("{}:{}:{}", from, to, opts).into());
@@ -369,11 +376,11 @@ fn main() -> Result<()> {
         singularity_args.push("flake/result/rootfs".into());
         singularity_args.push("/bin/bash".into());
         singularity_args.push("/anysnake2/outer_run.sh".into());
-        println!("{}", "Singularity cmd:\n\tsingularity \\");
-        for s in &singularity_args {
-            println!("\t\t{} \\", s);
-        }
-        println!("{}", "");
+        println!(
+            "{}\n{}",
+            "Singularity cmd",
+            pretty_print_singularity_call(&singularity_args)
+        );
         let singularity_result = Command::new("singularity")
             .args(singularity_args)
             .status()?;
@@ -395,6 +402,27 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn pretty_print_singularity_call(args: &Vec<String>) -> String {
+    let mut res = "  singularity \\\n".to_string();
+    let mut skip_space = false;
+    for arg in args.iter() {
+        if skip_space {
+            skip_space = false
+        } else {
+            res += "    ";
+        }
+        res += arg;
+        if !(arg == "--bind" || arg == "--env" || arg == "--home") {
+            res += " \\\n";
+        } else {
+            skip_space=true;
+            res += " ";
+        }
+    }
+    res += "\n";
+    res
 }
 
 /// expand clones by clone_regeps, verify url schema
@@ -789,14 +817,6 @@ fn write_flake(
     };
 
     //print!("{}", flake_contents);
-    let res = if old_flake_contents != flake_contents {
-        std::fs::write(flake_filename, flake_contents)?;
-        println!("writing flake");
-        Ok(true)
-    } else {
-        println!("flake unchanged");
-        Ok(false)
-    };
     let mut git_path = flake_dir.clone();
     git_path.push(".git");
     if !git_path.exists() {
@@ -809,24 +829,20 @@ fn write_flake(
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let msg = format_f!(
-                "Failed to init git repo in  {flake_dir:?}.\
-                                                \n Stdout {stdout:?}\nStderr: {stderr:?}"
+                "Failed to init git repo in  {flake_dir:?}.\n Stdout {stdout:?}\nStderr: {stderr:?}"
             );
             return Err(anyhow!(msg));
         }
-        let output = Command::new("git")
-            .args(["add", "flake.nix"])
-            .current_dir(&flake_dir)
-            .output()
-            .context(format_f!("Failed git add flake.nix"))?;
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let msg =
-                format_f!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
-            return Err(anyhow!(msg));
-        }
     }
+
+    let res = if old_flake_contents != flake_contents {
+        std::fs::write(flake_filename, flake_contents)?;
+
+        Ok(true)
+    } else {
+        println!("flake unchanged");
+        Ok(false)
+    };
 
     res
 }
@@ -1059,6 +1075,43 @@ impl Retriever for GitHubTagRetriever {
 }
 
 fn rebuild_flake() -> Result<()> {
+    let flake_dir: PathBuf = ["flake"].iter().collect();
+    std::fs::write(
+        flake_dir.join(".gitignore"),
+        "result
+run_scripts/
+.*.json
+",
+    )?;
+    println!("writing flake");
+    let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
+    if flake_dir.join("flake.lock").exists() {
+        gitargs.push("flake.nix");
+    }
+    let output = Command::new("git")
+        .args(&gitargs)
+        .current_dir(&flake_dir)
+        .output()
+        .context(format_f!("Failed git add flake.nix"))?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = format_f!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
+        return Err(anyhow!(msg));
+    }
+
+    let output = Command::new("git")
+        .args(["commit", "-m", "autocommit"])
+        .current_dir(&flake_dir)
+        .output()
+        .context(format_f!("Failed git add flake.nix"))?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg =
+            format_f!("Failed git commit flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
+        return Err(anyhow!(msg));
+    }
     if Command::new("nix")
         .args(["build", "-v", "--show-trace"])
         .current_dir("flake")

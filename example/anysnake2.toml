@@ -1,4 +1,3 @@
-home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash 
@@ -52,14 +51,18 @@ version = "1.55.0" # stable. to use nightly, add to nipkgs.packages 'rust-bin.ni
 # rust_overlay_rev = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec" #https://github.com/oxalica/rust-overlay, optional
 # rust_overlay_url = "github:oxalica/rust-overlay"
 
-[volumes_ro]
+
+[container]
+home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+
+[container.volumes_ro]
 "/opt" = "/opt"
 "/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
 "/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
 "/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
 
 
-[volumes_rw]
+[container.volumes_rw]
 # home get's special treatment, see first line
 "." = "/project"
 "/var/run/docker.sock" = "/var/run/docker.sock"
