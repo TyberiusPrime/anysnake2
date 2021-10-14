@@ -55,7 +55,9 @@ packages = [
 	]
 
 [flakes.hello]
-	url = "path:./../../hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+    # note that this flake is locked to the newest version when installing
+	# pass ?rev=sha if you want to tie things down in your anysnake2.toml
+	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
 	packages = ["defaultPackage.x86_64-linux"]
 

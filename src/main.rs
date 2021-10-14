@@ -271,6 +271,16 @@ fn main() -> Result<()> {
     println!("python packages: {:?}", python_packages);
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
+    let nixpkgs_url = format!(
+        "{}?rev={}",
+        parsed_config
+            .nixpkgs
+            .url
+            .as_deref()
+            .unwrap_or(DEFAULT_NIXPKGS_URL),
+        lookup_nix_rev(&parsed_config.nixpkgs.rev)?,
+    );
+
     let flake_changed = write_flake(
         &flake_dir,
         &parsed_config,
@@ -278,14 +288,15 @@ fn main() -> Result<()> {
         use_generated_file_instead,
     )?;
     let build_output: PathBuf = ["flake", "result"].iter().collect();
-    if flake_changed || !build_output.exists() {
+    let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
+    if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
         println!("Rebuilding");
         rebuild_flake(use_generated_file_instead)?;
     }
 
     match &parsed_config.python {
         Some(python) => {
-            fill_venv(&python.version, &python_packages)?;
+            fill_venv(&python.version, &python_packages, &nixpkgs_url)?;
         }
         None => {}
     };
@@ -444,14 +455,7 @@ fn main() -> Result<()> {
         singularity_args.push("flake/result/rootfs".into());
         singularity_args.push("/bin/bash".into());
         singularity_args.push("/anysnake2/outer_run.sh".into());
-        println!(
-            "Singularity cmd\n{}",
-            pretty_print_singularity_call(&singularity_args)
-        );
-        let singularity_result = Command::new("singularity")
-            .args(singularity_args)
-            .status()?;
-
+        let singularity_result = run_singularity(&singularity_args[..], &nixpkgs_url)?;
         match &cmd_info.post_run_outside {
             Some(bash_script) => match run_bash(bash_script) {
                 Ok(()) => {}
@@ -469,6 +473,21 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_singularity(args: &[String], nix_repo: &str) -> Result<std::process::ExitStatus> {
+    let mut full_args = vec![
+        "shell".to_string(),
+        format!("{}#singularity", nix_repo),
+        "-c".into(),
+        "singularity".into(),
+    ];
+    pretty_print_singularity_call(args);
+    for arg in args {
+        full_args.push(arg.to_string());
+    }
+    println!("full_args: {:?}", &full_args);
+    Ok(Command::new("nix").args(full_args).status()?)
 }
 
 fn print_version() -> ! {
@@ -788,7 +807,7 @@ fn write_flake(
     let (mut flake_contents, rust_overlay_rev, rust_overlay_url) = match &parsed_config.rust {
         Some(rust) => (
             flake_contents.replace(
-                "%RUST%",
+                "\"%RUST%\"",
                 // skipping the rust-docs saves about 270 mb ¯\_(ツ)_/¯
                 &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", &rust.version),
             ),
@@ -882,13 +901,13 @@ fn write_flake(
                 }
             }
             flake_contents
-                .replace("%FURTHER_FLAKES%", &repl)
-                .replace("%FURTHER_FLAKE_PARAMS%", &repl_params.join(", "))
+                .replace("#%FURTHER_FLAKES%", &repl)
+                .replace("#%FURTHER_FLAKE_PARAMS%", &repl_params.join(", "))
                 .replace("%FURTHER_FLAKE_PACKAGES%", &repl_packages)
         }
         None => flake_contents
-            .replace("%FURTHER_FLAKES%", "")
-            .replace("%FURTHER_FLAKE_PARAMS%", "")
+            .replace("#%FURTHER_FLAKES%", "")
+            .replace("#%FURTHER_FLAKE_PARAMS%", "")
             .replace("%FURTHER_FLAKE_PACKAGES%", ""),
     };
 
@@ -1196,12 +1215,16 @@ run_scripts/
             format_f!("Failed git commit flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
         return Err(anyhow!(msg));
     }
+    let build_unfinished_file = flake_dir.join(".build_unfinished");
+    std::fs::write(&build_unfinished_file, "in_progress")?;
+
     if Command::new("nix")
         .args(["build", "-v", "--show-trace"])
         .current_dir("flake")
         .status()?
         .success()
     {
+        std::fs::remove_file(&build_unfinished_file)?;
         Ok(())
     } else {
         Err(anyhow!("flake building failed"))
@@ -1238,7 +1261,7 @@ fn safe_python_package_name(input: &str) -> String {
 fn fill_venv(
     python_version: &str,
     python: &[(String, String)],
-    //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
+    nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
 ) -> Result<()> {
     let venv_dir: PathBuf = ["venv", python_version].iter().collect();
     std::fs::create_dir_all(&venv_dir)?;
@@ -1291,11 +1314,8 @@ fn fill_venv(
                 &safe_pkg
             ));
             println!("Singularity cmd:\n\tsingularity \\");
-            pretty_print_singularity_call(&singularity_args);
             println!();
-            let singularity_result = Command::new("singularity")
-                .args(singularity_args)
-                .status()?;
+            let singularity_result = run_singularity(&singularity_args[..], nixpkgs_url)?;
             if !singularity_result.success() {
                 return Err(anyhow!(
                     "Singularity pip install failed with exit code {}",
@@ -1307,6 +1327,7 @@ fn fill_venv(
                 let dir_entry = dir_entry?;
                 if let Some(filename) = dir_entry.file_name().to_str() {
                     if filename.ends_with(".egg-link") {
+                        println!("found {:?} for {}", &safe_pkg, &filename);
                         std::fs::write(
                             target_egg_link,
                             std::fs::read_to_string(dir_entry.path())?,
