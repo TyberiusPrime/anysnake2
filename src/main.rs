@@ -21,7 +21,7 @@ use std::process::{Command, Stdio};
    just all use screen all the time?)
 
  * R
- 
+
  * sensible verbosity...
  *
  * Get rid of walkdir
@@ -44,7 +44,7 @@ const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
 const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
 const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
@@ -83,7 +83,6 @@ struct Cmd {
     pre_run_outside: Option<String>,
     post_run_inside: Option<String>,
     post_run_outside: Option<String>,
-    port_range: Option<(u16, u16)>,
 }
 #[derive(Deserialize, Debug)]
 struct Rust {
@@ -98,7 +97,6 @@ struct Python {
     //#[serde(with = "my_date_format")]
     //ecosystem_date: DateTime<Utc>,
     ecosystem_date: String,
-    pypideps_rev: Option<String>,
     #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
     packages: HashMap<String, String>,
     mach_nix_rev: Option<String>,
@@ -119,7 +117,7 @@ struct Container {
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
-    const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
+    const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
     use chrono::TimeZone;
     Ok(chrono::Utc
         .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
@@ -186,6 +184,9 @@ fn main() -> Result<()> {
     ))?;
     let mut parsed_config: ConfigToml =
         toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
+    let flake_dir: PathBuf = ["flake"].iter().collect();
+    std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
+
     if parsed_config.anysnake2.rev == "dev" {
         println!("Using development version of anysnake");
     } else if parsed_config.anysnake2.rev
@@ -270,10 +271,15 @@ fn main() -> Result<()> {
     println!("python packages: {:?}", python_packages);
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
-    let flake_changed = write_flake(&parsed_config, &python_packages, use_generated_file_instead)?;
+    let flake_changed = write_flake(
+        &flake_dir,
+        &parsed_config,
+        &python_packages,
+        use_generated_file_instead,
+    )?;
     let build_output: PathBuf = ["flake", "result"].iter().collect();
     if flake_changed || !build_output.exists() {
-        println!("{}", "Rebuilding");
+        println!("Rebuilding");
         rebuild_flake(use_generated_file_instead)?;
     }
 
@@ -346,7 +352,7 @@ fn main() -> Result<()> {
             "exec".into(),
             "--userns".into(),
             "--home".into(),
-            (home_dir_str).into(),
+            home_dir_str,
         ];
         let mut binds = Vec::new();
         let mut envs = Vec::new();
@@ -365,40 +371,37 @@ fn main() -> Result<()> {
             "/anysnake2/outer_run.sh".to_string(),
             "ro".to_string(),
         ));
-        match parsed_config.python {
-            Some(python) => {
-                let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
+        if let Some(python) = parsed_config.python {
+            let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
+            binds.push((
+                format!("venv/{}", python.version),
+                "/anysnake2/venv".to_string(),
+                "ro".to_string(),
+            ));
+            let mut python_paths = Vec::new();
+            for (pkg, spec) in python_packages
+                .iter()
+                .filter(|(_, spec)| spec.starts_with("editable/"))
+            {
+                let safe_pkg = safe_python_package_name(pkg);
+                let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
+                    .iter()
+                    .collect();
                 binds.push((
-                    format!("venv/{}", python.version),
-                    "/anysnake2/venv".to_string(),
+                    target_dir.into_os_string().to_string_lossy().to_string(),
+                    format!("/anysnake2/venv/linked_in/{}", safe_pkg),
                     "ro".to_string(),
                 ));
-                let mut python_paths = Vec::new();
-                for (pkg, spec) in python_packages
-                    .iter()
-                    .filter(|(_, spec)| spec.starts_with("editable/"))
-                {
-                    let safe_pkg = safe_python_package_name(pkg);
-                    let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), &pkg]
-                        .iter()
-                        .collect();
-                    binds.push((
-                        target_dir.into_os_string().to_string_lossy().to_string(),
-                        format!("/anysnake2/venv/linked_in/{}", safe_pkg),
-                        "ro".to_string(),
-                    ));
-                    let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-                    let egg_target = std::fs::read_to_string(egg_link)?
-                        .split_once("\n")
-                        .context("No newline in egg-link?")?
-                        .0
-                        .to_string();
-                    python_paths.push(egg_target)
-                }
-
-                envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+                let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+                let egg_target = std::fs::read_to_string(egg_link)?
+                    .split_once("\n")
+                    .context("No newline in egg-link?")?
+                    .0
+                    .to_string();
+                python_paths.push(egg_target)
             }
-            None => {}
+
+            envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
         };
 
         match &parsed_config.container {
@@ -430,7 +433,7 @@ fn main() -> Result<()> {
         };
         for (from, to, opts) in binds {
             singularity_args.push("--bind".into());
-            singularity_args.push(format!("{}:{}:{}", from, to, opts).into());
+            singularity_args.push(format!("{}:{}:{}", from, to, opts));
         }
 
         for e in envs.into_iter() {
@@ -442,8 +445,7 @@ fn main() -> Result<()> {
         singularity_args.push("/bin/bash".into());
         singularity_args.push("/anysnake2/outer_run.sh".into());
         println!(
-            "{}\n{}",
-            "Singularity cmd",
+            "Singularity cmd\n{}",
             pretty_print_singularity_call(&singularity_args)
         );
         let singularity_result = Command::new("singularity")
@@ -469,12 +471,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_version() -> () {
+fn print_version() -> ! {
     println!("anysnake2 version: {}", VERSION);
     std::process::exit(0);
 }
 
-fn pretty_print_singularity_call(args: &Vec<String>) -> String {
+fn pretty_print_singularity_call(args: &[String]) -> String {
     let mut res = "  singularity \\\n".to_string();
     let mut skip_space = false;
     for arg in args.iter() {
@@ -633,7 +635,7 @@ fn find_python_requirements_for_clones(
                 for line in read_lines(requirement_file)?
                     .map(|line| line.unwrap_or_else(|_| "".to_string()))
                     .map(|line| line.trim().to_string())
-                    .filter(|line| !line.is_empty() && !line.starts_with("#"))
+                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
                 {
                     res.insert(line);
                 }
@@ -665,9 +667,9 @@ fn parse_python_package_spec(spec_line: String) -> (String, String) {
     match pos {
         Some(pos) => {
             let (name, spec) = spec_line.split_at(pos);
-            return (name.to_string(), spec.to_string());
+            (name.to_string(), spec.to_string())
         }
-        None => return (spec_line, "".to_string()),
+        None => (spec_line, "".to_string()),
     }
 }
 
@@ -683,12 +685,12 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
             let mut inside_value = false;
             let mut value_indention = 0;
             let mut value = "".to_string();
-            for line in raw[options_start..].split("\n") {
+            for line in raw[options_start..].split('\n') {
                 if !inside_value {
                     if line.contains("install_requires") {
                         let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
                         value_indention = line.len() - wo_indent_len;
-                        match line.find("=") {
+                        match line.find('=') {
                             Some(equal_pos) => {
                                 let v = line[equal_pos + 1..].trim_end();
                                 value += v;
@@ -710,7 +712,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
                     }
                 }
             }
-            for line in value.split("\n") {
+            for line in value.split('\n') {
                 if !line.trim().is_empty() {
                     res.push(line.trim().to_string())
                 }
@@ -723,13 +725,12 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
 }
 
 fn write_flake(
+    flake_dir: &Path,
     parsed_config: &ConfigToml,
-    python_packages: &Vec<(String, String)>,
+    python_packages: &[(String, String)],
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
-    let flake_dir: PathBuf = ["flake"].iter().collect();
-    std::fs::create_dir_all(&flake_dir)?;
     let flake_filename: PathBuf = if use_generated_file_instead {
         ["flake", "flake.generated.nix"].iter().collect()
     } else {
@@ -745,7 +746,7 @@ fn write_flake(
     let mut flake_contents = template
         .replace(
             "%NIXPKG_URL%",
-            &parsed_config
+            parsed_config
                 .nixpkgs
                 .url
                 .as_deref()
@@ -753,12 +754,12 @@ fn write_flake(
         )
         .replace(
             "%NIXPKG_REV%",
-            &(if &parsed_config
+            &(if parsed_config
                 .nixpkgs
                 .url
                 .as_deref()
                 .unwrap_or(DEFAULT_NIXPKGS_URL)
-                == &DEFAULT_NIXPKGS_URL
+                == DEFAULT_NIXPKGS_URL
             {
                 // if you change the url, you are on your own for the tags. Sorry.
                 lookup_nix_rev(&parsed_config.nixpkgs.rev)?
@@ -781,7 +782,7 @@ fn write_flake(
         "%FLAKE_UTIL_REV%",
         match &parsed_config.flake_util {
             Some(fu) => &fu.rev,
-            None => &DEFAULT_FLAKE_UTIL_REV,
+            None => DEFAULT_FLAKE_UTIL_REV,
         },
     );
     let (mut flake_contents, rust_overlay_rev, rust_overlay_url) = match &parsed_config.rust {
@@ -820,7 +821,7 @@ fn write_flake(
             }
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
-            let mut out_python_packages = extract_non_editable_python_packages(&python_packages)?;
+            let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
@@ -847,7 +848,7 @@ fn write_flake(
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace("%MACH_NIX_REV%", &mach_nix_rev)
-                .replace("%MACH_NIX_URL%", &mach_nix_url)
+                .replace("%MACH_NIX_URL%", mach_nix_url)
         }
         None => flake_contents,
     };
@@ -892,7 +893,7 @@ fn write_flake(
     };
 
     //print!("{}", flake_contents);
-    let mut git_path = flake_dir.clone();
+    let mut git_path = flake_dir.to_path_buf();
     git_path.push(".git");
     if !git_path.exists() {
         let output = Command::new("git")
@@ -915,19 +916,17 @@ fn write_flake(
             std::fs::write(flake_filename, flake_contents)?;
         }
         Ok(true)
-    } else {
-        if old_flake_contents != flake_contents {
-            std::fs::write(flake_filename, flake_contents)?;
+    } else if old_flake_contents != flake_contents {
+        std::fs::write(flake_filename, flake_contents)?;
 
-            Ok(true)
-        } else {
-            println!("flake unchanged");
-            Ok(false)
-        }
+        Ok(true)
+    } else {
+        println!("flake unchanged");
+        Ok(false)
     }
 }
 
-fn extract_non_editable_python_packages(input: &Vec<(String, String)>) -> Result<Vec<String>> {
+fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Vec<String>> {
     let mut res = Vec::new();
     for (name, version_constraint) in input.iter() {
         if version_constraint.starts_with("editable") {
@@ -935,12 +934,12 @@ fn extract_non_editable_python_packages(input: &Vec<(String, String)>) -> Result
         }
 
         if version_constraint.contains("==")
-            || version_constraint.contains(">")
-            || version_constraint.contains("<")
-            || version_constraint.contains("!")
+            || version_constraint.contains('>')
+            || version_constraint.contains('<')
+            || version_constraint.contains('!')
         {
             res.push(format!("{}{}", name, version_constraint));
-        } else if version_constraint.contains("=") {
+        } else if version_constraint.contains('=') {
             res.push(format!("{}={}", name, version_constraint));
         } else if version_constraint.is_empty() {
             res.push(name.to_string())
@@ -963,13 +962,13 @@ fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
         chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
             .unwrap();
     if query_date < lowest {
-        Err(anyhow!(
+        return Err(anyhow!(
             "Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z"
-        ))?
+        ));
     }
     let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
     if query_date > now {
-        Err(anyhow!("Pypi-deps-db date is in the future!"))?
+        return Err(anyhow!("Pypi-deps-db date is in the future!"));
     }
 
     let store_path: PathBuf = ["flake", ".pypi-debs-db.lookup.json"].iter().collect();
@@ -1024,7 +1023,7 @@ impl Retriever for PyPiDepsDBRetriever {
         let mut known_mappings = HashMap::new();
         loop {
             let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
-            if new_mappings.len() == 0 {
+            if new_mappings.is_empty() {
                 return Err(anyhow!(
                     "Could not find entry in pypi-deps-db (no more pages)"
                 ));
@@ -1184,7 +1183,7 @@ run_scripts/
     }
 
     if !use_generated_file_instead {
-        let output = Command::new("git")
+        Command::new("git")
             .args(["commit", "-m", "autocommit"])
             .current_dir(&flake_dir)
             .output()
@@ -1215,8 +1214,7 @@ fn run_bash(script: &str) -> Result<()> {
     child_stdin.write_all(b"set -euo pipefail\n")?;
     child_stdin.write_all(script.as_bytes())?;
     child_stdin.write_all(b"\n")?;
-    drop(child_stdin); // close
-    let ecode = child.wait().context("Failed to wait on bash")?;
+    let ecode = child.wait().context("Failed to wait on bash")?; // closes stdin
     if ecode.success() {
         Ok(())
     } else {
@@ -1239,7 +1237,7 @@ fn safe_python_package_name(input: &str) -> String {
 
 fn fill_venv(
     python_version: &str,
-    python: &Vec<(String, String)>,
+    python: &[(String, String)],
     //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
 ) -> Result<()> {
     let venv_dir: PathBuf = ["venv", python_version].iter().collect();
@@ -1250,7 +1248,7 @@ fn fill_venv(
         .filter(|(_, spec)| spec.starts_with("editable/"))
     {
         let safe_pkg = safe_python_package_name(pkg);
-        let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), &pkg]
+        let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
             .iter()
             .collect();
         if !target_dir.exists() {
@@ -1292,11 +1290,9 @@ fn fill_venv(
                 "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv",
                 &safe_pkg
             ));
-            println!("{}", "Singularity cmd:\n\tsingularity \\");
-            for s in &singularity_args {
-                println!("\t\t{} \\", s);
-            }
-            println!("{}", "");
+            println!("Singularity cmd:\n\tsingularity \\");
+            pretty_print_singularity_call(&singularity_args);
+            println!();
             let singularity_result = Command::new("singularity")
                 .args(singularity_args)
                 .status()?;
@@ -1309,17 +1305,14 @@ fn fill_venv(
             let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
             for dir_entry in walkdir::WalkDir::new(td.path()) {
                 let dir_entry = dir_entry?;
-                match dir_entry.file_name().to_str() {
-                    Some(filename) => {
-                        if filename.ends_with(".egg-link") {
-                            std::fs::write(
-                                target_egg_link,
-                                std::fs::read_to_string(dir_entry.path())?,
-                            )?;
-                            break;
-                        }
+                if let Some(filename) = dir_entry.file_name().to_str() {
+                    if filename.ends_with(".egg-link") {
+                        std::fs::write(
+                            target_egg_link,
+                            std::fs::read_to_string(dir_entry.path())?,
+                        )?;
+                        break;
                     }
-                    None => {}
                 };
             }
             //now clean up the empty directory we used to map the package
