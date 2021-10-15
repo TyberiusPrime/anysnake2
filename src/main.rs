@@ -2,7 +2,6 @@ extern crate clap;
 use anyhow::{anyhow, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use clap::{App, AppSettings, Arg, SubCommand};
-use const_format::concatcp;
 use fstrings::{format_args_f, format_f, println_f};
 use regex::Regex;
 use serde_derive::Deserialize;
@@ -29,7 +28,6 @@ use std::process::{Command, Stdio};
 
 */
 
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 trait WithDefaultFlakeSource {
@@ -41,10 +39,12 @@ trait WithDefaultFlakeSource {
 struct ConfigToml {
     anysnake2: Anysnake2,
     nixpkgs: NixPkgs,
+    outside_nixpkgs: NixPkgs,
     #[serde(default, rename = "flake-util")]
     flake_util: FlakeUtil,
     clone_regexps: Option<HashMap<String, String>>,
     clones: Option<HashMap<String, HashMap<String, String>>>,
+    #[serde(default)]
     cmd: HashMap<String, Cmd>,
     #[serde(default)]
     rust: Rust,
@@ -175,13 +175,14 @@ impl WithDefaultFlakeSource for MachNix {
         "3.3.0".to_string()
     }
     fn default_url() -> String {
-        "github:oxalica/DavHau/mach-nix".to_string()
+        "github:DavHau/mach-nix".to_string()
     }
 }
 
 #[derive(Deserialize, Debug)]
 struct Flake {
     url: String,
+    rev: String,
     follows: Option<Vec<String>>,
     packages: Vec<String>,
 }
@@ -199,6 +200,29 @@ fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
         .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
         .naive_utc()
         .date())
+}
+
+struct InputFlake {
+    name: String,
+    url: String,
+    rev: String,
+    follows: Vec<String>,
+}
+
+impl InputFlake {
+    fn new(name: &str, url: &str, rev: &str, follows: &[&str]) -> Result<Self> {
+        let url = if url.ends_with("/") {
+            url.strip_suffix("/").unwrap()
+        } else {
+            url
+        };
+        Ok(InputFlake {
+            name: name.to_string(),
+            url: url.to_string(),
+            rev: lookup_github_tag(url, rev)?,
+            follows: follows.iter().map(|x| x.to_string()).collect(),
+        })
+    }
 }
 
 fn main() -> Result<()> {
@@ -245,7 +269,7 @@ fn main() -> Result<()> {
 
     if cmd == "example-config" {
         println!("# dump this to anysnake2.toml (default filename)");
-        println!("{}", std::include_str!("../example/anysnake2.toml"));
+        println!("{}", std::include_str!("../examples/full/anysnake2.toml"));
         std::process::exit(0);
     }
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
@@ -258,8 +282,8 @@ fn main() -> Result<()> {
         "Could not find config file {}. Use --help for help",
         config_file
     ))?;
-    let mut parsed_config: ConfigToml =
-        toml::from_str(&raw_config).context(format_f!("Failure parsing {config_file}"))?;
+    let mut parsed_config: ConfigToml = toml::from_str(&raw_config)
+        .with_context(|| format!("Failure parsing {:?}", std::fs::canonicalize(config_file)))?;
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
@@ -549,8 +573,34 @@ fn run_singularity(args: &[String], nix_repo: &str) -> Result<std::process::Exit
     for arg in args {
         full_args.push(arg.to_string());
     }
-    println!("full_args: {:?}", &full_args);
     Ok(Command::new("nix").args(full_args).status()?)
+}
+
+fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str) -> Result<String> {
+    let full_args = vec![
+        "shell".to_string(),
+        format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev),
+        "-c".into(),
+        "nixfmt".into(),
+    ];
+    let mut child = Command::new("nix")
+        .args(full_args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let child_stdin = child.stdin.as_mut().unwrap();
+    child_stdin.write_all(input.as_bytes())?;
+    let out = child
+        .wait_with_output()
+        .context("Failed to wait on nixfmt")?; // closes stdin
+    if out.status.success() {
+        Ok((std::str::from_utf8(&out.stdout).context("nixfmt output wan't utf8")?).to_string())
+    } else {
+        Err(anyhow!(
+            "nix fmt error return{}",
+            out.status.code().unwrap()
+        ))
+    }
 }
 
 fn print_version() -> ! {
@@ -825,12 +875,15 @@ fn write_flake(
             "".to_string()
         }
     };
-    let mut flake_contents = template
-        .replace("%NIXPKG_URL%", &parsed_config.nixpkgs.url)
-        .replace(
-            "%NIXPKG_REV%",
-            &lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev)?,
-        );
+    let mut flake_contents: String = template.to_string();
+    let mut inputs: Vec<InputFlake> = Vec::new();
+
+    inputs.push(InputFlake::new(
+        "nixpkgs",
+        &parsed_config.nixpkgs.url,
+        &parsed_config.nixpkgs.rev,
+        &[],
+    )?);
     flake_contents = match &parsed_config.nixpkgs.packages {
         Some(pkgs) => {
             let pkgs: String = pkgs
@@ -838,23 +891,30 @@ fn write_flake(
                 .map(|x| format!("${{{}}}\n", x))
                 .collect::<Vec<String>>()
                 .join("\n");
-            flake_contents.replace("%NIXPKGSPKGS%", &pkgs)
+            flake_contents.replace("%NIXPKGS_PACKAGES%", &pkgs)
         }
         None => flake_contents,
     };
-    flake_contents = flake_contents
-        .replace("%FLAKE_UTIL_REV%", &parsed_config.flake_util.rev)
-        .replace("%FLAKE_UTIL_URL%", &parsed_config.flake_util.url);
-    let rust_content = match &parsed_config.rust.version {
-            Some(version) =>
-                // skipping the rust-docs saves about 270 mb ¯\_(ツ)_/¯
-                format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version),
-            None => "null".to_string(),
+
+    inputs.push(InputFlake::new(
+        "flake-utils",
+        &parsed_config.flake_util.url,
+        &parsed_config.flake_util.rev,
+        &["nixpkgs"],
+    )?);
+
+    flake_contents = match &parsed_config.rust.version {
+        Some(version) => {
+            inputs.push(InputFlake::new(
+                "rust-overlay",
+                &parsed_config.rust.rust_overlay_url,
+                &parsed_config.rust.rust_overlay_rev,
+                &["nixpkgs", "flake-utils"],
+            )?);
+            flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
+        }
+        None => flake_contents.replace("\"%RUST%\"", "null"),
     };
-    flake_contents = flake_contents.replace("\"%RUST%\"", &rust_content);
-    flake_contents = flake_contents
-        .replace("%RUST_OVERLAY_REV%", &parsed_config.rust.rust_overlay_rev)
-        .replace("%RUST_OVERLAY_URL%", &parsed_config.rust.rust_overlay_url);
 
     flake_contents = match &parsed_config.python {
         Some(python) => {
@@ -871,57 +931,66 @@ fn write_flake(
             let ecosystem_date = parse_my_date(&python.ecosystem_date)
                 .context("Failed to parse python.ecosystem-date")?;
             let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date)?;
-            let mach_nix_rev =
-                lookup_github_tag(&parsed_config.mach_nix.url, &parsed_config.mach_nix.rev)?; //todo: turn into cow
+
+            inputs.push(InputFlake::new(
+                "mach-nix",
+                &parsed_config.mach_nix.url,
+                &parsed_config.mach_nix.rev,
+                &["nipkgs", "flake-utils", "pypi-deps-db"],
+            )?);
+
+            inputs.push(InputFlake::new(
+                "pypi-deps-db",
+                "github:DavHau/pypi-deps-db",
+                &pypi_debs_db_rev,
+                &["nipkgs", "mach-nix"],
+            )?);
 
             flake_contents
                 .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
-                .replace("%MACH_NIX_REV%", &mach_nix_rev)
-                .replace("%MACH_NIX_URL%", &parsed_config.mach_nix.url)
         }
         None => flake_contents,
     };
 
     flake_contents = match &parsed_config.flakes {
         Some(flakes) => {
-            let mut repl = "".to_string();
-            let mut repl_params = Vec::new();
-            let mut repl_packages = "".to_string();
+            let mut flake_packages = "".to_string();
             for (name, flake) in flakes.iter() {
-                repl_params.push(name.to_string());
-                repl += &format!(
-                    "
-    {} = {{
-        url = \"{}\";
-",
-                    name, flake.url
-                );
-                match &flake.follows {
-                    Some(follows) => {
-                        for f in follows {
-                            repl += &format!("        inputs.{}.follows = \"{}\";\n", f, f);
-                        }
-                    }
-                    None => {}
-                }
-                repl += "    };";
-
+                let rev_follows: Vec<&str> = match &flake.follows {
+                    Some(f) => f.iter().map(|x| &x[..]).collect(),
+                    None => Vec::new(),
+                };
+                inputs.push(InputFlake::new(
+                    &name,
+                    &flake.url,
+                    &flake.rev,
+                    &rev_follows[..],
+                )?);
                 for pkg in &flake.packages {
-                    repl_packages += &format!("${{{}.{}}}", name, pkg);
+                    flake_packages += &format!("${{{}.{}}}", name, pkg);
                 }
             }
-            flake_contents
-                .replace("#%FURTHER_FLAKES%", &repl)
-                .replace("#%FURTHER_FLAKE_PARAMS%", &repl_params.join(", "))
-                .replace("%FURTHER_FLAKE_PACKAGES%", &repl_packages)
+            flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
         }
-        None => flake_contents
-            .replace("#%FURTHER_FLAKES%", "")
-            .replace("#%FURTHER_FLAKE_PARAMS%", "")
-            .replace("%FURTHER_FLAKE_PACKAGES%", ""),
+        None => flake_contents,
     };
+    let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
+    let input_list = input_list.join(", ");
+
+    flake_contents = flake_contents
+        .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
+        .replace("#%INPUTS%", &input_list);
+
+    flake_contents = nix_format(
+        &flake_contents,
+        &parsed_config.outside_nixpkgs.url,
+        &lookup_github_tag(
+            &parsed_config.outside_nixpkgs.url,
+            &parsed_config.outside_nixpkgs.rev,
+        )?,
+    )?;
 
     //print!("{}", flake_contents);
     let mut git_path = flake_dir.to_path_buf();
@@ -955,6 +1024,27 @@ fn write_flake(
         println!("flake unchanged");
         Ok(false)
     }
+}
+
+fn format_input_defs(inputs: &Vec<InputFlake>) -> String {
+    let mut out = "".to_string();
+    for fl in inputs {
+        let v_follows: Vec<String> = fl
+            .follows
+            .iter()
+            .map(|x| format!("        inputs.{}.follows = \"{}\";", &x, &x))
+            .collect();
+        let str_follows = v_follows.join("\n");
+        out.push_str(&format!(
+            "
+    {} = {{
+        url = \"{}?rev={}\";
+{}
+    }};",
+            fl.name, fl.url, fl.rev, &str_follows
+        ))
+    }
+    out
 }
 
 fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Vec<String>> {
@@ -1040,7 +1130,7 @@ impl PyPiDepsDBRetriever {
             )?;
             let sha = entry["sha"].as_str().context("no sha on commit?")?;
             let str_date = date.format("%Y%m%d").to_string();
-            println!("{}, {}", &str_date, &sha);
+            //println!("{}, {}", &str_date, &sha);
             res.insert(str_date, sha.to_string());
         }
         Ok(res)
@@ -1094,7 +1184,7 @@ fn oldest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
 }
 fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
     let oldest = new_mappings.keys().max().unwrap();
-    println!("oldest {}", oldest);
+    //println!("oldest {}", oldest);
     Ok(chrono::NaiveDateTime::parse_from_str(
         &format!("{} 00:00", oldest),
         "%Y%m%d %H:%M",

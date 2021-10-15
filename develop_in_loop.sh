@@ -1,3 +1,3 @@
 #!/bin/bash
-cd example
-fd "rs|py|nix|toml" ../| entr $@
+cd examples/dev || true
+fd "rs|py|nix|toml" ../../| entr $@

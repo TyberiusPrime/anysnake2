@@ -1,29 +1,31 @@
 {
   description = "Anysnake2 generated flake";
   inputs = rec {
-    nixpkgs.url = "%NIXPKG_URL%/?rev=%NIXPKG_REV%";
-    flake-utils.url = "github:numtide/flake-utils?rev=%FLAKE_UTIL_REV%";
-    rust-overlay = {
-      url = "%RUST_OVERLAY_URL%?rev=%RUST_OVERLAY_REV%";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
-    };
-    mach-nix = {
-      url = "%MACH_NIX_URL%/?rev=%MACH_NIX_REV%";
-      inputs.flake-utils.follows = "flake-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.pypi-deps-db.follows = "pypi-deps-db";
-    };
-    pypi-deps-db = {
-      url = "github:DavHau/pypi-deps-db/?rev=%PYPI_DEPS_DB_REV%";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.mach-nix.follows = "mach-nix";
-    };
+#%INPUT_DEFS%
+    #nixpkgs.url = "%NIXPKG_URL%/?rev=%NIXPKG_REV%";
+    #flake-utils.url = "%FLAKE_UTIL_URL%/?rev=%FLAKE_UTIL_REV%";
+    #rust-overlay = {
+    #url = "%RUST_OVERLAY_URL%?rev=%RUST_OVERLAY_REV%";
+    #inputs.nixpkgs.follows = "nixpkgs";
+    #inputs.flake-utils.follows = "flake-utils";
+    #};
+    #mach-nix = {
+    #url = "%MACH_NIX_URL%/?rev=%MACH_NIX_REV%";
+    #inputs.flake-utils.follows = "flake-utils";
+    #inputs.nixpkgs.follows = "nixpkgs";
+    #inputs.pypi-deps-db.follows = "pypi-deps-db";
+    #};
+    #pypi-deps-db = {
+    #url = "github:DavHau/pypi-deps-db/?rev=%PYPI_DEPS_DB_REV%";
+    #inputs.nixpkgs.follows = "nixpkgs";
+    #inputs.mach-nix.follows = "mach-nix";
+    #};
+    #%PYPY_DEPS_DB
     #%FURTHER_FLAKES%
   };
 
-  outputs = { self, nixpkgs, flake-utils, mach-nix, pypi-deps-db, rust-overlay,
-    #%FURTHER_FLAKE_PARAMS% 
+  outputs = { self,
+    #%INPUTS%
     }:
 
     flake-utils.lib.eachDefaultSystem (system:
@@ -142,7 +144,7 @@
             ${coreutils}
             ${bashInteractive_5}
             ${my_rust}
-            %NIXPKGSPKGS%
+            %NIXPKGS_PACKAGES%
             %FURTHER_FLAKE_PACKAGES%
           '';
           python_requirements = ''
@@ -155,9 +157,9 @@
             '';
           };
         };
-      in { 
-        defaultPackage = buildSymlinkImage _args; 
-        image = buildSingularityImage _args; 
+      in {
+        defaultPackage = buildSymlinkImage _args;
+        image = buildSingularityImage _args;
       });
 
 }

@@ -1,0 +1,144 @@
+[anysnake2]
+rev = "dev"
+# rev = "dev" = do not switch to fixed version, used in development.
+# Otherwise a tag or hash from the anysnake github repo at
+# (default https://github.com/TyberiusPrime/anysnake2).
+# We leverage nix to run exactly that version.
+# url = "https://github.com/TyberiusPrime/anysnake2" # if you want to override this.
+
+# do_not_modify_flake = true # if set to true,
+                             # flake/flake.nix is never overwritten,
+							 # but stored in flake/flake.generated.nix.
+							 # And nix build is called every run
+							 # This is an escape hatch.
+
+
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+# rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
+# url = "git+https://github.com/NixOS/nixpkgs" # optional
+# url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
+packages = [ # use https://search.nixos.org/packages to search
+	"fish",
+	"netcat"] # optional
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+# url = "git+https://github.com/NixOS/nixpkgs" # optional
+
+[flake-util]
+# the revision used by flake-util
+# rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
+# url = oxalica/rust-overlay
+
+
+[python] # python section is optional
+version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
+ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+# mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
+# mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
+
+[python.packages]
+scipy=""
+pypipegraph=">2."
+mbf_r = "editable/code"  # see [clones.code] below
+mbf_sampledata = "editable/code"
+dppd = "editable/code"
+dppd_plotnine = "editable/code"
+# pandas="<1.0"
+
+[clones.code] # target directory
+# seperate from python packages so you can clone other stuff as well
+dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
+dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
+mbf_r="@mbf"
+mbf_sampledata="@mbf/mbf_sampledata"
+
+
+[R]
+ecosystem_date="2021-10-11" # you get whatever packages were current that day.
+packages = [
+	"ggplot2",
+	"affy",
+	]
+
+[flakes.hello]
+	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	packages = ["defaultPackage.x86_64-linux"]
+
+[rust]
+# version/rust section is optional. leave of for no rust
+version = "1.55.0" # =stable. 
+#i to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
+# rust_overlay_rev = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec" #https://github.com/oxalica/rust-overlay, optional
+# rust_overlay_url = "github:oxalica/rust-overlay"
+
+
+[container]
+home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+
+[container.volumes_ro]
+"/opt" = "/opt"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
+"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
+
+
+[container.volumes_rw]
+# home get's special treatment, see first line
+"." = "/project"
+"/var/run/docker.sock" = "/var/run/docker.sock"
+
+
+[env]
+MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
+MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
+MBF_AUTH_USER = "feed"
+MBF_AUTH_PASSWORD = "feed"
+
+
+[cmd.default]
+run = """
+echo 'run_inside'
+set -x # show what we're executing
+cd /project
+echo 'pythonpath $PYTHONPATH'
+python run.py
+hello
+no_such-command
+"""
+
+# the post run runs even if the run failed
+post_run_inside = """
+echo "post run inside - status was $ANYSNAKE_RUN_STATUS"
+"""
+
+# if this one fails, execution stops
+pre_run_outside = """
+echo "pre run outside"
+"""
+
+# runs independend of the sucess inside
+post_run_outside = """
+echo 'post run outside'
+"""
+
+[cmd.shell]
+run = """fish
+"""
+
+[cmd.jupyter]
+run = """
+jupyter
+"""
+# ports are exposed by default (using host network!)
+
+
+[clone_regexps]
+"@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
+"@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
+"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
+"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"

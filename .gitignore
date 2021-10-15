@@ -9,8 +9,8 @@ takea
 /target
 
 /result
-/example/result
-/example/code
-/example/flake
-/example/venv
+examples/**/result
+examples/**/code
+examples/**/flake
+examples/**/venv
 hello_flake

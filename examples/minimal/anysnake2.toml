@@ -1,0 +1,7 @@
+# a really really minimal config example
+[anysnake2]
+rev = "dev"
+
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+
