@@ -1,8 +1,8 @@
 extern crate clap;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
-use clap::{App, AppSettings, Arg, SubCommand};
-use fstrings::{format_args_f, format_f, println_f};
+use clap::{value_t, App, AppSettings, Arg, SubCommand};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde_derive::Deserialize;
 use serde_json::json;
@@ -21,8 +21,6 @@ use std::process::{Command, Stdio};
 
  * R
 
- * sensible verbosity...
- *
  * Get rid of walkdir
  * refactor
 
@@ -225,7 +223,20 @@ impl InputFlake {
     }
 }
 
-fn main() -> Result<()> {
+fn main() {
+    let r = inner_main();
+    match r {
+        Err(e) => {
+            error!("{:?}", e);
+            std::process::exit(1);
+        }
+        Ok(_) => {
+            std::process::exit(0);
+        }
+    }
+}
+
+fn inner_main() -> Result<()> {
     let matches = App::new("Anysnake2")
         .version("0.1")
         .author("Florian Finkernagel <finkernagel@imt.uni-marburg.de>")
@@ -240,10 +251,12 @@ fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("v")
+            Arg::with_name("verbose")
                 .short("v")
-                .multiple(true)
-                .help("Sets the level of verbosity (can be passed up to three times)"),
+                .long("verbose")
+                .takes_value(true)
+                //.default_value("2")
+                .help("Sets the level of verbosity (0=quiet,1=error/warnings, 2=info (default), 3=debug, 4=trace, 5=trace)"),
         )
         .arg(
             Arg::with_name("_running_version")
@@ -279,6 +292,17 @@ fn main() -> Result<()> {
         println!("{}", std::include_str!("../examples/full/anysnake2.toml"));
         std::process::exit(0);
     }
+
+    let verbosity = value_t!(matches, "verbose", usize).unwrap_or(2);
+    stderrlog::new()
+        .module(module_path!())
+        .quiet(verbosity == 0)
+        .verbosity(verbosity)
+        .show_level(false)
+        .timestamp(stderrlog::Timestamp::Off)
+        .init()
+        .unwrap();
+
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
     let config_file_path: PathBuf = [config_file].iter().collect();
     if !config_file_path.exists() && cmd == "version" {
@@ -295,13 +319,13 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
     if parsed_config.anysnake2.rev == "dev" {
-        println!("Using development version of anysnake");
+        info!("Using development version of anysnake");
     } else if parsed_config.anysnake2.rev
         != matches
             .value_of("_running_version")
             .unwrap_or("noversionspecified")
     {
-        println!("restarting with version {}", &parsed_config.anysnake2.rev);
+        info!("restarting with version {}", &parsed_config.anysnake2.rev);
         let repo = format!(
             "{}?rev={}",
             &parsed_config.anysnake2.url,
@@ -321,7 +345,7 @@ fn main() -> Result<()> {
             for argument in input_args.iter().skip(1) {
                 args.push(argument);
             }
-            println!("new args {:?}", args);
+            trace!("new args {:?}", args);
             let status = Command::new("nix").args(args).status()?;
             //now push
             std::process::exit(status.code().unwrap());
@@ -332,14 +356,14 @@ fn main() -> Result<()> {
     }
 
     if !parsed_config.cmd.contains_key(cmd) && !(cmd == "build" || cmd == "run") {
-        return Err(anyhow!(
+        bail!(
             "Cmd {} not found. 
             Available from config file: {:?}
             Available from anysnake2: build, run, example-config, version
             ",
             cmd,
             parsed_config.cmd.keys()
-        ));
+        );
     }
 
     lookup_clones(&mut parsed_config)?;
@@ -369,7 +393,7 @@ fn main() -> Result<()> {
             None => Vec::new(),
         }
     };
-    println!("python packages: {:?}", python_packages);
+    trace!("python packages: {:?}", python_packages);
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
     let nixpkgs_url = format!(
@@ -387,7 +411,7 @@ fn main() -> Result<()> {
     let build_output: PathBuf = ["flake", "result"].iter().collect();
     let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
     if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
-        println!("Rebuilding");
+        info!("Rebuilding flake");
         rebuild_flake(use_generated_file_instead)?;
     }
 
@@ -410,11 +434,11 @@ fn main() -> Result<()> {
         .into_os_string()
         .to_string_lossy()
         .to_string();
-    println_f!("Using {home_dir:?} as home");
+    debug!("Using {:?} as home", home_dir);
     std::fs::create_dir_all(home_dir).context("Failed to create home dir")?;
 
     if cmd == "build" {
-        println_f!("Build only - done");
+        info!("Build only - done");
     } else {
         let run_dir: PathBuf = ["flake/run_scripts/", cmd].iter().collect();
         let outer_run_sh: PathBuf = run_dir.join("outer_run.sh");
@@ -432,21 +456,22 @@ fn main() -> Result<()> {
                 .unwrap()
                 .collect();
             if slop.is_empty() {
-                return Err(anyhow!("no command passed after run"));
+                bail!("no command passed after run");
             }
-            println!("Running singularity with ad hoc - cmd {:?}", slop);
+            info!("Running singularity with ad hoc - cmd {:?}", slop);
             std::fs::write(&outer_run_sh, "#/bin/bash\nbash /anysnake2/run.sh\n")?;
             std::fs::write(&run_sh, slop.join(" "))?;
             std::fs::write(&post_run_sh, "")?;
         } else {
-            println_f!("Running singularity - cmd {cmd}");
             let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
             match &cmd_info.pre_run_outside {
                 Some(bash_script) => {
+                    info!("Running pre_run_outside for cmd - cmd {}", cmd);
                     run_bash(bash_script).context("pre run outside failed")?;
                 }
                 None => {}
             };
+            info!("Running singularity - cmd {}", cmd);
             let run_template = std::include_str!("run.sh");
             let run_script = run_template.replace("%RUN%", &cmd_info.run);
             let post_run_script =
@@ -569,8 +594,8 @@ fn main() -> Result<()> {
             singularity_args.push(format!(
                 "{}:{}:{}",
                 //std::fs::canonicalize(from)?
-                    //.into_os_string()
-                    //.to_string_lossy(),
+                //.into_os_string()
+                //.to_string_lossy(),
                 from,
                 to,
                 opts
@@ -594,7 +619,10 @@ fn main() -> Result<()> {
             Some(bash_script) => match run_bash(&bash_script) {
                 Ok(()) => {}
                 Err(e) => {
-                    println!("Warning: an error occured when running the post_run_outside bash script: {}", e)
+                    warn!(
+                        "An error occured when running the post_run_outside bash script: {}",
+                        e
+                    )
                 }
             },
             None => {}
@@ -628,8 +656,7 @@ fn run_singularity(
         let o = format!("nix {}", pp.trim_start());
         std::fs::write(lf, o)?;
     }
-    // println!("Full args: {:?}", full_args);
-    println!("nix {}", pp.trim_start());
+    info!("nix {}", pp.trim_start());
     Ok(Command::new("nix").args(full_args).status()?)
 }
 
@@ -675,7 +702,7 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
             res += "    ";
         }
         res += arg;
-        if !(arg == "--bind" || arg == "--env" || arg == "--home" || arg=="singularity") {
+        if !(arg == "--bind" || arg == "--env" || arg == "--home" || arg == "singularity") {
             res += " \\\n";
         } else {
             skip_space = true;
@@ -695,7 +722,7 @@ fn lookup_clones(parsed_config: &mut ConfigToml) -> Result<()> {
             let mut res = Vec::new();
             for (from, to) in replacements {
                 let r = Regex::new(&format!("^{}$", from))
-                    .context(format_f!("failed to parse {from}"))?;
+                    .context(format!("failed to parse {}", from))?;
                 res.push((r, to))
             }
             res
@@ -718,7 +745,7 @@ fn lookup_clones(parsed_config: &mut ConfigToml) -> Result<()> {
                                 //println_f!("match {name}={url} {re} => {out}");
                             }
                             if !(out.starts_with("git+") || out.starts_with("hg+")) {
-                                return Err(anyhow!("Url did not start with git+ or hg+ which are the only supported version control formats {}=>{}", proto_url, out));
+                                bail!("Url did not start with git+ or hg+ which are the only supported version control formats {}=>{}", proto_url, out);
                             }
                             *proto_url = out; // know it's the real url
                         }
@@ -751,11 +778,11 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                     };
                     let final_dir: PathBuf = [target_dir, name].iter().collect();
                     if known_url != url && final_dir.exists() {
-                        let msg = format_f!(
+                        let msg = format!(
                             "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
                         Cowardly refusing to throw away old checkout."
-                        );
-                        return Err(anyhow!(msg));
+                        , target_dir=target_dir, name=name, known_url=known_url, url=url);
+                        bail!(msg);
                     }
                 }
                 for (name, url) in name_urls {
@@ -763,32 +790,34 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                     std::fs::create_dir_all(&final_dir)?;
                     let is_empty = final_dir.read_dir()?.next().is_none();
                     if is_empty {
-                        println_f!("cloning {target_dir}/{name} from {url}");
+                        info!("cloning {}/{} from {}", target_dir, name, url);
                         known_clones.insert(name.clone(), url.clone());
                         let (cmd, furl) = if url.starts_with("git+") {
                             ("git", url.strip_prefix("git+").unwrap())
                         } else if url.starts_with("hg+") {
                             ("hg", url.strip_prefix("hg+").unwrap())
                         } else {
-                            return Err(anyhow!(
+                            bail!(
                                 "Unexpected url schema - should have been tested before"
-                            ));
+                            );
                         };
                         let output = Command::new(cmd)
                             .args(["clone", furl, "."])
                             .current_dir(final_dir)
                             .output()
-                            .context(format_f!(
-                                "Failed to execute clone {target_dir}/{name} from {url}."
+                            .context(format!(
+                                "Failed to execute clone {target_dir}/{name} from {url}.",
+                                target_dir = target_dir,
+                                name = name,
+                                url = url
                             ))?;
                         if !output.status.success() {
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             let stderr = String::from_utf8_lossy(&output.stderr);
-                            let msg = format_f!(
-                                "Failed to clone {target_dir}/{name} from {url}.\
-                                                \n Stdout {stdout:?}\nStderr: {stderr:?}"
-                            );
-                            return Err(anyhow!(msg));
+                            let msg = format!(
+                                "Failed to clone {target_dir}/{name} from {url}. \n Stdout {stdout:?}\nStderr: {stderr:?}",
+                            target_dir = target_dir, name = name, url = url, stdout=stdout, stderr=stderr);
+                            bail!(msg);
                         }
                     }
                 }
@@ -832,15 +861,15 @@ fn find_python_requirements_for_clones(
             }
 
             let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
-            println!("looking for {:?}", &setup_cfg_file);
+            debug!("looking for {:?}", &setup_cfg_file);
             if setup_cfg_file.exists() {
                 let reqs = parse_python_config_file(&setup_cfg_file);
                 match reqs {
                     Err(e) => {
-                        println!("Warning: failed to parse {:?}: {}", setup_cfg_file, e)
+                        warn!("failed to parse {:?}: {}", setup_cfg_file, e)
                     }
                     Ok(mut reqs) => {
-                        println!("requirements {:?}", reqs);
+                        debug!("requirements {:?}", reqs);
                         for k in reqs.drain(..) {
                             res.insert(k); // identical lines!
                         }
@@ -867,7 +896,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
     //configparser does not do multi line values
     //ini dies on them as well.
     //so we do our own poor man's parsing
-    println!("Parsing {:?}", &setup_cfg_file);
+    debug!("Parsing {:?}", &setup_cfg_file);
     let raw = std::fs::read_to_string(&setup_cfg_file)?;
     let mut res = Vec::new();
     match raw.find("[options]") {
@@ -887,7 +916,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
                                 value += "\n";
                                 inside_value = true;
                             }
-                            None => return Err(anyhow!("No = in install_requires line")),
+                            None => bail!("No = in install_requires line"),
                         }
                     }
                 } else {
@@ -908,7 +937,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
                 }
             }
         }
-        None => return Err(anyhow!("no [options] in setup.cfg")),
+        None => bail!("no [options] in setup.cfg"),
     };
     Ok(res)
     //Err(anyhow!("Could not parse"))
@@ -977,8 +1006,8 @@ fn write_flake(
     flake_contents = match &parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
-                return Err(anyhow!(
-                        format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version)));
+                bail!(
+                        format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
             }
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
@@ -994,14 +1023,14 @@ fn write_flake(
                 "mach-nix",
                 &parsed_config.mach_nix.url,
                 &parsed_config.mach_nix.rev,
-                &["nipkgs", "flake-utils", "pypi-deps-db"],
+                &["nixpkgs", "flake-utils", "pypi-deps-db"],
             )?);
 
             inputs.push(InputFlake::new(
                 "pypi-deps-db",
                 "github:DavHau/pypi-deps-db",
                 &pypi_debs_db_rev,
-                &["nipkgs", "mach-nix"],
+                &["nixpkgs", "mach-nix"],
             )?);
 
             flake_contents
@@ -1058,14 +1087,15 @@ fn write_flake(
             .args(["init"])
             .current_dir(&flake_dir)
             .output()
-            .context(format_f!("Failed create git repo in {flake_dir:?}"))?;
+            .context(format!("Failed create git repo in {:?}", flake_dir))?;
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let msg = format_f!(
-                "Failed to init git repo in  {flake_dir:?}.\n Stdout {stdout:?}\nStderr: {stderr:?}"
+            let msg = format!(
+                "Failed to init git repo in  {:?}.\n Stdout {:?}\nStderr: {:?}",
+                flake_dir, stdout, stderr
             );
-            return Err(anyhow!(msg));
+            bail!(msg);
         }
     }
 
@@ -1079,7 +1109,7 @@ fn write_flake(
 
         Ok(true)
     } else {
-        println!("flake unchanged");
+        debug!("flake unchanged");
         Ok(false)
     }
 }
@@ -1123,11 +1153,11 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
         } else if version_constraint.is_empty() {
             res.push(name.to_string())
         } else {
-            return Err(anyhow!(
+            bail!(
                 "invalid python version spec {}{}",
                 name,
                 version_constraint
-            ));
+            );
         }
     }
     Ok(res)
@@ -1141,13 +1171,13 @@ fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
         chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
             .unwrap();
     if query_date < lowest {
-        return Err(anyhow!(
+        bail!(
             "Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z"
-        ));
+        );
     }
     let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
     if query_date > now {
-        return Err(anyhow!("Pypi-deps-db date is in the future!"));
+        bail!("Pypi-deps-db date is in the future!");
     }
 
     let store_path: PathBuf = ["flake", ".pypi-debs-db.lookup.json"].iter().collect();
@@ -1203,9 +1233,9 @@ impl Retriever for PyPiDepsDBRetriever {
         loop {
             let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
             if new_mappings.is_empty() {
-                return Err(anyhow!(
+                bail!(
                     "Could not find entry in pypi-deps-db (no more pages)"
-                ));
+                );
             }
             let newest = newest_date(&new_mappings)?;
             let oldest = oldest_date(&new_mappings)?;
@@ -1217,15 +1247,15 @@ impl Retriever for PyPiDepsDBRetriever {
             } else {
                 //it is not in there...
                 if newest < self.query_date {
-                    println!("{:?} too old", &self.query_date);
+                    trace!("{:?} too old", &self.query_date);
                     page -= 1;
                     if page == 0 {
-                        return Err(anyhow!(
+                        bail!(
                             "Could not find entry in pypi-deps-db (arrived at latest entry)"
-                        ));
+                        );
                     }
                 } else if oldest > self.query_date {
-                    println!("{:?} too new", &self.query_date);
+                    trace!("{:?} too new", &self.query_date);
                     page += 1;
                 }
             }
@@ -1335,7 +1365,7 @@ run_scripts/
 .*.json
 ",
     )?;
-    println!("writing flake");
+    debug!("writing flake");
     let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
     if flake_dir.join("flake.lock").exists() {
         gitargs.push("flake.nix");
@@ -1344,12 +1374,15 @@ run_scripts/
         .args(&gitargs)
         .current_dir(&flake_dir)
         .output()
-        .context(format_f!("Failed git add flake.nix"))?;
+        .context("Failed git add flake.nix")?;
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg = format_f!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
-        return Err(anyhow!(msg));
+        let msg = format!(
+            "Failed git add flake.nix. \n Stdout {:?}\nStderr: {:?}",
+            stdout, stderr
+        );
+        bail!(msg);
     }
 
     if !use_generated_file_instead {
@@ -1357,14 +1390,16 @@ run_scripts/
             .args(["commit", "-m", "autocommit"])
             .current_dir(&flake_dir)
             .output()
-            .context(format_f!("Failed git add flake.nix"))?;
+            .context("Failed git add flake.nix")?;
     }
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg =
-            format_f!("Failed git commit flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}");
-        return Err(anyhow!(msg));
+        let msg = format!(
+            "Failed git commit flake.nix. \n Stdout {:?}\nStderr: {:?}",
+            stdout, stderr
+        );
+        bail!(msg);
     }
     let build_unfinished_file = flake_dir.join(".build_unfinished");
     std::fs::write(&build_unfinished_file, "in_progress")?;
@@ -1426,8 +1461,8 @@ fn fill_venv(
             .iter()
             .collect();
         if !target_dir.exists() {
-            return Err(anyhow!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}", 
-                               pkg, target_dir));
+            bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}", 
+                               pkg, target_dir);
         }
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
         if !egg_link.exists() {
@@ -1437,7 +1472,7 @@ fn fill_venv(
     }
     if !to_build.is_empty() {
         for (safe_pkg, target_dir) in to_build.iter() {
-            println!("Pip install {:?}", &target_dir);
+            info!("Pip install {:?}", &target_dir);
             let td = tempdir::TempDir::new("anysnake_venv")?;
             let mut singularity_args: Vec<String> = vec![
                 "exec".into(),
@@ -1472,17 +1507,17 @@ fn fill_venv(
                 Some(&venv_dir.join("singularity.bash")),
             )?;
             if !singularity_result.success() {
-                return Err(anyhow!(
+                bail!(
                     "Singularity pip install failed with exit code {}",
                     singularity_result.code().unwrap()
-                ));
+                );
             }
             let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
             for dir_entry in walkdir::WalkDir::new(td.path()) {
                 let dir_entry = dir_entry?;
                 if let Some(filename) = dir_entry.file_name().to_str() {
                     if filename.ends_with(".egg-link") {
-                        println!("found {:?} for {}", &safe_pkg, &filename);
+                        trace!("found {:?} for {}", &safe_pkg, &filename);
                         std::fs::write(
                             target_egg_link,
                             std::fs::read_to_string(dir_entry.path())?,
