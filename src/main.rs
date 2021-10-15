@@ -42,6 +42,7 @@ const DEFAULT_RUST_OVERLAY_REV: &str = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec
 
 const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
 const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
+const DEFAULT_FLAKE_UTIL_URL: &str = "github:numtide/flake-utils";
 const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -75,6 +76,7 @@ struct Nix {
 #[derive(Deserialize, Debug)]
 struct FlakeUtil {
     rev: String,
+    url: Option<String>
 }
 
 #[derive(Deserialize, Debug)]
@@ -797,13 +799,13 @@ fn write_flake(
         }
         None => flake_contents,
     };
-    flake_contents = flake_contents.replace(
-        "%FLAKE_UTIL_REV%",
-        match &parsed_config.flake_util {
-            Some(fu) => &fu.rev,
-            None => DEFAULT_FLAKE_UTIL_REV,
-        },
-    );
+    let (flake_util_url, flake_util_rev): (&str, &str) = match &parsed_config.flake_util {
+        Some(fu) => (&fu.rev, fu.url.as_deref().unwrap_or(DEFAULT_FLAKE_UTIL_URL)),
+        None => (DEFAULT_FLAKE_UTIL_URL, DEFAULT_FLAKE_UTIL_REV),
+    };
+    flake_contents = flake_contents
+        .replace("%FLAKE_UTIL_REV%", flake_util_rev)
+        .replace("%FLAKE_UTIL_URL%", flake_util_url);
     let (mut flake_contents, rust_overlay_rev, rust_overlay_url) = match &parsed_config.rust {
         Some(rust) => (
             flake_contents.replace(
