@@ -1,22 +1,19 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
-use chrono::{NaiveDate, NaiveDateTime};
 use clap::{value_t, App, AppSettings, Arg, SubCommand};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use serde_derive::Deserialize;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::collections::{HashMap};
 use std::io::Write;
-use std::io::{self, BufRead};
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 /* TODO
  *
- * running container managment (does it die when you quit the shell? can we reattach? should we
+ * running container managment (does it die when you quit the shell.
+  Yes it does.?
+  can we reattach? should we
    just all use screen all the time?)
 
  * R
@@ -25,203 +22,15 @@ use std::process::{Command, Stdio};
 
 */
 
+mod config;
+mod python_parsing;
+mod flake_writer;
+mod maps_duplicate_key_is_error;
+
+use flake_writer::lookup_github_tag;
+
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-trait WithDefaultFlakeSource {
-    fn default_rev() -> String;
-    fn default_url() -> String;
-}
-
-#[derive(Deserialize, Debug)]
-struct ConfigToml {
-    anysnake2: Anysnake2,
-    nixpkgs: NixPkgs,
-    outside_nixpkgs: NixPkgs,
-    #[serde(default, rename = "flake-util")]
-    flake_util: FlakeUtil,
-    clone_regexps: Option<HashMap<String, String>>,
-    clones: Option<HashMap<String, HashMap<String, String>>>,
-    #[serde(default)]
-    cmd: HashMap<String, Cmd>,
-    #[serde(default)]
-    rust: Rust,
-    python: Option<Python>,
-    #[serde(default, rename = "mach-nix")]
-    mach_nix: MachNix,
-    container: Option<Container>,
-    flakes: Option<HashMap<String, Flake>>,
-}
-#[derive(Deserialize, Debug)]
-struct Anysnake2 {
-    rev: String,
-    #[serde(default = "Anysnake2::default_url")]
-    url: String,
-    do_not_modify_flake: Option<bool>,
-}
-
-impl Anysnake2 {
-    fn default_url() -> String {
-        "github:TyberiusPrime/anysnake2".to_string()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct NixPkgs {
-    rev: String,
-    #[serde(default = "NixPkgs::default_url")]
-    url: String,
-    packages: Option<Vec<String>>,
-}
-impl NixPkgs {
-    fn default_url() -> String {
-        "github:NixOS/nixpkgs".to_string()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct FlakeUtil {
-    #[serde(default = "FlakeUtil::default_rev")]
-    rev: String,
-    #[serde(default = "FlakeUtil::default_url")]
-    url: String,
-}
-
-impl WithDefaultFlakeSource for FlakeUtil {
-    fn default_rev() -> String {
-        "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19".to_string()
-    }
-
-    fn default_url() -> String {
-        "github:numtide/flake-utils".to_string()
-    }
-}
-
-impl Default for FlakeUtil {
-    fn default() -> Self {
-        FlakeUtil {
-            rev: Self::default_rev(),
-            url: Self::default_url(),
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct Cmd {
-    run: String,
-    pre_run_outside: Option<String>,
-    post_run_inside: Option<String>,
-    post_run_outside: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Rust {
-    version: Option<String>,
-    #[serde(default = "Rust::default_rev")]
-    rust_overlay_rev: String,
-    #[serde(default = "Rust::default_url")]
-    rust_overlay_url: String,
-}
-
-impl Default for Rust {
-    fn default() -> Self {
-        Rust {
-            version: None,
-            rust_overlay_rev: Self::default_rev(),
-            rust_overlay_url: Self::default_url(),
-        }
-    }
-}
-
-impl WithDefaultFlakeSource for Rust {
-    fn default_rev() -> String {
-        "08de2ff90cc08e7f9523ad97e4c1653b09f703ec".to_string()
-    }
-    fn default_url() -> String {
-        "github:oxalica/rust-overlay".to_string()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct Python {
-    version: String,
-    //#[serde(with = "my_date_format")]
-    //ecosystem_date: DateTime<Utc>,
-    ecosystem_date: String,
-    #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
-    packages: HashMap<String, String>,
-}
-#[derive(Deserialize, Debug)]
-struct MachNix {
-    #[serde(default = "MachNix::default_rev")]
-    rev: String,
-    #[serde(default = "MachNix::default_url")]
-    url: String,
-}
-
-impl Default for MachNix {
-    fn default() -> Self {
-        MachNix {
-            rev: Self::default_rev(),
-            url: Self::default_url(),
-        }
-    }
-}
-
-impl WithDefaultFlakeSource for MachNix {
-    fn default_rev() -> String {
-        "3.3.0".to_string()
-    }
-    fn default_url() -> String {
-        "github:DavHau/mach-nix".to_string()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct Flake {
-    url: String,
-    rev: String,
-    follows: Option<Vec<String>>,
-    packages: Vec<String>,
-}
-#[derive(Deserialize, Debug)]
-struct Container {
-    home: Option<String>,
-    volumes_ro: Option<HashMap<String, String>>,
-    volumes_rw: Option<HashMap<String, String>>,
-}
-
-fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
-    const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
-    use chrono::TimeZone;
-    Ok(chrono::Utc
-        .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
-        .naive_utc()
-        .date())
-}
-
-struct InputFlake {
-    name: String,
-    url: String,
-    rev: String,
-    follows: Vec<String>,
-}
-
-impl InputFlake {
-    fn new(name: &str, url: &str, rev: &str, follows: &[&str]) -> Result<Self> {
-        let url = if url.ends_with("/") {
-            url.strip_suffix("/").unwrap()
-        } else {
-            url
-        };
-        Ok(InputFlake {
-            name: name.to_string(),
-            url: url.to_string(),
-            rev: lookup_github_tag(url, rev)?,
-            follows: follows.iter().map(|x| x.to_string()).collect(),
-        })
-    }
-}
-
 fn main() {
     let r = inner_main();
     match r {
@@ -312,7 +121,7 @@ fn inner_main() -> Result<()> {
         "Could not find config file {}. Use --help for help",
         config_file
     ))?;
-    let mut parsed_config: ConfigToml = toml::from_str(&raw_config)
+    let mut parsed_config: config::ConfigToml = toml::from_str(&raw_config)
         .with_context(|| format!("Failure parsing {:?}", std::fs::canonicalize(config_file)))?;
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
@@ -356,7 +165,7 @@ fn inner_main() -> Result<()> {
 
     if !parsed_config.cmd.contains_key(cmd) && !(cmd == "build" || cmd == "run") {
         bail!(
-            "Cmd {} not found. 
+            "Cmd {} not found.
             Available from config file: {:?}
             Available from anysnake2: build, run, example-config, version
             ",
@@ -380,7 +189,7 @@ fn inner_main() -> Result<()> {
                 match &parsed_config.clones {
                     Some(clones) => {
                         let python_requirements_from_clones =
-                            find_python_requirements_for_clones(clones)?;
+                            python_parsing::find_python_requirements_for_clones(clones)?;
                         for (pkg, version_spec) in python_requirements_from_clones.into_iter() {
                             res.push((pkg, version_spec));
                         }
@@ -401,7 +210,7 @@ fn inner_main() -> Result<()> {
         lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev)?,
     );
 
-    let flake_changed = write_flake(
+    let flake_changed = flake_writer::write_flake(
         &flake_dir,
         &parsed_config,
         &python_packages,
@@ -659,33 +468,6 @@ fn run_singularity(
     Ok(Command::new("nix").args(full_args).status()?)
 }
 
-fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str) -> Result<String> {
-    let full_args = vec![
-        "shell".to_string(),
-        format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev),
-        "-c".into(),
-        "nixfmt".into(),
-    ];
-    let mut child = Command::new("nix")
-        .args(full_args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()?;
-    let child_stdin = child.stdin.as_mut().unwrap();
-    child_stdin.write_all(input.as_bytes())?;
-    let out = child
-        .wait_with_output()
-        .context("Failed to wait on nixfmt")?; // closes stdin
-    if out.status.success() {
-        Ok((std::str::from_utf8(&out.stdout).context("nixfmt output wan't utf8")?).to_string())
-    } else {
-        Err(anyhow!(
-            "nix fmt error return{}",
-            out.status.code().unwrap()
-        ))
-    }
-}
-
 fn print_version() -> ! {
     println!("anysnake2 version: {}", VERSION);
     std::process::exit(0);
@@ -715,7 +497,7 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
 
 /// expand clones by clone_regeps, verify url schema
 
-fn lookup_clones(parsed_config: &mut ConfigToml) -> Result<()> {
+fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     let clone_regexps: Vec<(Regex, &String)> = match &parsed_config.clone_regexps {
         Some(replacements) => {
             let mut res = Vec::new();
@@ -759,7 +541,7 @@ fn lookup_clones(parsed_config: &mut ConfigToml) -> Result<()> {
     Ok(())
 }
 
-fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
+fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
     match &parsed_config.clones {
         Some(clones) => {
             for (target_dir, name_urls) in clones.iter() {
@@ -799,7 +581,7 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                             bail!("Unexpected url schema - should have been tested before");
                         };
                         let output = Command::new(cmd)
-                            .args(["clone", furl, "."])
+                            .args(&["clone", furl, "."])
                             .current_dir(final_dir)
                             .output()
                             .context(format!(
@@ -828,519 +610,6 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
     };
 
     Ok(())
-}
-
-// The output is wrapped in a Result to allow matching on errors
-// Returns an Iterator to the Reader of the lines of the file.
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
-}
-
-fn find_python_requirements_for_clones(
-    clones: &HashMap<String, HashMap<String, String>>,
-) -> Result<Vec<(String, String)>> {
-    let mut res = HashSet::new();
-    for (target_dir, name_urls) in clones.iter() {
-        for (name, _url) in name_urls.iter() {
-            let requirement_file: PathBuf = [target_dir, name, "requirements.txt"].iter().collect();
-            if requirement_file.exists() {
-                for line in read_lines(requirement_file)?
-                    .map(|line| line.unwrap_or_else(|_| "".to_string()))
-                    .map(|line| line.trim().to_string())
-                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
-                {
-                    res.insert(line);
-                }
-            }
-
-            let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
-            debug!("looking for {:?}", &setup_cfg_file);
-            if setup_cfg_file.exists() {
-                let reqs = parse_python_config_file(&setup_cfg_file);
-                match reqs {
-                    Err(e) => {
-                        warn!("failed to parse {:?}: {}", setup_cfg_file, e)
-                    }
-                    Ok(mut reqs) => {
-                        debug!("requirements {:?}", reqs);
-                        for k in reqs.drain(..) {
-                            res.insert(k); // identical lines!
-                        }
-                    }
-                };
-            }
-        }
-    }
-    Ok(res.into_iter().map(parse_python_package_spec).collect())
-}
-
-fn parse_python_package_spec(spec_line: String) -> (String, String) {
-    let pos = spec_line.find(&['>', '<', '=', '!'][..]);
-    match pos {
-        Some(pos) => {
-            let (name, spec) = spec_line.split_at(pos);
-            (name.to_string(), spec.to_string())
-        }
-        None => (spec_line, "".to_string()),
-    }
-}
-
-fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
-    //configparser does not do multi line values
-    //ini dies on them as well.
-    //so we do our own poor man's parsing
-    debug!("Parsing {:?}", &setup_cfg_file);
-    let raw = std::fs::read_to_string(&setup_cfg_file)?;
-    let mut res = Vec::new();
-    match raw.find("[options]") {
-        Some(options_start) => {
-            let mut inside_value = false;
-            let mut value_indention = 0;
-            let mut value = "".to_string();
-            for line in raw[options_start..].split('\n') {
-                if !inside_value {
-                    if line.contains("install_requires") {
-                        let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
-                        value_indention = line.len() - wo_indent_len;
-                        match line.find('=') {
-                            Some(equal_pos) => {
-                                let v = line[equal_pos + 1..].trim_end();
-                                value += v;
-                                value += "\n";
-                                inside_value = true;
-                            }
-                            None => bail!("No = in install_requires line"),
-                        }
-                    }
-                } else {
-                    // inside value
-                    let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
-                    let indent = line.len() - wo_indent_len;
-                    if indent > value_indention {
-                        value += line.trim_start();
-                        value += "\n"
-                    } else {
-                        break;
-                    }
-                }
-            }
-            for line in value.split('\n') {
-                if !line.trim().is_empty() {
-                    res.push(line.trim().to_string())
-                }
-            }
-        }
-        None => bail!("no [options] in setup.cfg"),
-    };
-    Ok(res)
-    //Err(anyhow!("Could not parse"))
-}
-
-fn write_flake(
-    flake_dir: &Path,
-    parsed_config: &ConfigToml,
-    python_packages: &[(String, String)],
-    use_generated_file_instead: bool,
-) -> Result<bool> {
-    let template = std::include_str!("flake_template.nix");
-    let flake_filename: PathBuf = if use_generated_file_instead {
-        ["flake", "flake.generated.nix"].iter().collect()
-    } else {
-        ["flake", "flake.nix"].iter().collect()
-    };
-    let old_flake_contents = {
-        if flake_filename.exists() {
-            std::fs::read_to_string(&flake_filename)?
-        } else {
-            "".to_string()
-        }
-    };
-    let mut flake_contents: String = template.to_string();
-    let mut inputs: Vec<InputFlake> = Vec::new();
-
-    inputs.push(InputFlake::new(
-        "nixpkgs",
-        &parsed_config.nixpkgs.url,
-        &parsed_config.nixpkgs.rev,
-        &[],
-    )?);
-    flake_contents = match &parsed_config.nixpkgs.packages {
-        Some(pkgs) => {
-            let pkgs: String = pkgs
-                .iter()
-                .map(|x| format!("${{{}}}\n", x))
-                .collect::<Vec<String>>()
-                .join("\n");
-            flake_contents.replace("%NIXPKGS_PACKAGES%", &pkgs)
-        }
-        None => flake_contents,
-    };
-
-    inputs.push(InputFlake::new(
-        "flake-utils",
-        &parsed_config.flake_util.url,
-        &parsed_config.flake_util.rev,
-        &["nixpkgs"],
-    )?);
-
-    flake_contents = match &parsed_config.rust.version {
-        Some(version) => {
-            inputs.push(InputFlake::new(
-                "rust-overlay",
-                &parsed_config.rust.rust_overlay_url,
-                &parsed_config.rust.rust_overlay_rev,
-                &["nixpkgs", "flake-utils"],
-            )?);
-            flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
-        }
-        None => flake_contents.replace("\"%RUST%\"", "null"),
-    };
-
-    flake_contents = match &parsed_config.python {
-        Some(python) => {
-            if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
-                bail!(
-                        format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
-            }
-            let python_major_minor = format!("python{}", python.version.replace(".", ""));
-
-            let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
-            out_python_packages.sort();
-            let out_python_packages = out_python_packages.join("\n");
-
-            let ecosystem_date = parse_my_date(&python.ecosystem_date)
-                .context("Failed to parse python.ecosystem-date")?;
-            let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date)?;
-
-            inputs.push(InputFlake::new(
-                "mach-nix",
-                &parsed_config.mach_nix.url,
-                &parsed_config.mach_nix.rev,
-                &["nixpkgs", "flake-utils", "pypi-deps-db"],
-            )?);
-
-            inputs.push(InputFlake::new(
-                "pypi-deps-db",
-                "github:DavHau/pypi-deps-db",
-                &pypi_debs_db_rev,
-                &["nixpkgs", "mach-nix"],
-            )?);
-
-            flake_contents
-                .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
-                .replace("%PYTHON_PACKAGES%", &out_python_packages)
-                .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
-        }
-        None => flake_contents,
-    };
-
-    flake_contents = match &parsed_config.flakes {
-        Some(flakes) => {
-            let mut flake_packages = "".to_string();
-            for (name, flake) in flakes.iter() {
-                let rev_follows: Vec<&str> = match &flake.follows {
-                    Some(f) => f.iter().map(|x| &x[..]).collect(),
-                    None => Vec::new(),
-                };
-                inputs.push(InputFlake::new(
-                    &name,
-                    &flake.url,
-                    &flake.rev,
-                    &rev_follows[..],
-                )?);
-                for pkg in &flake.packages {
-                    flake_packages += &format!("${{{}.{}}}", name, pkg);
-                }
-            }
-            flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
-        }
-        None => flake_contents,
-    };
-    let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
-    let input_list = input_list.join(", ");
-
-    flake_contents = flake_contents
-        .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
-        .replace("#%INPUTS%", &input_list);
-
-    flake_contents = nix_format(
-        &flake_contents,
-        &parsed_config.outside_nixpkgs.url,
-        &lookup_github_tag(
-            &parsed_config.outside_nixpkgs.url,
-            &parsed_config.outside_nixpkgs.rev,
-        )?,
-    )?;
-
-    //print!("{}", flake_contents);
-    let mut git_path = flake_dir.to_path_buf();
-    git_path.push(".git");
-    if !git_path.exists() {
-        let output = Command::new("git")
-            .args(["init"])
-            .current_dir(&flake_dir)
-            .output()
-            .context(format!("Failed create git repo in {:?}", flake_dir))?;
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let msg = format!(
-                "Failed to init git repo in  {:?}.\n Stdout {:?}\nStderr: {:?}",
-                flake_dir, stdout, stderr
-            );
-            bail!(msg);
-        }
-    }
-
-    if use_generated_file_instead {
-        if old_flake_contents != flake_contents {
-            std::fs::write(flake_filename, flake_contents)?;
-        }
-        Ok(true)
-    } else if old_flake_contents != flake_contents {
-        std::fs::write(flake_filename, flake_contents)?;
-
-        Ok(true)
-    } else {
-        debug!("flake unchanged");
-        Ok(false)
-    }
-}
-
-fn format_input_defs(inputs: &Vec<InputFlake>) -> String {
-    let mut out = "".to_string();
-    for fl in inputs {
-        let v_follows: Vec<String> = fl
-            .follows
-            .iter()
-            .map(|x| format!("        inputs.{}.follows = \"{}\";", &x, &x))
-            .collect();
-        let str_follows = v_follows.join("\n");
-        out.push_str(&format!(
-            "
-    {} = {{
-        url = \"{}?rev={}\";
-{}
-    }};",
-            fl.name, fl.url, fl.rev, &str_follows
-        ))
-    }
-    out
-}
-
-fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Vec<String>> {
-    let mut res = Vec::new();
-    for (name, version_constraint) in input.iter() {
-        if version_constraint.starts_with("editable") {
-            continue;
-        }
-
-        if version_constraint.contains("==")
-            || version_constraint.contains('>')
-            || version_constraint.contains('<')
-            || version_constraint.contains('!')
-        {
-            res.push(format!("{}{}", name, version_constraint));
-        } else if version_constraint.contains('=') {
-            res.push(format!("{}={}", name, version_constraint));
-        } else if version_constraint.is_empty() {
-            res.push(name.to_string())
-        } else {
-            bail!("invalid python version spec {}{}", name, version_constraint);
-        }
-    }
-    Ok(res)
-}
-
-fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
-    let query_date = date.and_hms(0, 0, 0);
-    //chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
-    //.context("Failed to parse pypi-deb-db date")?;
-    let lowest =
-        chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
-            .unwrap();
-    if query_date < lowest {
-        bail!("Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z");
-    }
-    let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-    if query_date > now {
-        bail!("Pypi-deps-db date is in the future!");
-    }
-
-    let store_path: PathBuf = ["flake", ".pypi-debs-db.lookup.json"].iter().collect();
-    let query_date_str = query_date.format("%Y%m%d").to_string();
-    fetch_cached(
-        store_path,
-        &query_date_str,
-        PyPiDepsDBRetriever {
-            query_date,
-            query_date_str: query_date_str.to_string(),
-        },
-    )
-}
-
-struct PyPiDepsDBRetriever {
-    query_date: NaiveDateTime,
-    query_date_str: String,
-}
-
-impl PyPiDepsDBRetriever {
-    fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
-        let url = format!(
-            "http://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
-            page
-        );
-        let body: String = ureq::get(&url).call()?.into_string()?;
-        let json: serde_json::Value =
-            serde_json::from_str(&body).context("Failed to parse github commits api")?;
-        let json = json
-            .as_array()
-            .context("No entries in github commits api?")?;
-        let mut res = HashMap::new();
-        for entry in json.iter() {
-            let date = chrono::DateTime::parse_from_rfc3339(
-                entry["commit"]["committer"]["date"]
-                    .as_str()
-                    .context("Empty committer date?")?,
-            )?;
-            let sha = entry["sha"].as_str().context("no sha on commit?")?;
-            let str_date = date.format("%Y%m%d").to_string();
-            //println!("{}, {}", &str_date, &sha);
-            res.insert(str_date, sha.to_string());
-        }
-        Ok(res)
-    }
-}
-
-impl Retriever for PyPiDepsDBRetriever {
-    fn retrieve(&self) -> Result<HashMap<String, String>> {
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let mut page = now.signed_duration_since(self.query_date).num_days() / 35; //empirically..., just has to be close, not exact
-        let mut known_mappings = HashMap::new();
-        loop {
-            let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
-            if new_mappings.is_empty() {
-                bail!("Could not find entry in pypi-deps-db (no more pages)");
-            }
-            let newest = newest_date(&new_mappings)?;
-            let oldest = oldest_date(&new_mappings)?;
-            for (k, v) in new_mappings.drain() {
-                known_mappings.insert(k, v);
-            }
-            if known_mappings.contains_key(&self.query_date_str) {
-                return Ok(known_mappings);
-            } else {
-                //it is not in there...
-                if newest < self.query_date {
-                    trace!("{:?} too old", &self.query_date);
-                    page -= 1;
-                    if page == 0 {
-                        bail!("Could not find entry in pypi-deps-db (arrived at latest entry)");
-                    }
-                } else if oldest > self.query_date {
-                    trace!("{:?} too new", &self.query_date);
-                    page += 1;
-                }
-            }
-        }
-    }
-}
-
-fn oldest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
-    let oldest = new_mappings.keys().min().unwrap();
-    Ok(chrono::NaiveDateTime::parse_from_str(
-        &format!("{} 00:00", oldest),
-        "%Y%m%d %H:%M",
-    )?)
-}
-fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
-    let oldest = new_mappings.keys().max().unwrap();
-    //println!("oldest {}", oldest);
-    Ok(chrono::NaiveDateTime::parse_from_str(
-        &format!("{} 00:00", oldest),
-        "%Y%m%d %H:%M",
-    )?)
-}
-
-fn lookup_github_tag(url: &str, tag_or_rev: &str) -> Result<String> {
-    if tag_or_rev.len() == 40 || !url.starts_with("github:") {
-        Ok(tag_or_rev.to_string())
-    } else {
-        let repo = url.strip_prefix("github:").unwrap();
-        fetch_cached(
-            [format!("flake/.github_{}.json", repo.replace("/", "_"))]
-                .iter()
-                .collect(),
-            tag_or_rev,
-            GitHubTagRetriever {
-                repo: repo.to_string(),
-            },
-        )
-        .with_context(|| format!("Looking up tag on {}", &url))
-    }
-}
-
-trait Retriever {
-    fn retrieve(&self) -> Result<HashMap<String, String>>;
-}
-
-fn fetch_cached(cache_filename: PathBuf, query: &str, retriever: impl Retriever) -> Result<String> {
-    let mut known: HashMap<String, String> = match cache_filename.exists() {
-        true => serde_json::from_str(&std::fs::read_to_string(&cache_filename)?)?,
-        false => HashMap::new(),
-    };
-    if known.contains_key(query) {
-        return Ok(known.get(query).unwrap().to_string());
-    } else {
-        let mut new = retriever.retrieve()?;
-        for (k, v) in new.drain() {
-            known.insert(k, v);
-        }
-        std::fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
-        return Ok(known
-            .get(query)
-            .context(format!("Could not find query value: {}", query))?
-            .to_string());
-    }
-}
-
-struct GitHubTagRetriever {
-    repo: String,
-}
-
-impl Retriever for GitHubTagRetriever {
-    fn retrieve(&self) -> Result<HashMap<String, String>> {
-        let mut res = HashMap::new();
-        for page in 0..30 {
-            let url = format!(
-                "https://api.github.com/repos/{}/tags?per_page=100&page={}",
-                &self.repo, page
-            );
-            let body: String = ureq::get(&url).call()?.into_string()?;
-            let json: serde_json::Value =
-                serde_json::from_str(&body).context("Failed to parse github tags api")?;
-            let json = json.as_array().context("No entries in github tags api?")?;
-            if json.is_empty() {
-                break;
-            }
-            for entry in json {
-                let name: String = entry["name"]
-                    .as_str()
-                    .context("No name found in github tags")?
-                    .to_string();
-                let sha: String = entry["commit"]["sha"]
-                    .as_str()
-                    .context("No sha found in github tags")?
-                    .to_string();
-                res.insert(name, sha);
-            }
-        }
-        Ok(res)
-    }
 }
 
 fn rebuild_flake(use_generated_file_instead: bool) -> Result<()> {
@@ -1374,7 +643,7 @@ run_scripts/
 
     if !use_generated_file_instead {
         Command::new("git")
-            .args(["commit", "-m", "autocommit"])
+            .args(&["commit", "-m", "autocommit"])
             .current_dir(&flake_dir)
             .output()
             .context("Failed git add flake.nix")?;
@@ -1392,7 +661,7 @@ run_scripts/
     std::fs::write(&build_unfinished_file, "in_progress")?;
 
     if Command::new("nix")
-        .args(["build", "-v", "--show-trace"])
+        .args(&["build", "-v", "--show-trace"])
         .current_dir("flake")
         .status()?
         .success()
@@ -1448,7 +717,7 @@ fn fill_venv(
             .iter()
             .collect();
         if !target_dir.exists() {
-            bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}", 
+            bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}",
                                pkg, target_dir);
         }
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
@@ -1508,7 +777,8 @@ fn fill_venv(
                 .join(format!("{}.egg-link", &safe_pkg));
             std::fs::write(target_egg_link, std::fs::read_to_string(source_egg_link)?)?;
 
-            /*for dir_entry in walkdir::WalkDir::new(td.path()) {
+            /*keep it here in case we need it again...
+             * for dir_entry in walkdir::WalkDir::new(td.path()) {
                 let dir_entry = dir_entry?;
                 if let Some(filename) = dir_entry.file_name().to_str() {
                     if filename.ends_with(".egg-link") {
@@ -1522,13 +792,7 @@ fn fill_venv(
                 };
             }
             */
-            //now clean up the empty directory we used to map the package
-            //std::fs::remove_dir(venv_dir.join(safe_pkg))?;
-
-            //st::fs::write(egg_link, format!("/venv/{}\n../
         }
     }
-    //for (name, version_constraint) in input.iter() {
-    //if version_constraint.starts_with("editable") {
     Ok(())
 }
