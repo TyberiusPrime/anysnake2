@@ -38,7 +38,7 @@
         # `nix develop`
         devShell = pkgs.mkShell {
           # supply the specific rust version
-          nativeBuildInputs = [ rust  pkgs.rust-analyzer pkgs.git];
+          nativeBuildInputs = [ rust  pkgs.rust-analyzer pkgs.git pkgs.cargo-udeps];
         };
       });
 }

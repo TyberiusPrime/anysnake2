@@ -1,28 +1,31 @@
 [anysnake2]
 rev = "0.3.1" 
 # rev = "dev" = do not switch to fixed version, used in development. 
-# If a tag or hash from the anysnake github repo at https://github.com/TyberiusPrime/anysnake2,
-# we leverage nix to run exactly that version.
+# Otherwise a tag or hash from the anysnake github repo at 
+# (default https://github.com/TyberiusPrime/anysnake2).
+# We leverage nix to run exactly that version.
 # url = "https://github.com/TyberiusPrime/anysnake2" # if you want to override this.
 
 # do_not_modify_flake = true # if set to true, 
                              # flake/flake.nix is never overwritten, 
 							 # but stored in flake/flake.generated.nix.
 							 # And nix build is called every run
-							 # This is an escape hatch
+							 # This is an escape hatch.
 
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash 
 # rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
 # url = "git+https://github.com/NixOS/nixpkgs" # optional
-# url = "github:NixOS/nixpkgs" # optional
+# url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
 packages = [ # use https://search.nixos.org/packages to search
 	"fish",
 	"netcat"] # optional
 
 [flake-util]
+# the revision used by flake-util
 # rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
+# url = oxalica/rust-overlay
 
 
 [python]
@@ -55,7 +58,9 @@ packages = [
 	]
 
 [flakes.hello]
-	url = "path:./../../hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+    # note that this flake is locked to the newest version when installing
+	# pass ?rev=sha if you want to tie things down in your anysnake2.toml
+	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
 	packages = ["defaultPackage.x86_64-linux"]
 
