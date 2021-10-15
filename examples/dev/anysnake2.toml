@@ -137,6 +137,12 @@ jupyter
 # ports are exposed by default (using host network!)
 
 
+[cmd.hello]
+run = """
+echo "running hello"
+hello
+"""
+
 [clone_regexps]
 "@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
 "@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"

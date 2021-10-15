@@ -257,9 +257,16 @@ fn main() -> Result<()> {
         )
         .subcommand(
             SubCommand::with_name("example-config")
-                .about("dump an example anysnake2.toml to stdout"),
+                .about("dump a fully featured example anysnake2.toml to stdout"),
         )
         .subcommand(SubCommand::with_name("version").about("output version of this build"))
+        .subcommand(
+            SubCommand::with_name("run")
+                .about("run arbitray commands in container (w/o any pre/post bash scripts)")
+                .arg(
+                    Arg::with_name("slop").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+                ),
+        )
         .get_matches();
 
     let cmd = match matches.subcommand() {
@@ -324,9 +331,12 @@ fn main() -> Result<()> {
         print_version();
     }
 
-    if !parsed_config.cmd.contains_key(cmd) && cmd != "build" {
+    if !parsed_config.cmd.contains_key(cmd) && !(cmd == "build" || cmd == "run") {
         return Err(anyhow!(
-            "Cmd {} not found. Available: {:?}",
+            "Cmd {} not found. 
+            Available from config file: {:?}
+            Available from anysnake2: build, run, example-config, version
+            ",
             cmd,
             parsed_config.cmd.keys()
         ));
@@ -406,45 +416,65 @@ fn main() -> Result<()> {
     if cmd == "build" {
         println_f!("Build only - done");
     } else {
-        println_f!("Running singularity - cmd {cmd}");
-        let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
-        match &cmd_info.pre_run_outside {
-            Some(bash_script) => {
-                run_bash(bash_script).context("pre run outside failed")?;
-            }
-            None => {}
-        };
-        let run_template = std::include_str!("run.sh");
-        let run_dir = format!("flake/run_scripts/{}", cmd);
+        let run_dir: PathBuf = ["flake/run_scripts/", cmd].iter().collect();
+        let outer_run_sh: PathBuf = run_dir.join("outer_run.sh");
+        let run_sh: PathBuf = run_dir.join("run.sh");
         std::fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
-        let run_script = run_template.replace("%RUN%", &cmd_info.run);
-        let post_run_script =
-            run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
+        let post_run_sh: PathBuf = run_dir.join("post_run.sh");
+        let mut post_run_outside: Option<String> = None;
 
-        let outer_run_sh: PathBuf = [&run_dir, "outer_run.sh"].iter().collect(); //todo: tempfile
+        if cmd == "run" {
+            let slop: Vec<&str> = matches
+                .subcommand()
+                .1
+                .unwrap()
+                .values_of("slop")
+                .unwrap()
+                .collect();
+            if slop.is_empty() {
+                return Err(anyhow!("no command passed after run"));
+            }
+            println!("Running singularity with ad hoc - cmd {:?}", slop);
+            std::fs::write(&outer_run_sh, "#/bin/bash\nbash /anysnake2/run.sh\n")?;
+            std::fs::write(&run_sh, slop.join(" "))?;
+            std::fs::write(&post_run_sh, "")?;
+        } else {
+            println_f!("Running singularity - cmd {cmd}");
+            let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
+            match &cmd_info.pre_run_outside {
+                Some(bash_script) => {
+                    run_bash(bash_script).context("pre run outside failed")?;
+                }
+                None => {}
+            };
+            let run_template = std::include_str!("run.sh");
+            let run_script = run_template.replace("%RUN%", &cmd_info.run);
+            let post_run_script =
+                run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
+            std::fs::write(
+                &outer_run_sh,
+                "#/bin/bash\nbash /anysnake2/run.sh\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
+            )?;
+            std::fs::write(&run_sh, run_script)?;
+            std::fs::write(&post_run_sh, post_run_script)?;
+            post_run_outside = cmd_info.post_run_outside.clone();
+        }
+
         let outer_run_sh_str: String = outer_run_sh
             .clone()
             .into_os_string()
             .to_string_lossy()
             .to_string();
-        let run_sh: PathBuf = [&run_dir, "run.sh"].iter().collect(); //todo: tempfile
         let run_sh_str: String = run_sh
             .clone()
             .into_os_string()
             .to_string_lossy()
             .to_string();
-        let post_run_sh: PathBuf = [&run_dir, "post_run.sh"].iter().collect(); //todo: tempfile
         let post_run_sh_str: String = post_run_sh
             .clone()
             .into_os_string()
             .to_string_lossy()
             .to_string();
-        std::fs::write(
-            &outer_run_sh,
-            "#/bin/bash\nbash /anysnake2/run.sh\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
-        )?;
-        std::fs::write(&run_sh, run_script)?;
-        std::fs::write(&post_run_sh, post_run_script)?;
 
         let mut singularity_args: Vec<String> = vec![
             "exec".into(),
@@ -453,6 +483,11 @@ fn main() -> Result<()> {
             home_dir_str,
         ];
         let mut binds = Vec::new();
+        binds.push((
+            "/nix/store".to_string(),
+            "/nix/store".to_string(),
+            "ro".to_string(),
+        ));
         let mut envs = Vec::new();
         binds.push((
             run_sh_str,
@@ -531,7 +566,15 @@ fn main() -> Result<()> {
         };
         for (from, to, opts) in binds {
             singularity_args.push("--bind".into());
-            singularity_args.push(format!("{}:{}:{}", from, to, opts));
+            singularity_args.push(format!(
+                "{}:{}:{}",
+                //std::fs::canonicalize(from)?
+                    //.into_os_string()
+                    //.to_string_lossy(),
+                from,
+                to,
+                opts
+            ));
         }
 
         for e in envs.into_iter() {
@@ -542,9 +585,13 @@ fn main() -> Result<()> {
         singularity_args.push("flake/result/rootfs".into());
         singularity_args.push("/bin/bash".into());
         singularity_args.push("/anysnake2/outer_run.sh".into());
-        let singularity_result = run_singularity(&singularity_args[..], &nixpkgs_url)?;
-        match &cmd_info.post_run_outside {
-            Some(bash_script) => match run_bash(bash_script) {
+        let singularity_result = run_singularity(
+            &singularity_args[..],
+            &nixpkgs_url,
+            Some(&run_dir.join("singularity.bash")),
+        )?;
+        match post_run_outside {
+            Some(bash_script) => match run_bash(&bash_script) {
                 Ok(()) => {}
                 Err(e) => {
                     println!("Warning: an error occured when running the post_run_outside bash script: {}", e)
@@ -562,17 +609,27 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run_singularity(args: &[String], nix_repo: &str) -> Result<std::process::ExitStatus> {
+fn run_singularity(
+    args: &[String],
+    nix_repo: &str,
+    log_file: Option<&PathBuf>,
+) -> Result<std::process::ExitStatus> {
     let mut full_args = vec![
         "shell".to_string(),
         format!("{}#singularity", nix_repo),
         "-c".into(),
         "singularity".into(),
     ];
-    pretty_print_singularity_call(args);
     for arg in args {
         full_args.push(arg.to_string());
     }
+    let pp = pretty_print_singularity_call(&full_args);
+    if let Some(lf) = log_file {
+        let o = format!("nix {}", pp.trim_start());
+        std::fs::write(lf, o)?;
+    }
+    // println!("Full args: {:?}", full_args);
+    println!("nix {}", pp.trim_start());
     Ok(Command::new("nix").args(full_args).status()?)
 }
 
@@ -609,7 +666,7 @@ fn print_version() -> ! {
 }
 
 fn pretty_print_singularity_call(args: &[String]) -> String {
-    let mut res = "  singularity \\\n".to_string();
+    let mut res = "".to_string();
     let mut skip_space = false;
     for arg in args.iter() {
         if skip_space {
@@ -618,13 +675,14 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
             res += "    ";
         }
         res += arg;
-        if !(arg == "--bind" || arg == "--env" || arg == "--home") {
+        if !(arg == "--bind" || arg == "--env" || arg == "--home" || arg=="singularity") {
             res += " \\\n";
         } else {
             skip_space = true;
             res += " ";
         }
     }
+    res.pop();
     res += "\n";
     res
 }
@@ -1386,6 +1444,8 @@ fn fill_venv(
                 "--userns".into(),
                 "--no-home".into(),
                 "--bind".into(),
+                "/nix/store:/nix/store:ro".into(),
+                "--bind".into(),
                 format!("{}:/tmp:rw", &td.path().to_string_lossy()),
                 "--bind".into(),
                 format!(
@@ -1406,9 +1466,11 @@ fn fill_venv(
                 "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv",
                 &safe_pkg
             ));
-            println!("Singularity cmd:\n\tsingularity \\");
-            println!();
-            let singularity_result = run_singularity(&singularity_args[..], nixpkgs_url)?;
+            let singularity_result = run_singularity(
+                &singularity_args[..],
+                nixpkgs_url,
+                Some(&venv_dir.join("singularity.bash")),
+            )?;
             if !singularity_result.success() {
                 return Err(anyhow!(
                     "Singularity pip install failed with exit code {}",
