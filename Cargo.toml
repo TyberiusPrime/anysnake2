@@ -18,6 +18,5 @@ ureq = "2.0"
 anyhow = {version="1.0.44", features=["backtrace"]}
 regex = "1"
 tempdir = "0.3.7"
-walkdir = "2.3.2"
 log = "0.4.14"
 stderrlog = "0.5.1"

@@ -21,7 +21,6 @@ use std::process::{Command, Stdio};
 
  * R
 
- * Get rid of walkdir
  * refactor
 
 */
@@ -448,13 +447,13 @@ fn inner_main() -> Result<()> {
         let mut post_run_outside: Option<String> = None;
 
         if cmd == "run" {
-            let slop: Vec<&str> = matches
-                .subcommand()
-                .1
-                .unwrap()
-                .values_of("slop")
-                .unwrap()
-                .collect();
+            let slop = matches.subcommand().1.unwrap().values_of("slop");
+            let slop: Vec<&str> = match slop {
+                Some(slop) => slop.collect(),
+                None => {
+                    bail!("ad hoc command (=run) passed, but nothing to actually run passed")
+                }
+            };
             if slop.is_empty() {
                 bail!("no command passed after run");
             }
@@ -797,9 +796,7 @@ fn perform_clones(parsed_config: &ConfigToml) -> Result<()> {
                         } else if url.starts_with("hg+") {
                             ("hg", url.strip_prefix("hg+").unwrap())
                         } else {
-                            bail!(
-                                "Unexpected url schema - should have been tested before"
-                            );
+                            bail!("Unexpected url schema - should have been tested before");
                         };
                         let output = Command::new(cmd)
                             .args(["clone", furl, "."])
@@ -1153,11 +1150,7 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
         } else if version_constraint.is_empty() {
             res.push(name.to_string())
         } else {
-            bail!(
-                "invalid python version spec {}{}",
-                name,
-                version_constraint
-            );
+            bail!("invalid python version spec {}{}", name, version_constraint);
         }
     }
     Ok(res)
@@ -1171,9 +1164,7 @@ fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
         chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
             .unwrap();
     if query_date < lowest {
-        bail!(
-            "Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z"
-        );
+        bail!("Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z");
     }
     let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
     if query_date > now {
@@ -1233,9 +1224,7 @@ impl Retriever for PyPiDepsDBRetriever {
         loop {
             let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
             if new_mappings.is_empty() {
-                bail!(
-                    "Could not find entry in pypi-deps-db (no more pages)"
-                );
+                bail!("Could not find entry in pypi-deps-db (no more pages)");
             }
             let newest = newest_date(&new_mappings)?;
             let oldest = oldest_date(&new_mappings)?;
@@ -1250,9 +1239,7 @@ impl Retriever for PyPiDepsDBRetriever {
                     trace!("{:?} too old", &self.query_date);
                     page -= 1;
                     if page == 0 {
-                        bail!(
-                            "Could not find entry in pypi-deps-db (arrived at latest entry)"
-                        );
+                        bail!("Could not find entry in pypi-deps-db (arrived at latest entry)");
                     }
                 } else if oldest > self.query_date {
                     trace!("{:?} too new", &self.query_date);
@@ -1513,11 +1500,19 @@ fn fill_venv(
                 );
             }
             let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-            for dir_entry in walkdir::WalkDir::new(td.path()) {
+            let source_egg_link = td
+                .path()
+                .join("venv/lib")
+                .join(format!("python{}", python_version))
+                .join("site-packages")
+                .join(format!("{}.egg-link", &safe_pkg));
+            std::fs::write(target_egg_link, std::fs::read_to_string(source_egg_link)?)?;
+
+            /*for dir_entry in walkdir::WalkDir::new(td.path()) {
                 let dir_entry = dir_entry?;
                 if let Some(filename) = dir_entry.file_name().to_str() {
                     if filename.ends_with(".egg-link") {
-                        trace!("found {:?} for {}", &safe_pkg, &filename);
+                        trace!("found {:?} for {:?}", &safe_pkg, &dir_entry);
                         std::fs::write(
                             target_egg_link,
                             std::fs::read_to_string(dir_entry.path())?,
@@ -1526,6 +1521,7 @@ fn fill_venv(
                     }
                 };
             }
+            */
             //now clean up the empty directory we used to map the package
             //std::fs::remove_dir(venv_dir.join(safe_pkg))?;
 

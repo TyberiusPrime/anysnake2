@@ -9,3 +9,4 @@ print('venv', os.listdir("/anysnake2/venv"))
 print('linked-in', os.listdir("/anysnake2/venv/linked_in"))
 print('mbf-r', os.listdir("/anysnake2/venv/linked_in/mbf-r/src"))
 import mbf_sampledata
+print(sys.modules['mbf_sampledata'])
