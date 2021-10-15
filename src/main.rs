@@ -29,54 +29,83 @@ use std::process::{Command, Stdio};
 
 */
 
-const DEFAULT_ANYSNAKE_REPO: &str = "TyberiusPrime/anysnake2";
-const DEFAULT_ANYSNAKE_URL: &str = concatcp!("github:", DEFAULT_ANYSNAKE_REPO);
-
-const DEFAULT_MACH_NIX_REPO: &str = "DavHau/mach-nix";
-const DEFAULT_MACH_NIX_URL: &str = concatcp!("github:", DEFAULT_MACH_NIX_REPO);
-const DEFAULT_MACH_NIX_REV: &str = "3.3.0";
-
-const DEFAULT_RUST_OVERLAY_REPO: &str = "oxalica/rust-overlay";
-const DEFAULT_RUST_OVERLAY_URL: &str = concatcp!("github:", DEFAULT_RUST_OVERLAY_REPO);
-const DEFAULT_RUST_OVERLAY_REV: &str = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec";
-
-const DEFAULT_NIXPKGS_REPO: &str = "NixOS/nixpkgs";
-const DEFAULT_NIXPKGS_URL: &str = concatcp!("github:", DEFAULT_NIXPKGS_REPO);
-const DEFAULT_FLAKE_UTIL_URL: &str = "github:numtide/flake-utils";
-const DEFAULT_FLAKE_UTIL_REV: &str = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19";
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+trait WithDefaultFlakeSource {
+    fn default_rev() -> String;
+    fn default_url() -> String;
+}
 
 #[derive(Deserialize, Debug)]
 struct ConfigToml {
     anysnake2: Anysnake2,
-    nixpkgs: Nix,
-    flake_util: Option<FlakeUtil>,
+    nixpkgs: NixPkgs,
+    #[serde(default, rename = "flake-util")]
+    flake_util: FlakeUtil,
     clone_regexps: Option<HashMap<String, String>>,
     clones: Option<HashMap<String, HashMap<String, String>>>,
     cmd: HashMap<String, Cmd>,
-    rust: Option<Rust>,
+    #[serde(default)]
+    rust: Rust,
     python: Option<Python>,
+    #[serde(default, rename = "mach-nix")]
+    mach_nix: MachNix,
     container: Option<Container>,
     flakes: Option<HashMap<String, Flake>>,
 }
 #[derive(Deserialize, Debug)]
 struct Anysnake2 {
     rev: String,
-    url: Option<String>,
+    #[serde(default = "Anysnake2::default_url")]
+    url: String,
     do_not_modify_flake: Option<bool>,
 }
 
+impl Anysnake2 {
+    fn default_url() -> String {
+        "github:TyberiusPrime/anysnake2".to_string()
+    }
+}
+
 #[derive(Deserialize, Debug)]
-struct Nix {
+struct NixPkgs {
     rev: String,
-    url: Option<String>,
+    #[serde(default = "NixPkgs::default_url")]
+    url: String,
     packages: Option<Vec<String>>,
 }
+impl NixPkgs {
+    fn default_url() -> String {
+        "github:NixOS/nixpkgs".to_string()
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct FlakeUtil {
+    #[serde(default = "FlakeUtil::default_rev")]
     rev: String,
-    url: Option<String>
+    #[serde(default = "FlakeUtil::default_url")]
+    url: String,
+}
+
+impl WithDefaultFlakeSource for FlakeUtil {
+    fn default_rev() -> String {
+        "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19".to_string()
+    }
+
+    fn default_url() -> String {
+        "github:numtide/flake-utils".to_string()
+    }
+}
+
+impl Default for FlakeUtil {
+    fn default() -> Self {
+        FlakeUtil {
+            rev: Self::default_rev(),
+            url: Self::default_url(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -86,11 +115,33 @@ struct Cmd {
     post_run_inside: Option<String>,
     post_run_outside: Option<String>,
 }
+
 #[derive(Deserialize, Debug)]
 struct Rust {
-    version: String,
-    rust_overlay_rev: Option<String>,
-    rust_overlay_url: Option<String>,
+    version: Option<String>,
+    #[serde(default = "Rust::default_rev")]
+    rust_overlay_rev: String,
+    #[serde(default = "Rust::default_url")]
+    rust_overlay_url: String,
+}
+
+impl Default for Rust {
+    fn default() -> Self {
+        Rust {
+            version: None,
+            rust_overlay_rev: Self::default_rev(),
+            rust_overlay_url: Self::default_url(),
+        }
+    }
+}
+
+impl WithDefaultFlakeSource for Rust {
+    fn default_rev() -> String {
+        "08de2ff90cc08e7f9523ad97e4c1653b09f703ec".to_string()
+    }
+    fn default_url() -> String {
+        "github:oxalica/rust-overlay".to_string()
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -101,8 +152,31 @@ struct Python {
     ecosystem_date: String,
     #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
     packages: HashMap<String, String>,
-    mach_nix_rev: Option<String>,
-    mach_nix_url: Option<String>,
+}
+#[derive(Deserialize, Debug)]
+struct MachNix {
+    #[serde(default = "MachNix::default_rev")]
+    rev: String,
+    #[serde(default = "MachNix::default_url")]
+    url: String,
+}
+
+impl Default for MachNix {
+    fn default() -> Self {
+        MachNix {
+            rev: Self::default_rev(),
+            url: Self::default_url(),
+        }
+    }
+}
+
+impl WithDefaultFlakeSource for MachNix {
+    fn default_rev() -> String {
+        "3.3.0".to_string()
+    }
+    fn default_url() -> String {
+        "github:oxalica/DavHau/mach-nix".to_string()
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -197,19 +271,10 @@ fn main() -> Result<()> {
             .unwrap_or("noversionspecified")
     {
         println!("restarting with version {}", &parsed_config.anysnake2.rev);
-        let anysnake_url = parsed_config
-            .anysnake2
-            .url
-            .as_deref()
-            .unwrap_or(DEFAULT_ANYSNAKE_URL);
         let repo = format!(
             "{}?rev={}",
-            anysnake_url,
-            if anysnake_url == DEFAULT_ANYSNAKE_URL {
-                lookup_anysnake_rev(&parsed_config.anysnake2.rev)?
-            } else {
-                parsed_config.anysnake2.rev.clone()
-            }
+            &parsed_config.anysnake2.url,
+            lookup_github_tag(&parsed_config.anysnake2.url, &parsed_config.anysnake2.rev)?
         );
 
         let mut args = vec![
@@ -275,12 +340,8 @@ fn main() -> Result<()> {
 
     let nixpkgs_url = format!(
         "{}?rev={}",
-        parsed_config
-            .nixpkgs
-            .url
-            .as_deref()
-            .unwrap_or(DEFAULT_NIXPKGS_URL),
-        lookup_nix_rev(&parsed_config.nixpkgs.rev)?,
+        &parsed_config.nixpkgs.url,
+        lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev)?,
     );
 
     let flake_changed = write_flake(
@@ -765,28 +826,10 @@ fn write_flake(
         }
     };
     let mut flake_contents = template
-        .replace(
-            "%NIXPKG_URL%",
-            parsed_config
-                .nixpkgs
-                .url
-                .as_deref()
-                .unwrap_or(DEFAULT_NIXPKGS_URL),
-        )
+        .replace("%NIXPKG_URL%", &parsed_config.nixpkgs.url)
         .replace(
             "%NIXPKG_REV%",
-            &(if parsed_config
-                .nixpkgs
-                .url
-                .as_deref()
-                .unwrap_or(DEFAULT_NIXPKGS_URL)
-                == DEFAULT_NIXPKGS_URL
-            {
-                // if you change the url, you are on your own for the tags. Sorry.
-                lookup_nix_rev(&parsed_config.nixpkgs.rev)?
-            } else {
-                parsed_config.nixpkgs.rev.to_string()
-            }),
+            &lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev)?,
         );
     flake_contents = match &parsed_config.nixpkgs.packages {
         Some(pkgs) => {
@@ -799,40 +842,19 @@ fn write_flake(
         }
         None => flake_contents,
     };
-    let (flake_util_url, flake_util_rev): (&str, &str) = match &parsed_config.flake_util {
-        Some(fu) => (&fu.rev, fu.url.as_deref().unwrap_or(DEFAULT_FLAKE_UTIL_URL)),
-        None => (DEFAULT_FLAKE_UTIL_URL, DEFAULT_FLAKE_UTIL_REV),
-    };
     flake_contents = flake_contents
-        .replace("%FLAKE_UTIL_REV%", flake_util_rev)
-        .replace("%FLAKE_UTIL_URL%", flake_util_url);
-    let (mut flake_contents, rust_overlay_rev, rust_overlay_url) = match &parsed_config.rust {
-        Some(rust) => (
-            flake_contents.replace(
-                "\"%RUST%\"",
+        .replace("%FLAKE_UTIL_REV%", &parsed_config.flake_util.rev)
+        .replace("%FLAKE_UTIL_URL%", &parsed_config.flake_util.url);
+    let rust_content = match &parsed_config.rust.version {
+            Some(version) =>
                 // skipping the rust-docs saves about 270 mb ¯\_(ツ)_/¯
-                &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", &rust.version),
-            ),
-            rust.rust_overlay_rev
-                .as_deref()
-                .unwrap_or(DEFAULT_RUST_OVERLAY_REV),
-            rust.rust_overlay_url
-                .as_deref()
-                .unwrap_or(DEFAULT_RUST_OVERLAY_URL),
-        ),
-        None => (
-                 flake_contents.replace(
-                "%RUST%",
-                "null",
-            ),
-
-            DEFAULT_RUST_OVERLAY_REV,
-            DEFAULT_RUST_OVERLAY_URL,
-        ),
+                format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version),
+            None => "null".to_string(),
     };
+    flake_contents = flake_contents.replace("\"%RUST%\"", &rust_content);
     flake_contents = flake_contents
-        .replace("%RUST_OVERLAY_REV%", rust_overlay_rev)
-        .replace("%RUST_OVERLAY_URL%", rust_overlay_url);
+        .replace("%RUST_OVERLAY_REV%", &parsed_config.rust.rust_overlay_rev)
+        .replace("%RUST_OVERLAY_URL%", &parsed_config.rust.rust_overlay_url);
 
     flake_contents = match &parsed_config.python {
         Some(python) => {
@@ -849,27 +871,15 @@ fn write_flake(
             let ecosystem_date = parse_my_date(&python.ecosystem_date)
                 .context("Failed to parse python.ecosystem-date")?;
             let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date)?;
-            let mach_nix_rev = python
-                .mach_nix_rev
-                .as_deref()
-                .unwrap_or(DEFAULT_MACH_NIX_REV);
-            let mach_nix_url = python
-                .mach_nix_url
-                .as_deref()
-                .unwrap_or(DEFAULT_MACH_NIX_URL);
-
-            let mach_nix_rev = if mach_nix_url == DEFAULT_MACH_NIX_URL {
-                lookup_mach_nix_rev(mach_nix_rev)? //todo: turn into cow
-            } else {
-                mach_nix_rev.to_string()
-            };
+            let mach_nix_rev =
+                lookup_github_tag(&parsed_config.mach_nix.url, &parsed_config.mach_nix.rev)?; //todo: turn into cow
 
             flake_contents
                 .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace("%MACH_NIX_REV%", &mach_nix_rev)
-                .replace("%MACH_NIX_URL%", mach_nix_url)
+                .replace("%MACH_NIX_URL%", &parsed_config.mach_nix.url)
         }
         None => flake_contents,
     };
@@ -1091,10 +1101,11 @@ fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
     )?)
 }
 
-fn lookup_github_tag(repo: &str, tag_or_rev: &str) -> Result<String> {
-    if tag_or_rev.len() == 40 {
+fn lookup_github_tag(url: &str, tag_or_rev: &str) -> Result<String> {
+    if tag_or_rev.len() == 40 || !url.starts_with("github:") {
         Ok(tag_or_rev.to_string())
     } else {
+        let repo = url.strip_prefix("github:").unwrap();
         fetch_cached(
             [format!("flake/.github_{}.json", repo.replace("/", "_"))]
                 .iter()
@@ -1104,18 +1115,8 @@ fn lookup_github_tag(repo: &str, tag_or_rev: &str) -> Result<String> {
                 repo: repo.to_string(),
             },
         )
+        .with_context(|| format!("Looking up tag on {}", &url))
     }
-}
-
-fn lookup_nix_rev(tag_or_rev: &str) -> Result<String> {
-    lookup_github_tag(DEFAULT_NIXPKGS_REPO, tag_or_rev).context("Failed to lookup nixpkgs tag")
-}
-
-fn lookup_mach_nix_rev(tag_or_rev: &str) -> Result<String> {
-    lookup_github_tag(DEFAULT_MACH_NIX_REPO, tag_or_rev).context("Failed to lookup mach-nix tag")
-}
-fn lookup_anysnake_rev(tag_or_rev: &str) -> Result<String> {
-    lookup_github_tag(DEFAULT_ANYSNAKE_REPO, tag_or_rev).context("Failed to lookup anysnake tag")
 }
 
 trait Retriever {

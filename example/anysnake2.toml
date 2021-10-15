@@ -1,20 +1,20 @@
 [anysnake2]
-rev = "0.3.1" 
-# rev = "dev" = do not switch to fixed version, used in development. 
-# Otherwise a tag or hash from the anysnake github repo at 
+rev = "0.3.1"
+# rev = "dev" = do not switch to fixed version, used in development.
+# Otherwise a tag or hash from the anysnake github repo at
 # (default https://github.com/TyberiusPrime/anysnake2).
 # We leverage nix to run exactly that version.
 # url = "https://github.com/TyberiusPrime/anysnake2" # if you want to override this.
 
-# do_not_modify_flake = true # if set to true, 
-                             # flake/flake.nix is never overwritten, 
+# do_not_modify_flake = true # if set to true,
+                             # flake/flake.nix is never overwritten,
 							 # but stored in flake/flake.generated.nix.
 							 # And nix build is called every run
 							 # This is an escape hatch.
 
 
 [nixpkgs]
-rev = "21.05" # the nixpgks version or github hash 
+rev = "21.05" # the nixpgks version or github hash
 # rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
 # url = "git+https://github.com/NixOS/nixpkgs" # optional
 # url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
@@ -28,18 +28,19 @@ packages = [ # use https://search.nixos.org/packages to search
 # url = oxalica/rust-overlay
 
 
-[python]
+[python] # python section is optional
 version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
 ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
 # mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
+# mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
 [python.packages]
 scipy=""
 pypipegraph=">2."
 mbf_r = "editable/code"  # see [clones.code] below
-mbf_sampledata = "editable/code" 
-dppd = "editable/code" 
-dppd_plotnine = "editable/code" 
+mbf_sampledata = "editable/code"
+dppd = "editable/code"
+dppd_plotnine = "editable/code"
 # pandas="<1.0"
 
 [clones.code] # target directory
@@ -65,7 +66,9 @@ packages = [
 	packages = ["defaultPackage.x86_64-linux"]
 
 [rust]
-version = "1.55.0" # stable. to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
+# version/rust section is optional. leave of for no rust
+version = "1.55.0" # =stable. 
+#i to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
 # rust_overlay_rev = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec" #https://github.com/oxalica/rust-overlay, optional
 # rust_overlay_url = "github:oxalica/rust-overlay"
 
@@ -125,7 +128,7 @@ run = """fish
 
 [cmd.jupyter]
 run = """
-jupyter 
+jupyter
 """
 # ports are exposed by default (using host network!)
 
