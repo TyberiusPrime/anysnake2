@@ -27,8 +27,8 @@ version="1.55.0"
 [container.volumes_rw]
 "." = "/project" # map the current folder to /project
 
-[env]
-ANYSNAKE2=1
+[container.env]
+ANYSNAKE2="1"
 
 [cmd.default]
 run = """

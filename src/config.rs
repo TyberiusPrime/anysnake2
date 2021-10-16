@@ -23,7 +23,8 @@ pub struct ConfigToml {
     pub python: Option<Python>,
     #[serde(default, rename = "mach-nix")]
     pub mach_nix: MachNix,
-    pub container: Option<Container>,
+    #[serde(default)]
+    pub container: Container,
     pub flakes: Option<HashMap<String, Flake>>,
 }
 #[derive(Deserialize, Debug)]
@@ -167,6 +168,18 @@ pub struct Container {
     pub home: Option<String>,
     pub volumes_ro: Option<HashMap<String, String>>,
     pub volumes_rw: Option<HashMap<String, String>>,
+    pub env: Option<HashMap<String, String>>,
+}
+
+impl Default for Container {
+    fn default() -> Self {
+        Container {
+            home: None,
+            volumes_ro: None,
+            volumes_rw: None,
+            env: None,
+        }
+    }
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {

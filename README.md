@@ -188,12 +188,12 @@ The actual commands can be surrounded by pre/post run commands outside/inside th
 
 Build in commands (which you can not replace by config) are 
 
- * build - just build the (unpacked) container as a symlink tree
- * build_image - build the container image in flake/result/singularity_container.sif
- * config - list the available example configs (and config <name> to print one)
- * help - help
- * version - output anysnake2 version
- * run - run arbitrary commands (without pre/post wrappers)
+ * `build` - just build the (unpacked) container as a symlink tree
+ * `build_image` - build the container image in flake/result/singularity_container.sif
+ * `config` - list the available example configs (and config <name> to print one)
+ * `help` - help
+ * `version` - output anysnake2 version
+ * `run --` - run arbitrary commands (without pre/post wrappers). Everything after -- is passed on to the container
 
 
 # Singularity won't run

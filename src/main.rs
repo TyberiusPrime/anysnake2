@@ -32,9 +32,6 @@ use std::sync::Arc;
  * remove egg links from no-longer-editable packages
  * rename env to container.env]
  *
- * pandas="1.3.0" as format support
- * newer mach-nik, for example b56a541af15efd2062ffb9abb69f63dcceafb64d,
- * otherwise the overwriting of pypi-deps refuses to work?
 
 */
 
@@ -260,7 +257,7 @@ fn inner_main() -> Result<()> {
 
     let home_dir: PathBuf = {
         [replace_env_vars(
-            ((|| parsed_config.container.as_ref()?.home.as_deref())()).unwrap_or("$HOME"),
+            parsed_config.container.home.as_deref().unwrap_or("$HOME"),
         )]
         .iter()
         .collect()
@@ -398,33 +395,28 @@ fn inner_main() -> Result<()> {
             envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
         };
 
-        match &parsed_config.container {
-            Some(container) => {
-                match &container.volumes_ro {
-                    Some(volumes_ro) => {
-                        for (from, to) in volumes_ro {
-                            let from: PathBuf = std::fs::canonicalize(&from)
-                                .context(format!("abs_path on {}", &from))?;
-                            let from = from.into_os_string().to_string_lossy().to_string();
-                            binds.push((from, to.to_string(), "ro".to_string()));
-                        }
-                    }
-                    None => {}
-                };
-                match &container.volumes_rw {
-                    Some(volumes_ro) => {
-                        for (from, to) in volumes_ro {
-                            let from: PathBuf = std::fs::canonicalize(&from)
-                                .context(format!("abs_path on {}", &from))?;
-                            let from = from.into_os_string().to_string_lossy().to_string();
-                            binds.push((from, to.to_string(), "rw".to_string()));
-                        }
-                    }
-                    None => {}
+        match &parsed_config.container.volumes_ro {
+            Some(volumes_ro) => {
+                for (from, to) in volumes_ro {
+                    let from: PathBuf =
+                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "ro".to_string()));
                 }
             }
             None => {}
         };
+        match &parsed_config.container.volumes_rw {
+            Some(volumes_ro) => {
+                for (from, to) in volumes_ro {
+                    let from: PathBuf =
+                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "rw".to_string()));
+                }
+            }
+            None => {}
+        }
         for (from, to, opts) in binds {
             singularity_args.push("--bind".into());
             singularity_args.push(format!(
@@ -436,6 +428,12 @@ fn inner_main() -> Result<()> {
                 to,
                 opts
             ));
+        }
+
+        if let Some(container_envs) = &parsed_config.container.env {
+            for (k, v) in container_envs.iter() {
+                envs.push(format!("{}={}", k,v));
+            }
         }
 
         for e in envs.into_iter() {
