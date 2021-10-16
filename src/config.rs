@@ -148,7 +148,7 @@ impl Default for MachNix {
 
 impl WithDefaultFlakeSource for MachNix {
     fn default_rev() -> String {
-        "3.3.0".to_string()
+        "b56a541af15efd2062ffb9abb69f63dcceafb64d".to_string() // 3.3.0 does not support overwritting py-deps-db
     }
     fn default_url() -> String {
         "github:DavHau/mach-nix".to_string()

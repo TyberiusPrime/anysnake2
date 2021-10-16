@@ -17,8 +17,23 @@ use std::process::{Command, Stdio};
    just all use screen all the time?)
 
  * R
+ * container creation
+ * work without Rust 
+ *
+ *  more examples
 
  * refactor
+ *
+ * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
+ 
+ * remove egg links from no-longer-editable packages
+ * rename env to container.env]
+ * 
+ * ctrl-c does not correctly kill container?
+ *
+ * pandas="1.3.0" as format support
+ * newer mach-nik, for example b56a541af15efd2062ffb9abb69f63dcceafb64d,
+ * otherwise the overwriting of pypi-deps refuses to work?
 
 */
 
@@ -35,7 +50,7 @@ fn main() {
     let r = inner_main();
     match r {
         Err(e) => {
-            error!("{:?}", e);
+            error!("{:?}", e); //so the error messages are colorfull
             std::process::exit(1);
         }
         Ok(_) => {
@@ -46,7 +61,7 @@ fn main() {
 
 fn inner_main() -> Result<()> {
     let matches = App::new("Anysnake2")
-        .version("0.1")
+        .version(VERSION)
         .author("Florian Finkernagel <finkernagel@imt.uni-marburg.de>")
         .about("Sane version declaration and container generation using nix")
         .setting(AppSettings::AllowExternalSubcommands)
@@ -450,6 +465,9 @@ fn run_singularity(
     nix_repo: &str,
     log_file: Option<&PathBuf>,
 ) -> Result<std::process::ExitStatus> {
+     ctrlc::set_handler(|| {
+         println("Ignoring ctrl c while singularity is running")
+     });
     let mut full_args = vec![
         "shell".to_string(),
         format!("{}#singularity", nix_repo),
@@ -465,7 +483,13 @@ fn run_singularity(
         std::fs::write(lf, o)?;
     }
     info!("nix {}", pp.trim_start());
-    Ok(Command::new("nix").args(full_args).status()?)
+    let res = Ok(Command::new("nix").args(full_args).status()?);
+ctrlc::set_handler(|| {
+         println("Received ctrl-c, exit");
+        std::process::exit(1);
+     });
+
+    res
 }
 
 fn print_version() -> ! {
