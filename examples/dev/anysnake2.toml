@@ -41,7 +41,7 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 
 [python.packages]
 scipy=""
-pypipegraph=">2."
+pypipegraph2=">2.1"
 mbf_r = "editable/code"  # see [clones.code] below
 mbf_sampledata = "editable/code"
 dppd = "editable/code"

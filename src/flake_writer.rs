@@ -88,8 +88,19 @@ pub fn write_flake(
                 &["nixpkgs", "flake-utils"],
             )?);
             flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
+            .replace(
+            "#%OVERLAY_AND_PACKAGES%",
+            "
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
+        ")
         }
-        None => flake_contents.replace("\"%RUST%\"", "null"),
+        None => flake_contents.replace("\"%RUST%\"", "\"\"").replace(
+            "#%OVERLAY_AND_PACKAGES%",
+            "
+        pkgs = import nixpkgs { inherit system; };
+        ",
+        ),
     };
 
     flake_contents = match &parsed_config.python {
@@ -124,11 +135,25 @@ pub fn write_flake(
             )?);
 
             flake_contents
-                .replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
+                //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
+                .replace(
+                    "\"%MACHNIX%\"",
+                    &format!(
+                        "
+    (import mach-nix) {{
+          inherit pkgs;
+          pypiDataRev = pypi-deps-db.rev;
+          pypiDataSha256 = pypi-deps-db.narHash;
+          python = {python_major_minor};
+        }};
+        ",
+                        python_major_minor = &python_major_minor
+                    ),
+                )
         }
-        None => flake_contents,
+        None => flake_contents.replace("\"%MACHNIX%\"", "null"),
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -458,8 +483,8 @@ fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str) -> Result<Strin
         Ok((std::str::from_utf8(&out.stdout).context("nixfmt output wan't utf8")?).to_string())
     } else {
         Err(anyhow!(
-            "nix fmt error return{}",
-            out.status.code().unwrap()
+            "nix fmt error return{}\n{}",
+            out.status.code().unwrap(), input
         ))
     }
 }

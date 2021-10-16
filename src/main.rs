@@ -21,17 +21,8 @@ use std::sync::Arc;
 
  * R
  * container creation
- * work without Rust
- *
- *  more examples
-
- * refactor
  *
  * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
-
- * remove egg links from no-longer-editable packages
- * rename env to container.env]
- *
 
 */
 
@@ -400,7 +391,6 @@ fn inner_main() -> Result<()> {
                     .to_string();
                 python_paths.push(egg_target)
             }
-
             envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
         };
 

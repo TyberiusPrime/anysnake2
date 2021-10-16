@@ -1,27 +1,7 @@
 {
   description = "Anysnake2 generated flake";
   inputs = rec {
-#%INPUT_DEFS%
-    #nixpkgs.url = "%NIXPKG_URL%/?rev=%NIXPKG_REV%";
-    #flake-utils.url = "%FLAKE_UTIL_URL%/?rev=%FLAKE_UTIL_REV%";
-    #rust-overlay = {
-    #url = "%RUST_OVERLAY_URL%?rev=%RUST_OVERLAY_REV%";
-    #inputs.nixpkgs.follows = "nixpkgs";
-    #inputs.flake-utils.follows = "flake-utils";
-    #};
-    #mach-nix = {
-    #url = "%MACH_NIX_URL%/?rev=%MACH_NIX_REV%";
-    #inputs.flake-utils.follows = "flake-utils";
-    #inputs.nixpkgs.follows = "nixpkgs";
-    #inputs.pypi-deps-db.follows = "pypi-deps-db";
-    #};
-    #pypi-deps-db = {
-    #url = "github:DavHau/pypi-deps-db/?rev=%PYPI_DEPS_DB_REV%";
-    #inputs.nixpkgs.follows = "nixpkgs";
-    #inputs.mach-nix.follows = "mach-nix";
-    #};
-    #%PYPY_DEPS_DB
-    #%FURTHER_FLAKES%
+    #%INPUT_DEFS%
   };
 
   outputs = { self,
@@ -30,26 +10,21 @@
 
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
-
-        mach-nix_ = (import mach-nix) {
-          inherit pkgs;
-          pypiDataRev = pypi-deps-db.rev;
-          pypiDataSha256 = pypi-deps-db.narHash;
-          python = "%PYTHON_MAJOR_MINOR%";
-        };
+        #%OVERLAY_AND_PACKAGES%
+        mach-nix_ = "%MACHNIX%";
 
         my_rust = "%RUST%";
 
         _buildSymlinkImage =
           { name, script, python_requirements, additional_mkPythonArgs ? { } }:
           let
-            mypy = mach-nix_.mkPython ({
-              requirements = python_requirements;
-            } // additional_mkPythonArgs);
-            mypy2 =
-              mypy.outPath; # lib.strings.concatMapStrings (x: "{" + x + "}\n") (lib.attrNames (mypy ));
+            mypy = if mach-nix_ != null then
+              (mach-nix_.mkPython ({
+                requirements = python_requirements;
+              } // additional_mkPythonArgs))
+            else
+              null;
+            mypy2 = if mach-nix_ != null then (mypy.outPath) else "";
             script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + script);
           in {
             script_file = script_file;
