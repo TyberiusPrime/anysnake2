@@ -18,7 +18,7 @@ ecosystem_date="2021-08-16" # you get whatever packages the solver would have pr
 
 [python.packages]
 jupyter=""
-pandas=">=1.2"
+pandas="1.2.0"
 
 [rust]
 version="1.55.0"

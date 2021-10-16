@@ -1,9 +1,9 @@
 //from serde-with 1.10.0
 //use super::*;
 use std::marker::PhantomData;
-use serde::ser::{Serialize, Serializer};
+//use serde::ser::{Serialize, Serializer};
 use serde::de::{
-    Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor,
+    Deserialize, Deserializer, Error, MapAccess, Visitor,
 };
 use std::fmt;
 use std::hash::{BuildHasher, Hash};
@@ -88,6 +88,7 @@ where
     deserializer.deserialize_map(visitor)
 }
 
+/*
 /// Serialize the map with the default serializer
 pub fn serialize<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -96,3 +97,4 @@ where
 {
     value.serialize(serializer)
 }
+*/

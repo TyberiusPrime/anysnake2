@@ -1,6 +1,7 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{value_t, App, AppSettings, Arg, SubCommand};
+use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde_json::json;
@@ -8,6 +9,8 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /* TODO
  *
@@ -43,6 +46,7 @@ mod python_parsing;
 use flake_writer::lookup_github_tag;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() {
     let r = inner_main();
     match r {
@@ -56,7 +60,19 @@ fn main() {
     }
 }
 
+lazy_static! {
+    static ref CTRL_C_ALLOWED: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+}
+
 fn inner_main() -> Result<()> {
+    let c = CTRL_C_ALLOWED.clone();
+    ctrlc::set_handler(move || {
+        if c.load(Ordering::Relaxed) {
+            println!("anysnake aborted");
+            std::process::exit(1);
+        }
+    })?;
+
     let matches = App::new("Anysnake2")
         .version(VERSION)
         .author("Florian Finkernagel <finkernagel@imt.uni-marburg.de>")
@@ -458,14 +474,9 @@ fn inner_main() -> Result<()> {
 }
 
 fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
-    ctrlc::set_handler(|| {
-        //println!("Ignoring ctrl c while singularity is running")
-    })?;
+    CTRL_C_ALLOWED.store(false, Ordering::SeqCst);
     let res = func();
-    ctrlc::set_handler(|| {
-        println!("Received ctrl-c, exit");
-        std::process::exit(1);
-    })?;
+    CTRL_C_ALLOWED.store(true, Ordering::SeqCst);
     res
 }
 

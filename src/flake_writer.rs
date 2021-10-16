@@ -243,7 +243,8 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
         } else if version_constraint.is_empty() {
             res.push(name.to_string())
         } else {
-            bail!("invalid python version spec {}{}", name, version_constraint);
+            res.push(format!("{}=={}", name, version_constraint));
+            //bail!("invalid python version spec {}{}", name, version_constraint);
         }
     }
     Ok(res)
