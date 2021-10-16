@@ -102,8 +102,11 @@ fn inner_main() -> Result<()> {
             SubCommand::with_name("build").about("build container, but do not run anything"),
         )
         .subcommand(
-            SubCommand::with_name("example-config")
-                .about("dump a fully featured example anysnake2.toml to stdout"),
+            SubCommand::with_name("config")
+                .about("dump different example anysnake2.toml to stdout")
+                .subcommand(SubCommand::with_name("basic"))
+                .subcommand(SubCommand::with_name("minimal"))
+                .subcommand(SubCommand::with_name("full"))
         )
         .subcommand(SubCommand::with_name("version").about("output version of this build"))
         .subcommand(
@@ -115,16 +118,22 @@ fn inner_main() -> Result<()> {
         )
         .get_matches();
 
+    if let ("config", Some(sc)) = matches.subcommand() {
+        {
+            match sc.subcommand().0 {
+                "minimal" => println!("{}", std::include_str!("../examples/minimal/anysnake2.toml")),
+                "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
+                "basic" | _ => {
+                    println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
+                }
+            }
+            std::process::exit(0);
+        }
+    }
     let cmd = match matches.subcommand() {
         (name, Some(_subcommand)) => name,
         _ => "default",
     };
-
-    if cmd == "example-config" {
-        println!("# dump this to anysnake2.toml (default filename)");
-        println!("{}", std::include_str!("../examples/full/anysnake2.toml"));
-        std::process::exit(0);
-    }
 
     let verbosity = value_t!(matches, "verbose", usize).unwrap_or(2);
     stderrlog::new()
@@ -432,7 +441,7 @@ fn inner_main() -> Result<()> {
 
         if let Some(container_envs) = &parsed_config.container.env {
             for (k, v) in container_envs.iter() {
-                envs.push(format!("{}={}", k,v));
+                envs.push(format!("{}={}", k, v));
             }
         }
 

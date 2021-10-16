@@ -1,6 +1,11 @@
-# a really really minimal config example
+# the absolute minimal anysnake2.toml example
 [anysnake2]
 rev = "dev"
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash

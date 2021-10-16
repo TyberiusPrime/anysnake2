@@ -1,3 +1,4 @@
+# basic anysnake2.toml example
 [anysnake2]
 rev = "dev"
 

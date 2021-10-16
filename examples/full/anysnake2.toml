@@ -1,3 +1,4 @@
+# fully featured anysnake2.toml example
 [anysnake2]
 rev = "0.3.1"
 # rev = "dev" = do not switch to fixed version, used in development.
@@ -12,6 +13,9 @@ rev = "0.3.1"
 							 # And nix build is called every run
 							 # This is an escape hatch.
 
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash
