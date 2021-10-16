@@ -4,7 +4,7 @@ use clap::{value_t, App, AppSettings, Arg, SubCommand};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde_json::json;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -18,18 +18,16 @@ use std::process::{Command, Stdio};
 
  * R
  * container creation
- * work without Rust 
+ * work without Rust
  *
  *  more examples
 
  * refactor
  *
  * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
- 
+
  * remove egg links from no-longer-editable packages
  * rename env to container.env]
- * 
- * ctrl-c does not correctly kill container?
  *
  * pandas="1.3.0" as format support
  * newer mach-nik, for example b56a541af15efd2062ffb9abb69f63dcceafb64d,
@@ -38,12 +36,11 @@ use std::process::{Command, Stdio};
 */
 
 mod config;
-mod python_parsing;
 mod flake_writer;
 mod maps_duplicate_key_is_error;
+mod python_parsing;
 
 use flake_writer::lookup_github_tag;
-
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn main() {
@@ -169,7 +166,7 @@ fn inner_main() -> Result<()> {
                 args.push(argument);
             }
             trace!("new args {:?}", args);
-            let status = Command::new("nix").args(args).status()?;
+            let status = run_without_ctrl_c(|| Ok(Command::new("nix").args(&args).status()?))?;
             //now push
             std::process::exit(status.code().unwrap());
         }
@@ -460,36 +457,41 @@ fn inner_main() -> Result<()> {
     Ok(())
 }
 
+fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
+    ctrlc::set_handler(|| {
+        //println!("Ignoring ctrl c while singularity is running")
+    })?;
+    let res = func();
+    ctrlc::set_handler(|| {
+        println!("Received ctrl-c, exit");
+        std::process::exit(1);
+    })?;
+    res
+}
+
 fn run_singularity(
     args: &[String],
     nix_repo: &str,
     log_file: Option<&PathBuf>,
 ) -> Result<std::process::ExitStatus> {
-     ctrlc::set_handler(|| {
-         println("Ignoring ctrl c while singularity is running")
-     });
-    let mut full_args = vec![
-        "shell".to_string(),
-        format!("{}#singularity", nix_repo),
-        "-c".into(),
-        "singularity".into(),
-    ];
-    for arg in args {
-        full_args.push(arg.to_string());
-    }
-    let pp = pretty_print_singularity_call(&full_args);
-    if let Some(lf) = log_file {
-        let o = format!("nix {}", pp.trim_start());
-        std::fs::write(lf, o)?;
-    }
-    info!("nix {}", pp.trim_start());
-    let res = Ok(Command::new("nix").args(full_args).status()?);
-ctrlc::set_handler(|| {
-         println("Received ctrl-c, exit");
-        std::process::exit(1);
-     });
-
-    res
+    run_without_ctrl_c(|| {
+        let mut full_args = vec![
+            "shell".to_string(),
+            format!("{}#singularity", nix_repo),
+            "-c".into(),
+            "singularity".into(),
+        ];
+        for arg in args {
+            full_args.push(arg.to_string());
+        }
+        let pp = pretty_print_singularity_call(&full_args);
+        if let Some(lf) = log_file {
+            let o = format!("nix {}", pp.trim_start());
+            std::fs::write(lf, o)?;
+        }
+        info!("nix {}", pp.trim_start());
+        Ok(Command::new("nix").args(full_args).status()?)
+    })
 }
 
 fn print_version() -> ! {
@@ -604,16 +606,18 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                         } else {
                             bail!("Unexpected url schema - should have been tested before");
                         };
-                        let output = Command::new(cmd)
-                            .args(&["clone", furl, "."])
-                            .current_dir(final_dir)
-                            .output()
-                            .context(format!(
-                                "Failed to execute clone {target_dir}/{name} from {url}.",
-                                target_dir = target_dir,
-                                name = name,
-                                url = url
-                            ))?;
+                        let output = run_without_ctrl_c(|| {
+                            Command::new(cmd)
+                                .args(&["clone", furl, "."])
+                                .current_dir(&final_dir)
+                                .output()
+                                .context(format!(
+                                    "Failed to execute clone {target_dir}/{name} from {url}.",
+                                    target_dir = target_dir,
+                                    name = name,
+                                    url = url
+                                ))
+                        })?;
                         if !output.status.success() {
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -650,11 +654,14 @@ run_scripts/
     if flake_dir.join("flake.lock").exists() {
         gitargs.push("flake.nix");
     }
-    let output = Command::new("git")
-        .args(&gitargs)
-        .current_dir(&flake_dir)
-        .output()
-        .context("Failed git add flake.nix")?;
+
+    let output = run_without_ctrl_c(|| {
+        Command::new("git")
+            .args(&gitargs)
+            .current_dir(&flake_dir)
+            .output()
+            .context("Failed git add flake.nix")
+    })?;
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -666,11 +673,13 @@ run_scripts/
     }
 
     if !use_generated_file_instead {
-        Command::new("git")
-            .args(&["commit", "-m", "autocommit"])
-            .current_dir(&flake_dir)
-            .output()
-            .context("Failed git add flake.nix")?;
+        run_without_ctrl_c(|| {
+            Command::new("git")
+                .args(&["commit", "-m", "autocommit"])
+                .current_dir(&flake_dir)
+                .output()
+                .context("Failed git add flake.nix")
+        })?;
     }
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -684,11 +693,13 @@ run_scripts/
     let build_unfinished_file = flake_dir.join(".build_unfinished");
     std::fs::write(&build_unfinished_file, "in_progress")?;
 
-    if Command::new("nix")
-        .args(&["build", "-v", "--show-trace"])
-        .current_dir("flake")
-        .status()?
-        .success()
+    if run_without_ctrl_c(|| {
+        Ok(Command::new("nix")
+            .args(&["build", "-v", "--show-trace"])
+            .current_dir("flake")
+            .status()?)
+    })?
+    .success()
     {
         std::fs::remove_file(&build_unfinished_file)?;
         Ok(())
@@ -698,17 +709,19 @@ run_scripts/
 }
 
 fn run_bash(script: &str) -> Result<()> {
-    let mut child = Command::new("bash").stdin(Stdio::piped()).spawn()?;
-    let child_stdin = child.stdin.as_mut().unwrap();
-    child_stdin.write_all(b"set -euo pipefail\n")?;
-    child_stdin.write_all(script.as_bytes())?;
-    child_stdin.write_all(b"\n")?;
-    let ecode = child.wait().context("Failed to wait on bash")?; // closes stdin
-    if ecode.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("Bash error return code {}", ecode))
-    }
+    run_without_ctrl_c(|| {
+        let mut child = Command::new("bash").stdin(Stdio::piped()).spawn()?;
+        let child_stdin = child.stdin.as_mut().unwrap();
+        child_stdin.write_all(b"set -euo pipefail\n")?;
+        child_stdin.write_all(script.as_bytes())?;
+        child_stdin.write_all(b"\n")?;
+        let ecode = child.wait().context("Failed to wait on bash")?; // closes stdin
+        if ecode.success() {
+            Ok(())
+        } else {
+            Err(anyhow!("Bash error return code {}", ecode))
+        }
+    })
 }
 
 fn replace_env_vars(input: &str) -> String {
