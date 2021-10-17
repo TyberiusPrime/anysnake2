@@ -188,8 +188,8 @@ The actual commands can be surrounded by pre/post run commands outside/inside th
 
 Build in commands (which you can not replace by config) are 
 
- * `build` - just build the (unpacked) container as a symlink tree
- * `build_image` - build the container image in flake/result/singularity_container.sif
+ * `build rootfs` - just build the (unpacked) container as a symlink tree
+ * `build sif` - build the container image in flake/result/anysnake2_container.sif
  * `config` - list the available example configs (and config <name> to print one)
  * `help` - help
  * `version` - output anysnake2 version

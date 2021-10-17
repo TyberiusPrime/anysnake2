@@ -18,8 +18,8 @@ struct InputFlake {
 
 impl InputFlake {
     fn new(name: &str, url: &str, rev: &str, follows: &[&str]) -> Result<Self> {
-        let url = if url.ends_with("/") {
-            url.strip_suffix("/").unwrap()
+        let url = if url.ends_with('/') {
+            url.strip_suffix('/').unwrap()
         } else {
             url
         };
@@ -32,6 +32,7 @@ impl InputFlake {
     }
 }
 
+#[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
     flake_dir: &Path,
     parsed_config: &config::ConfigToml,
@@ -165,7 +166,7 @@ pub fn write_flake(
                     None => Vec::new(),
                 };
                 inputs.push(InputFlake::new(
-                    &name,
+                    name,
                     &flake.url,
                     &flake.rev,
                     &rev_follows[..],
@@ -229,7 +230,7 @@ pub fn write_flake(
     }
 }
 
-fn format_input_defs(inputs: &Vec<InputFlake>) -> String {
+fn format_input_defs(inputs: &[InputFlake]) -> String {
     let mut out = "".to_string();
     for fl in inputs {
         let v_follows: Vec<String> = fl
