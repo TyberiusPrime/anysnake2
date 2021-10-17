@@ -134,7 +134,7 @@
         };
       in {
         defaultPackage = buildSymlinkImage _args;
-        image = buildSingularityImage _args;
+        sif_image = buildSingularityImage _args;
       });
 
 }

@@ -90,7 +90,14 @@ fn inner_main() -> Result<()> {
                 .takes_value(true),
         )
         .subcommand(
-            SubCommand::with_name("build").about("build container, but do not run anything"),
+            SubCommand::with_name("build").about("build containers (see subcommands), but do not run anything")
+            .subcommand(
+                SubCommand::with_name("rootfs").about("build rootfs container (used for singularity)"),
+            )
+            .subcommand(
+                SubCommand::with_name("sif").about("build SIF container image (used for singularity)"),
+            )
+
         )
         .subcommand(
             SubCommand::with_name("config")
@@ -112,7 +119,10 @@ fn inner_main() -> Result<()> {
     if let ("config", Some(sc)) = matches.subcommand() {
         {
             match sc.subcommand().0 {
-                "minimal" => println!("{}", std::include_str!("../examples/minimal/anysnake2.toml")),
+                "minimal" => println!(
+                    "{}",
+                    std::include_str!("../examples/minimal/anysnake2.toml")
+                ),
                 "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
                 "basic" | _ => {
                     println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
@@ -241,232 +251,251 @@ fn inner_main() -> Result<()> {
         &python_packages,
         use_generated_file_instead,
     )?;
-    let build_output: PathBuf = ["flake", "result"].iter().collect();
-    let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
-    if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
-        info!("Rebuilding flake");
-        rebuild_flake(use_generated_file_instead)?;
-    }
 
-    match &parsed_config.python {
-        Some(python) => {
-            fill_venv(&python.version, &python_packages, &nixpkgs_url)?;
-        }
-        None => {}
-    };
-
-    let home_dir: PathBuf = {
-        [replace_env_vars(
-            parsed_config.container.home.as_deref().unwrap_or("$HOME"),
-        )]
-        .iter()
-        .collect()
-    };
-    let home_dir_str: String = home_dir
-        .clone()
-        .into_os_string()
-        .to_string_lossy()
-        .to_string();
-    debug!("Using {:?} as home", home_dir);
-    std::fs::create_dir_all(home_dir).context("Failed to create home dir")?;
-
-    if cmd == "build" {
-        info!("Build only - done");
-    } else {
-        let run_dir: PathBuf = ["flake/run_scripts/", cmd].iter().collect();
-        let outer_run_sh: PathBuf = run_dir.join("outer_run.sh");
-        let run_sh: PathBuf = run_dir.join("run.sh");
-        std::fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
-        let post_run_sh: PathBuf = run_dir.join("post_run.sh");
-        let mut post_run_outside: Option<String> = None;
-
-        if cmd == "run" {
-            let slop = matches.subcommand().1.unwrap().values_of("slop");
-            let slop: Vec<&str> = match slop {
-                Some(slop) => slop.collect(),
-                None => {
-                    bail!("ad hoc command (=run) passed, but nothing to actually run passed")
+    if let ("build", Some(sc)) = matches.subcommand() {
+        {
+            match sc.subcommand().0 {
+                "sif" =>  {
+                    println!("Building sif in flake/result/...sif");
+                rebuild_flake(use_generated_file_instead, "sif_image.x86_64-linux")?;
+                    },
+                "rootfs" => {
+                    println!("Building rootfs in flake/result");
+                    rebuild_flake(use_generated_file_instead, "")?;
                 }
-            };
-            if slop.is_empty() {
-                bail!("no command passed after run");
+                _ => {
+                    println!("Please pass a subcommand as to what to build");
+                    std::process::exit(1);
+                }
             }
-            info!("Running singularity with ad hoc - cmd {:?}", slop);
-            std::fs::write(&outer_run_sh, "#/bin/bash\nbash /anysnake2/run.sh\n")?;
-            std::fs::write(&run_sh, slop.join(" "))?;
-            std::fs::write(&post_run_sh, "")?;
+        }
+    } else {
+        let build_output: PathBuf = ["flake", "result"].iter().collect();
+        let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
+        if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
+            info!("Rebuilding flake");
+            rebuild_flake(use_generated_file_instead, "sif")?;
+        }
+
+        match &parsed_config.python {
+            Some(python) => {
+                fill_venv(&python.version, &python_packages, &nixpkgs_url)?;
+            }
+            None => {}
+        };
+
+        let home_dir: PathBuf = {
+            [replace_env_vars(
+                parsed_config.container.home.as_deref().unwrap_or("$HOME"),
+            )]
+            .iter()
+            .collect()
+        };
+        let home_dir_str: String = home_dir
+            .clone()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string();
+        debug!("Using {:?} as home", home_dir);
+        std::fs::create_dir_all(home_dir).context("Failed to create home dir")?;
+
+        if cmd == "build" {
+            info!("Build only - done");
         } else {
-            let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
-            match &cmd_info.pre_run_outside {
-                Some(bash_script) => {
-                    info!("Running pre_run_outside for cmd - cmd {}", cmd);
-                    run_bash(bash_script).context("pre run outside failed")?;
+            let run_dir: PathBuf = ["flake/run_scripts/", cmd].iter().collect();
+            let outer_run_sh: PathBuf = run_dir.join("outer_run.sh");
+            let run_sh: PathBuf = run_dir.join("run.sh");
+            std::fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
+            let post_run_sh: PathBuf = run_dir.join("post_run.sh");
+            let mut post_run_outside: Option<String> = None;
+
+            if cmd == "run" {
+                let slop = matches.subcommand().1.unwrap().values_of("slop");
+                let slop: Vec<&str> = match slop {
+                    Some(slop) => slop.collect(),
+                    None => {
+                        bail!("ad hoc command (=run) passed, but nothing to actually run passed")
+                    }
+                };
+                if slop.is_empty() {
+                    bail!("no command passed after run");
                 }
-                None => {}
-            };
-            info!("Running singularity - cmd {}", cmd);
-            let run_template = std::include_str!("run.sh");
-            let run_script = run_template.replace("%RUN%", &cmd_info.run);
-            let post_run_script =
-                run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
-            std::fs::write(
+                info!("Running singularity with ad hoc - cmd {:?}", slop);
+                std::fs::write(&outer_run_sh, "#/bin/bash\nbash /anysnake2/run.sh\n")?;
+                std::fs::write(&run_sh, slop.join(" "))?;
+                std::fs::write(&post_run_sh, "")?;
+            } else {
+                let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
+                match &cmd_info.pre_run_outside {
+                    Some(bash_script) => {
+                        info!("Running pre_run_outside for cmd - cmd {}", cmd);
+                        run_bash(bash_script).context("pre run outside failed")?;
+                    }
+                    None => {}
+                };
+                info!("Running singularity - cmd {}", cmd);
+                let run_template = std::include_str!("run.sh");
+                let run_script = run_template.replace("%RUN%", &cmd_info.run);
+                let post_run_script = run_template
+                    .replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
+                std::fs::write(
                 &outer_run_sh,
                 "#/bin/bash\nbash /anysnake2/run.sh\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
             )?;
-            std::fs::write(&run_sh, run_script)?;
-            std::fs::write(&post_run_sh, post_run_script)?;
-            post_run_outside = cmd_info.post_run_outside.clone();
-        }
+                std::fs::write(&run_sh, run_script)?;
+                std::fs::write(&post_run_sh, post_run_script)?;
+                post_run_outside = cmd_info.post_run_outside.clone();
+            }
 
-        let outer_run_sh_str: String = outer_run_sh
-            .clone()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string();
-        let run_sh_str: String = run_sh
-            .clone()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string();
-        let post_run_sh_str: String = post_run_sh
-            .clone()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string();
+            let outer_run_sh_str: String = outer_run_sh
+                .clone()
+                .into_os_string()
+                .to_string_lossy()
+                .to_string();
+            let run_sh_str: String = run_sh
+                .clone()
+                .into_os_string()
+                .to_string_lossy()
+                .to_string();
+            let post_run_sh_str: String = post_run_sh
+                .clone()
+                .into_os_string()
+                .to_string_lossy()
+                .to_string();
 
-        let mut singularity_args: Vec<String> = vec![
-            "exec".into(),
-            "--userns".into(),
-            "--home".into(),
-            home_dir_str,
-        ];
-        let mut binds = Vec::new();
-        binds.push((
-            "/nix/store".to_string(),
-            "/nix/store".to_string(),
-            "ro".to_string(),
-        ));
-        let mut envs = Vec::new();
-        binds.push((
-            run_sh_str,
-            "/anysnake2/run.sh".to_string(),
-            "ro".to_string(),
-        ));
-        binds.push((
-            post_run_sh_str,
-            "/anysnake2/post_run.sh".to_string(),
-            "ro".to_string(),
-        ));
-        binds.push((
-            outer_run_sh_str,
-            "/anysnake2/outer_run.sh".to_string(),
-            "ro".to_string(),
-        ));
-        if let Some(python) = parsed_config.python {
-            let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
+            let mut singularity_args: Vec<String> = vec![
+                "exec".into(),
+                "--userns".into(),
+                "--home".into(),
+                home_dir_str,
+            ];
+            let mut binds = Vec::new();
             binds.push((
-                format!("venv/{}", python.version),
-                "/anysnake2/venv".to_string(),
+                "/nix/store".to_string(),
+                "/nix/store".to_string(),
                 "ro".to_string(),
             ));
-            let mut python_paths = Vec::new();
-            for (pkg, spec) in python_packages
-                .iter()
-                .filter(|(_, spec)| spec.starts_with("editable/"))
-            {
-                let safe_pkg = safe_python_package_name(pkg);
-                let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
-                    .iter()
-                    .collect();
+            let mut envs = Vec::new();
+            binds.push((
+                run_sh_str,
+                "/anysnake2/run.sh".to_string(),
+                "ro".to_string(),
+            ));
+            binds.push((
+                post_run_sh_str,
+                "/anysnake2/post_run.sh".to_string(),
+                "ro".to_string(),
+            ));
+            binds.push((
+                outer_run_sh_str,
+                "/anysnake2/outer_run.sh".to_string(),
+                "ro".to_string(),
+            ));
+            if let Some(python) = parsed_config.python {
+                let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
                 binds.push((
-                    target_dir.into_os_string().to_string_lossy().to_string(),
-                    format!("/anysnake2/venv/linked_in/{}", safe_pkg),
+                    format!("venv/{}", python.version),
+                    "/anysnake2/venv".to_string(),
                     "ro".to_string(),
                 ));
-                let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-                let egg_target = std::fs::read_to_string(egg_link)?
-                    .split_once("\n")
-                    .context("No newline in egg-link?")?
-                    .0
-                    .to_string();
-                python_paths.push(egg_target)
-            }
-            envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
-        };
+                let mut python_paths = Vec::new();
+                for (pkg, spec) in python_packages
+                    .iter()
+                    .filter(|(_, spec)| spec.starts_with("editable/"))
+                {
+                    let safe_pkg = safe_python_package_name(pkg);
+                    let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
+                        .iter()
+                        .collect();
+                    binds.push((
+                        target_dir.into_os_string().to_string_lossy().to_string(),
+                        format!("/anysnake2/venv/linked_in/{}", safe_pkg),
+                        "ro".to_string(),
+                    ));
+                    let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+                    let egg_target = std::fs::read_to_string(egg_link)?
+                        .split_once("\n")
+                        .context("No newline in egg-link?")?
+                        .0
+                        .to_string();
+                    python_paths.push(egg_target)
+                }
+                envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+            };
 
-        match &parsed_config.container.volumes_ro {
-            Some(volumes_ro) => {
-                for (from, to) in volumes_ro {
-                    let from: PathBuf =
-                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
-                    let from = from.into_os_string().to_string_lossy().to_string();
-                    binds.push((from, to.to_string(), "ro".to_string()));
+            match &parsed_config.container.volumes_ro {
+                Some(volumes_ro) => {
+                    for (from, to) in volumes_ro {
+                        let from: PathBuf = std::fs::canonicalize(&from)
+                            .context(format!("abs_path on {}", &from))?;
+                        let from = from.into_os_string().to_string_lossy().to_string();
+                        binds.push((from, to.to_string(), "ro".to_string()));
+                    }
+                }
+                None => {}
+            };
+            match &parsed_config.container.volumes_rw {
+                Some(volumes_ro) => {
+                    for (from, to) in volumes_ro {
+                        let from: PathBuf = std::fs::canonicalize(&from)
+                            .context(format!("abs_path on {}", &from))?;
+                        let from = from.into_os_string().to_string_lossy().to_string();
+                        binds.push((from, to.to_string(), "rw".to_string()));
+                    }
+                }
+                None => {}
+            }
+            for (from, to, opts) in binds {
+                singularity_args.push("--bind".into());
+                singularity_args.push(format!(
+                    "{}:{}:{}",
+                    //std::fs::canonicalize(from)?
+                    //.into_os_string()
+                    //.to_string_lossy(),
+                    from,
+                    to,
+                    opts
+                ));
+            }
+
+            if let Some(container_envs) = &parsed_config.container.env {
+                for (k, v) in container_envs.iter() {
+                    envs.push(format!("{}={}", k, v));
                 }
             }
-            None => {}
-        };
-        match &parsed_config.container.volumes_rw {
-            Some(volumes_ro) => {
-                for (from, to) in volumes_ro {
-                    let from: PathBuf =
-                        std::fs::canonicalize(&from).context(format!("abs_path on {}", &from))?;
-                    let from = from.into_os_string().to_string_lossy().to_string();
-                    binds.push((from, to.to_string(), "rw".to_string()));
-                }
+
+            for e in envs.into_iter() {
+                singularity_args.push("--env".into());
+                singularity_args.push(e);
             }
-            None => {}
-        }
-        for (from, to, opts) in binds {
-            singularity_args.push("--bind".into());
-            singularity_args.push(format!(
-                "{}:{}:{}",
-                //std::fs::canonicalize(from)?
-                //.into_os_string()
-                //.to_string_lossy(),
-                from,
-                to,
-                opts
-            ));
-        }
 
-        if let Some(container_envs) = &parsed_config.container.env {
-            for (k, v) in container_envs.iter() {
-                envs.push(format!("{}={}", k, v));
-            }
+            singularity_args.push("flake/result/rootfs".into());
+            singularity_args.push("/bin/bash".into());
+            singularity_args.push("/anysnake2/outer_run.sh".into());
+            let singularity_result = run_singularity(
+                &singularity_args[..],
+                &nixpkgs_url,
+                Some(&run_dir.join("singularity.bash")),
+            )?;
+            match post_run_outside {
+                Some(bash_script) => match run_bash(&bash_script) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        warn!(
+                            "An error occured when running the post_run_outside bash script: {}",
+                            e
+                        )
+                    }
+                },
+                None => {}
+            };
+            std::process::exit(
+                singularity_result
+                    .code()
+                    .context("No exit code inside container?")?,
+            );
         }
-
-        for e in envs.into_iter() {
-            singularity_args.push("--env".into());
-            singularity_args.push(e);
-        }
-
-        singularity_args.push("flake/result/rootfs".into());
-        singularity_args.push("/bin/bash".into());
-        singularity_args.push("/anysnake2/outer_run.sh".into());
-        let singularity_result = run_singularity(
-            &singularity_args[..],
-            &nixpkgs_url,
-            Some(&run_dir.join("singularity.bash")),
-        )?;
-        match post_run_outside {
-            Some(bash_script) => match run_bash(&bash_script) {
-                Ok(()) => {}
-                Err(e) => {
-                    warn!(
-                        "An error occured when running the post_run_outside bash script: {}",
-                        e
-                    )
-                }
-            },
-            None => {}
-        };
-        std::process::exit(
-            singularity_result
-                .code()
-                .context("No exit code inside container?")?,
-        );
     }
-
     Ok(())
 }
 
@@ -648,7 +677,7 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
     Ok(())
 }
 
-fn rebuild_flake(use_generated_file_instead: bool) -> Result<()> {
+fn rebuild_flake(use_generated_file_instead: bool, target: &str) -> Result<()> {
     let flake_dir: PathBuf = ["flake"].iter().collect();
     std::fs::write(
         flake_dir.join(".gitignore"),
@@ -703,7 +732,7 @@ run_scripts/
 
     if run_without_ctrl_c(|| {
         Ok(Command::new("nix")
-            .args(&["build", "-v", "--show-trace"])
+            .args(&["build", &format!("./#{}", target), "-v", "--show-trace"])
             .current_dir("flake")
             .status()?)
     })?

@@ -146,8 +146,8 @@ pub fn write_flake(
           inherit pkgs;
           pypiDataRev = pypi-deps-db.rev;
           pypiDataSha256 = pypi-deps-db.narHash;
-          python = {python_major_minor};
-        }};
+          python = \"{python_major_minor}\";
+        }}
         ",
                         python_major_minor = &python_major_minor
                     ),
