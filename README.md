@@ -17,7 +17,7 @@ as a rootless singularity container, or optionally a container image in SIF (sin
 Last it runs a bash script inside that container for you. This can be an analysis script, a shell, jupyter, whatever you want.
 
 The advantage here is that the process is deterministic - do it again on another machine and you will get the exact same
-container (unlinke e.g. Dockerfiles). It's also incremental, with very efficient caching thanks to nix, so a new project
+container (unlike e.g. Dockerfiles). It's also incremental, with very efficient caching thanks to nix, so a new project
 with slight tweaks will not take an hour to build. And unlike Conda you're not restricted to R & Python, while at the
 same time insulating you from the underlying c ecosystem (=linux distribution).
 
@@ -39,11 +39,17 @@ a simple trick: You need to specify the version (=date) of the python ecosystem 
 resolution and which exact packages to install is fixed. R_ecosystem_track offers something similar for R.
 Rust-overlay let's you include arbitrary rust versions. And you can even extend the flake with any other flake you like.
 
+# Prerequisites
+
+You need a working nix installation with flakes.
+
+If you're using NixOS, referer to the [nix wiki](https://nixos.wiki/wiki/Flakes#NixOS)
+Otherwise, you could use the  [nix-unstable installer](https://github.com/numtide/nix-unstable-installer).
 
 # Getting started.
 
-Run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 config basic >anysnake2.toml` and 
-have a look at the resulting toml, which contains all the basic configuratino (use `config full` for an example
+Run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 config basic >anysnake2.toml` and
+have a look at the resulting toml file, which contains all the basic configuration (use `config full` for an example
 containing every option).
 
 You should find something close to this.
@@ -64,7 +70,7 @@ packages = [ # use https://search.nixos.org/packages to search
 ]
 
 [python] # python section is optional
-version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
+version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-04-12" # you get whatever packages the solver would have produced on that day
 
 [python.packages]
