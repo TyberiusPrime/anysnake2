@@ -48,6 +48,9 @@ You need a working nix installation with flakes.
 If you're using NixOS, referer to the [nix wiki](https://nixos.wiki/wiki/Flakes#NixOS)
 Otherwise, you could use the  [nix-unstable installer](https://github.com/numtide/nix-unstable-installer).
 
+The following examples use nix to temporarily install anysnake2 (until your next nix-collect-garbage),
+see the [installation section](# Installation)
+
 # Getting started.
 
 Run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 config basic >anysnake2.toml` and
@@ -219,3 +222,8 @@ You'll need to create them: `sudo mkdir -p /var/singularity/mnt/{container,final
 Anysnake2 will follow semver once 1.0 is reached.
 But with the auto-use-the-specified-version-mechanism, it's a bit of a moot point.
 
+
+# Installation
+
+Either add this repository as a flake to your nix configuration,
+or download one of the prebuild binaries (which are statically linked against musl).
