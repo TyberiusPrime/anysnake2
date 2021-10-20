@@ -314,7 +314,7 @@ impl PyPiDepsDBRetriever {
             "http://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
             page
         );
-        let body: String = ureq::get(&url).call()?.into_string()?;
+        let body: String = get_proxy_req()?.get(&url).call()?.into_string()?;
         let json: serde_json::Value =
             serde_json::from_str(&body).context("Failed to parse github commits api")?;
         let json = json
@@ -386,6 +386,18 @@ fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
     )?)
 }
 
+fn get_proxy_req() -> Result<ureq::Agent> {
+    let mut agent = ureq::AgentBuilder::new();
+    if let Ok(proxy_url) = std::env::var("https_proxy") {
+        let proxy = ureq::Proxy::new(proxy_url)?;
+        agent = agent.proxy(proxy)
+    } else if let Ok(proxy_url) = std::env::var("http_proxy") {
+        let proxy = ureq::Proxy::new(proxy_url)?;
+        agent = agent.proxy(proxy)
+    }
+    Ok(agent.build())
+}
+
 pub fn lookup_github_tag(url: &str, tag_or_rev: &str) -> Result<String> {
     if tag_or_rev.len() == 40 || !url.starts_with("github:") {
         Ok(tag_or_rev.to_string())
@@ -440,7 +452,7 @@ impl Retriever for GitHubTagRetriever {
                 "https://api.github.com/repos/{}/tags?per_page=100&page={}",
                 &self.repo, page
             );
-            let body: String = ureq::get(&url).call()?.into_string()?;
+            let body: String = get_proxy_req()?.get(&url).call()?.into_string()?;
             let json: serde_json::Value =
                 serde_json::from_str(&body).context("Failed to parse github tags api")?;
             let json = json.as_array().context("No entries in github tags api?")?;
@@ -485,7 +497,8 @@ fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str) -> Result<Strin
     } else {
         Err(anyhow!(
             "nix fmt error return{}\n{}",
-            out.status.code().unwrap(), input
+            out.status.code().unwrap(),
+            input
         ))
     }
 }

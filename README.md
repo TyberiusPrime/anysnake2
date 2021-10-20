@@ -11,7 +11,7 @@ to give you 'virtual environments' that are fully defined in an easy to use [tom
 The first thing the anysnake2 does is read the anysnake2 version from your project config file.
 It then restarts itself with that exact anysnake2 version using Nix.
 
-It then writes a [Nix flake](https://nixos.wiki/wiki/Flakes), and turns it into either a symlink forest that works
+Next it writes a [Nix flake](https://nixos.wiki/wiki/Flakes), and turns it into either a symlink forest that works
 as a rootless singularity container.
 
 Last it extracts container settings from the config file and runs a bash script inside the container for you. 
@@ -37,20 +37,31 @@ But it is limited to the versions of everything present in that nixpkgs
 revision. Anysnake2 integrates other projects to introduce flexibility.
 
 For example, [mach-nix](https://github.com/DavHau/mach-nix) offers you reproducible python package dependency resolution, by
-a simple trick: You need to specify the version (=date) of the python ecosystem to use. Once that's defined, the dependency
-resolution and which exact packages to install is fixed. R_ecosystem_track offers something similar for R.
-Rust-overlay let's you include arbitrary rust versions. And you can even extend the flake with any other flake you like.
+a simple trick: You need to specify the date (=[pypi-deps-db](https://github.com/DavHau/pypi-deps-db) date) of the python ecosystem to use. Once that's defined, the dependency
+resolution and which exact packages to install is fixed.  Anysnake2 improves on this be letting you specify a date
 
+R_ecosystem_track offers something similar for R.
+Rust-overlay let's you include arbitrary rust versions. And you can extend the flake with any other flake you like.
+
+# Prerequisites
+
+You need a working nix installation with flakes.
+
+If you're using NixOS, referer to the [nix wiki](https://nixos.wiki/wiki/Flakes#NixOS)
+Otherwise, you could use the  [nix-unstable installer](https://github.com/numtide/nix-unstable-installer).
+
+The following examples use nix to temporarily install anysnake2 (until your next nix-collect-garbage),
+see the [installation section](# Installation)
 
 # Getting started.
 
-Run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 config basic >anysnake2.toml` and 
-have a look at the resulting toml, which contains all the basic configuration (use `config full` for an example
+Run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 config basic >anysnake2.toml` and
+have a look at the resulting toml file, which contains all the basic configuration (use `config full` for an example
 containing every option. anysnake2.toml is the default config filename).
 
 You should find something close to this.
 
-```
+```toml
 # package settings
 [anysnake2]
 rev = "1.0"
@@ -107,7 +118,7 @@ Note that by default, singularity maps your home into the container. You can adj
 (see [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml)).
 
 For example, try adding 'pandas>=1.2' to the list of python packages above, and restart the nix shell command. 
-You`ll find that pandas 1.2.4 has been installed. That's not the most recent release - but it was at the python
+You'll find that pandas 1.2.4 has been installed. That's not the most recent release - but it was at the python
 ecosystem date we've been using. Change that to just a day later, and rerun `nix shell ...`,  and you'll get 
 pandas 1.3.0 instead.
 
@@ -128,6 +139,9 @@ name (minus some build-in-exclusions), like the `shell` command defined above.
 
 # Using R
 
+(Note: r_ecosystem_track is not ready yet, and not integrated into anysnake2 as of 2021-19-10,
+but this is how it's going to work).
+
 Including R and R packages using
 [r_ecosystem_track](https://github.com/TyberiusPrime/r_ecosystem_track) is even
 simpler than python packages, since you will get whatever R, bioconductor and
@@ -135,20 +149,20 @@ package version was current at a particular ecosystem date.
 
 Just include this:
 
-```
+```toml
 [R]
 # you get whatever packages were current that day.
 r_ecosystem_track_rev="2021-10-11_v1"  # a tag or revision from the r_ecosystem_track repo
 packages = [
 	"ggplot2",
-	]
+]
 ```
 
 (as of 2021-10-18, r_ecosystem_track is not ready yet, and there is no R integration.)
 
 
 # Using rust
-```
+```toml
 [rust]
 version = "1.55.0" # =stable.
 # to use nightly, add for example this:
@@ -162,7 +176,8 @@ Note that we do not rely on flake.lock, so you have to define a revision/tag.
 I've found nix flakes to have a tendency to update locked dependencies when
 you were not expecting it to do so.
 
-```[flakes.hello]
+```toml
+[flakes.hello]
 	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
 	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
@@ -172,22 +187,22 @@ you were not expecting it to do so.
 
 # Clones and editable python installs
 
-Anysnake2 can be used to clone repositories you want to work on in this project folder,
+Anysnake2 can be used to clone repositories you want to work on into this project folder,
 and, optionally, include them in your python search path inside the container.
 
 
 For example to clone into the 'code' directory, use this
 
-```
+```toml
 [clones.code] # target directory
 # seperate from python packages so you can clone other stuff as well
 dppd="git+https://github.com/TyberiusPrime/dppd
 ```
 
 You can use `[clone_regexps]` to save on typing here - see [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml). 
-Also the cloning happens only if the target folder does not exist yet.
+Also the cloning happens only if the target folder does not exist yet (no automatic pull).
 
-You can then include this package in your python packages like this
+You can then include this package in your python packages list like this
 `dppd=editable/code`. Anysnake2 will then (once) run a container tht 
 runs `pip install -e .` on that (possibly cloned) folder, and include it
 in the containers python path. It will also, on every run, parse the
@@ -235,3 +250,14 @@ Build in commands (which you can not replace by config) are
 Singularity needs some folders that are apparently not wrapped by nixpkgs.
 You'll need to create them: `sudo mkdir -p /var/singularity/mnt/{container,final,overlay,session}`.
 
+
+# Version policy
+
+Anysnake2 will follow semver once 1.0 is reached.
+But with the auto-use-the-specified-version-mechanism, it's a bit of a moot point.
+
+
+# Installation
+
+Either add this repository as a flake to your nix configuration,
+or download one of the prebuild binaries (which are statically linked against musl).
