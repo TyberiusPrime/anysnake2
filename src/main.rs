@@ -20,6 +20,7 @@ use std::sync::Arc;
  * R
  * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
 
+ * per command volumes? do we need these?
 */
 
 mod config;
@@ -112,6 +113,9 @@ fn parse_args() -> ArgMatches<'static> {
                     Arg::with_name("slop").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
                 ),
         )
+        .arg(
+            Arg::with_name("slop").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+        ) //todo: argument passing to the scripts? 
         .get_matches()
 }
 
@@ -230,10 +234,20 @@ fn inner_main() -> Result<()> {
     let matches = parse_args();
 
     handle_config_command(&matches);
+    let top_level_slop: Vec<&str> = match matches.values_of("slop") {
+        Some(slop) => slop.collect(),
+        None => Vec::new(),
+    };
 
     let cmd = match matches.subcommand() {
         (name, Some(_subcommand)) => name,
-        _ => "default",
+        _ => {
+            if top_level_slop.is_empty() {
+                "default"
+            } else {
+                top_level_slop[0]
+            }
+        }
     };
 
     configure_logging(&matches);
@@ -358,7 +372,7 @@ fn inner_main() -> Result<()> {
                 run_template.replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
             std::fs::write(
                 &outer_run_sh,
-                "#/bin/bash\nbash /anysnake2/run.sh\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
+                "#/bin/bash\nbash /anysnake2/run.sh $@\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh",
             )?;
             std::fs::write(&run_sh, run_script)?;
             std::fs::write(&post_run_sh, post_run_script)?;
@@ -466,7 +480,7 @@ fn inner_main() -> Result<()> {
 
         if let Some(container_envs) = &parsed_config.container.env {
             for (k, v) in container_envs.iter() {
-                envs.push(format!("{}={}", k, v));
+                envs.push(format!("{}={}", k, replace_env_vars(v)));
             }
         }
 
@@ -478,6 +492,9 @@ fn inner_main() -> Result<()> {
         singularity_args.push("flake/result/rootfs".into());
         singularity_args.push("/bin/bash".into());
         singularity_args.push("/anysnake2/outer_run.sh".into());
+        for s in top_level_slop.iter().skip(1) {
+            singularity_args.push(s.to_string());
+        }
         let singularity_result = run_singularity(
             &singularity_args[..],
             &nixpkgs_url,
@@ -733,9 +750,11 @@ run_scripts/
 
     let nix_build_result = run_without_ctrl_c(|| {
         Ok(Command::new("nix")
-            .args(&["build", &format!("./#{}", target), "-v", "--show-trace"])
+            .args(&["build", &format!("./#{}", target), "-v"])
             .current_dir("flake")
-            .status()?)
+            .status()
+            .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{} -v --show-trace'",
+                target))?)
     })?;
     if nix_build_result.success() {
         std::fs::remove_file(&build_unfinished_file)?;

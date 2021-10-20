@@ -260,4 +260,8 @@ But with the auto-use-the-specified-version-mechanism, it's a bit of a moot poin
 # Installation
 
 Either add this repository as a flake to your nix configuration,
-or download one of the prebuild binaries (which are statically linked against musl).
+or download one of the prebuild binaries (which are statically linked against musl) and place it somewhere in your $PATH.
+
+
+# Proxy support
+anysnake2 respects HTTPS_PROXY and HTTP_PROXY environment variables.
