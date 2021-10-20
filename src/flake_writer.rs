@@ -388,10 +388,20 @@ fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
 
 fn get_proxy_req() -> Result<ureq::Agent> {
     let mut agent = ureq::AgentBuilder::new();
-    if let Ok(proxy_url) = std::env::var("https_proxy") {
-        let proxy = ureq::Proxy::new(proxy_url)?;
-        agent = agent.proxy(proxy)
+    let proxy_url = if let Ok(proxy_url) = std::env::var("https_proxy") {
+        debug!("found https proxy env var");
+        Some(proxy_url)
     } else if let Ok(proxy_url) = std::env::var("http_proxy") {
+        debug!("found http proxy env var");
+        Some(proxy_url)
+    } else {
+        None
+    };
+    if let Some(proxy_url) = proxy_url {
+        let proxy_url = proxy_url
+            .strip_prefix("https://")
+            .unwrap_or(proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
+        debug!("using proxy_url {}", proxy_url);
         let proxy = ureq::Proxy::new(proxy_url)?;
         agent = agent.proxy(proxy)
     }
