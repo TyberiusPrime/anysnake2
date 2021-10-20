@@ -33,12 +33,13 @@ packages = [ # use https://search.nixos.org/packages to search
 
 
 [python] # python section is optional
-version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
+version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
 # mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
 # mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
 [python.packages]
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 scipy=""
 pypipegraph=">2."
 mbf_r = "editable/code"  # see [clones.code] below
@@ -55,8 +56,9 @@ mbf_r="@mbf"
 mbf_sampledata="@mbf/mbf_sampledata"
 
 
-[R]
-ecosystem_date="2021-10-11" # you get whatever packages were current that day.
+[R] # R section is optional
+r_ecosystem_track_rev="2021-10-11_v1" # you get whatever packages were current that day.
+# r_ecosystem_track_rev= "github:TyberiusPrime/r_ecosystem_track" # optional
 packages = [
 	"ggplot2",
 	"affy",

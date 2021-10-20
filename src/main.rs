@@ -292,7 +292,7 @@ fn inner_main() -> Result<()> {
             }
         }
     } else {
-        let build_output: PathBuf = ["flake", "result"].iter().collect();
+        let build_output: PathBuf = ["flake", "result", "rootfs"].iter().collect();
         let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
         if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
             info!("Rebuilding flake");
