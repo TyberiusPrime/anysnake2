@@ -240,6 +240,7 @@ Build in commands (which you can not replace by config) are
  * `build rootfs` - just build the (unpacked) container as a symlink tree
  * `build sif` - build the container image in flake/result/anysnake2_container.sif
  * `config` - list the available example configs (and config <name> to print one)
+ * `develop` - run 'nix develop' on the flake and come back to flake/../
  * `help` - help
  * `version` - output anysnake2 version
  * `run --` - run arbitrary commands (without pre/post wrappers). Everything after -- is passed on to the container
@@ -247,8 +248,13 @@ Build in commands (which you can not replace by config) are
 
 # Singularity won't run
 
-Singularity needs some folders that are apparently not wrapped by nixpkgs.
-You'll need to create them: `sudo mkdir -p /var/singularity/mnt/{container,final,overlay,session}`.
+Singularity needs some folders that can not be created by Nix.
+
+Outside of NixOS, you'll need to create them: `sudo mkdir -p /var/singularity/mnt/{container,final,overlay,session}`.
+
+If you're using NixOS, setting 'programs.singularity.enable = true' should install them
+(and a singularity installation we won't necessarily be using, we use the version in the outside_nixpkgs defined by anysnake2.toml instead)).
+
 
 
 # Version policy

@@ -28,7 +28,9 @@
             script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + script);
           in {
             script_file = script_file;
-            derivation = pkgs.runCommand name { } ''
+
+            derivation = pkgs.runCommand name {
+            } ''
               set -o pipefail
               shopt -s nullglob
               mkdir -p $out/rootfs/usr/lib
@@ -50,9 +52,16 @@
               for path in $(tac ${script_file});
                  do
                  ln -s $path/bin/* $out/rootfs/bin/ || true
+                 ln -s $path/etc/* $out/rootfs/etc || true
                  ln -s $path/lib/* $out/rootfs/usr/lib/ || true
                  ln -s $path/share/* $out/rootfs/usr/share/ || true
               done
+
+              mkdir -p $out/rootfs/etc/profile.d
+              echo "echo hello world" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+              echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+              echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+
             '';
           };
 
@@ -132,9 +141,18 @@
             '';
           };
         };
-      in {
+      in rec {
         defaultPackage = buildSymlinkImage _args;
         sif_image = buildSingularityImage _args;
+        devShell = pkgs.stdenv.mkDerivation {
+           name="anysnake2-devshell";
+           shellHook = ''
+             export PATH=${defaultPackage}/rootfs/bin:$PATH;
+             '';
+             nativeBuildInputs = with pkgs; [
+               #%DEVSHELL_INPUTS%
+           ];
+         };
       });
 
 }

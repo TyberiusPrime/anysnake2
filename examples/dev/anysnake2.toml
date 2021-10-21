@@ -12,6 +12,8 @@ rev = "dev"
 							 # And nix build is called every run
 							 # This is an escape hatch.
 
+[dev_shell]
+  shell = "fish"
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash

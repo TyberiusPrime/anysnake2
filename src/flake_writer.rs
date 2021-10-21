@@ -61,17 +61,23 @@ pub fn write_flake(
         &parsed_config.nixpkgs.rev,
         &[],
     )?);
-    flake_contents = match &parsed_config.nixpkgs.packages {
-        Some(pkgs) => {
-            let pkgs: String = pkgs
-                .iter()
-                .map(|x| format!("${{{}}}\n", x))
-                .collect::<Vec<String>>()
-                .join("\n");
-            flake_contents.replace("%NIXPKGS_PACKAGES%", &pkgs)
-        }
-        None => flake_contents,
+    let mut nixpkgs_pkgs = match &parsed_config.nixpkgs.packages {
+        Some(pkgs) => pkgs.clone(),
+        None => Vec::new(),
     };
+    if let Some(_rust_ver) = &parsed_config.rust.version {
+        nixpkgs_pkgs.push("stdenv.cc".to_string()); // needed to actually build something with rust
+    }
+
+    nixpkgs_pkgs.push("cacert".to_string()); //so we have SSL certs inside
+
+    let nixpkgs_pkgs: String = nixpkgs_pkgs
+        .iter()
+        .map(|x| format!("${{{}}}\n", x))
+        .collect::<Vec<String>>()
+        .join("");
+
+    flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
 
     inputs.push(InputFlake::new(
         "flake-utils",
@@ -167,7 +173,9 @@ pub fn write_flake(
                 };
                 inputs.push(InputFlake::new(
                     name,
-                    &flake.url,
+                    &flake
+                        .url
+                        .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
                     &flake.rev,
                     &rev_follows[..],
                 )?);
@@ -179,6 +187,12 @@ pub fn write_flake(
         }
         None => flake_contents,
     };
+    let dev_shell_inputs = match &parsed_config.dev_shell.inputs {
+        Some(dvi) => dvi.join(" "),
+        None => "".to_string(),
+    };
+    flake_contents = flake_contents.replace("#%DEVSHELL_INPUTS%", &dev_shell_inputs);
+
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");
 
@@ -400,7 +414,7 @@ fn get_proxy_req() -> Result<ureq::Agent> {
     if let Some(proxy_url) = proxy_url {
         let proxy_url = proxy_url
             .strip_prefix("https://")
-            .unwrap_or(proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
+            .unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
         debug!("using proxy_url {}", proxy_url);
         let proxy = ureq::Proxy::new(proxy_url)?;
         agent = agent.proxy(proxy)

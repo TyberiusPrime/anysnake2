@@ -13,10 +13,12 @@ rev = "0.3.1"
 							 # And nix build is called every run
 							 # This is an escape hatch.
 
-dev_shell_inputs = [ # optional
-	# these are packages that show up only when you do 'nix develop'
-	"rust-analyzer"
-]
+[dev_shell] # optional
+    shell = "fish"
+	inputs = [ # optional
+		# these are packages that show up only when you do 'nix develop'
+		"rust-analyzer"
+	]
 
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
@@ -73,6 +75,8 @@ packages = [
     # note that this flake is locked to the newest version when installing
 	# pass ?rev=sha if you want to tie things down in your anysnake2.toml
 	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	# you can use an url like path:$ANYSNAKE2_ROOT/path/to/flake for local flakes
+	# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
 	packages = ["defaultPackage.x86_64-linux"]
 

@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_derive::Deserialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 trait WithDefaultFlakeSource {
     fn default_rev() -> String;
@@ -9,6 +10,8 @@ trait WithDefaultFlakeSource {
 
 #[derive(Deserialize, Debug)]
 pub struct ConfigToml {
+    #[serde(skip)]
+    pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: Anysnake2,
     pub nixpkgs: NixPkgs,
     pub outside_nixpkgs: NixPkgs,
@@ -26,7 +29,10 @@ pub struct ConfigToml {
     #[serde(default)]
     pub container: Container,
     pub flakes: Option<HashMap<String, Flake>>,
+    #[serde(default)]
+    pub dev_shell: DevShell,
 }
+
 #[derive(Deserialize, Debug)]
 pub struct Anysnake2 {
     pub rev: String,
@@ -38,6 +44,28 @@ pub struct Anysnake2 {
 impl Anysnake2 {
     fn default_url() -> String {
         "github:TyberiusPrime/anysnake2".to_string()
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DevShell {
+    pub inputs: Option<Vec<String>>,
+    #[serde(default = "DevShell::default_shell")]
+    pub shell: String,
+}
+
+impl DevShell {
+    fn default_shell() -> String {
+        "bash".to_string()
+    }
+}
+
+impl Default for DevShell {
+    fn default() -> Self {
+        DevShell {
+            inputs: None,
+            shell: Self::default_shell(),
+        }
     }
 }
 
@@ -189,4 +217,21 @@ fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
         .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
         .naive_utc()
         .date())
+}
+
+impl ConfigToml {
+    pub fn get_root_path_str(&self) -> Result<String> {
+        let abs_config_path = self
+            .anysnake2_toml_path
+            .as_ref()
+            .context("Config path not set???")?;
+        let root = abs_config_path
+            .parent()
+            .context("config file had no parent path")?;
+        Ok(root
+            .to_owned()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string())
+    }
 }
