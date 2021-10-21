@@ -20,7 +20,12 @@ rev = "21.05" # the nixpgks version or github hash
 # url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
 packages = [ # use https://search.nixos.org/packages to search
 	"fish",
-	"netcat"] # optional
+	"netcat",
+	"fd",
+	"ripgrep",
+	"strace",
+	"which",
+	] # optional
 
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
@@ -128,7 +133,10 @@ echo 'post run outside'
 """
 
 [cmd.shell]
-run = """fish
+run = """
+bash -c set
+set
+fish
 """
 
 [cmd.jupyter]

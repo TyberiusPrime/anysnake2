@@ -13,6 +13,11 @@ rev = "0.3.1"
 							 # And nix build is called every run
 							 # This is an escape hatch.
 
+dev_shell_inputs = [ # optional
+	# these are packages that show up only when you do 'nix develop'
+	"rust-analyzer"
+]
+
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
 rev = "21.05"
@@ -144,3 +149,5 @@ jupyter
 "@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
 "@gh/([^/]+)"="git+https://github.com/\\1/\\0"
 "@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
+
+
