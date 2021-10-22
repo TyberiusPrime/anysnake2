@@ -7,6 +7,7 @@ use regex::Regex;
 use serde_derive::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -129,6 +130,7 @@ fn parse_args() -> ArgMatches<'static> {
         )
         .subcommand(SubCommand::with_name("develop").about("run nix develop, and go back to this dir with your favourite shell"))
         .subcommand(SubCommand::with_name("version").about("output version of this build"))
+        .subcommand(SubCommand::with_name("attach").about("attach to previously running session"))
         .subcommand(
             SubCommand::with_name("run")
                 .about("run arbitray commands in container (w/o any pre/post bash scripts)")
@@ -189,7 +191,7 @@ fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
 fn switch_to_configured_version(
     parsed_config: &config::ConfigToml,
     matches: &ArgMatches<'static>,
-    flake_dir: impl AsRef<Path>
+    flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
     if parsed_config.anysnake2.rev == "dev" {
         info!("Using development version of anysnake");
@@ -202,7 +204,11 @@ fn switch_to_configured_version(
         let repo = format!(
             "{}?rev={}",
             &parsed_config.anysnake2.url,
-            lookup_github_tag(&parsed_config.anysnake2.url, &parsed_config.anysnake2.rev, flake_dir)?
+            lookup_github_tag(
+                &parsed_config.anysnake2.url,
+                &parsed_config.anysnake2.rev,
+                flake_dir
+            )?
         );
 
         let mut args = vec![
@@ -281,17 +287,29 @@ fn inner_main() -> Result<()> {
     if cmd == "version" {
         print_version_and_exit();
     }
-
     if let Ok(_) = std::env::var("SINGULARITY_NAME") {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
     let mut parsed_config: config::ConfigToml = read_config(&matches)?;
 
-    let flake_dir: PathBuf = [".anysnake_flake"].iter().collect();
+    let flake_dir: PathBuf = [".anysnake2_flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
     switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
+    if cmd == "attach" {
+        let outside_nixpkgs_url = format!(
+            "{}?rev={}",
+            &parsed_config.outside_nixpkgs.url,
+            lookup_github_tag(
+                &parsed_config.outside_nixpkgs.url,
+                &parsed_config.outside_nixpkgs.rev,
+                &flake_dir
+            )?,
+        );
+
+        return attach_to_previous_container(&flake_dir, &outside_nixpkgs_url);
+    }
 
     if !(parsed_config.cmd.contains_key(cmd) || cmd == "build" || cmd == "run" || cmd == "develop")
     {
@@ -324,15 +342,19 @@ fn inner_main() -> Result<()> {
             match sc.subcommand().0 {
                 "flake" => {
                     println!("Writing just flake/flake.nix");
-                    rebuild_flake(use_generated_file_instead, "flake")?;
+                    rebuild_flake(use_generated_file_instead, "flake", &flake_dir)?;
                 }
                 "sif" => {
                     println!("Building sif in flake/result/...sif");
-                    rebuild_flake(use_generated_file_instead, "sif_image.x86_64-linux")?;
+                    rebuild_flake(
+                        use_generated_file_instead,
+                        "sif_image.x86_64-linux",
+                        &flake_dir,
+                    )?;
                 }
                 "rootfs" => {
                     println!("Building rootfs in flake/result");
-                    rebuild_flake(use_generated_file_instead, "")?;
+                    rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
                 }
                 _ => {
                     println!("Please pass a subcommand as to what to build");
@@ -341,7 +363,7 @@ fn inner_main() -> Result<()> {
             }
         }
     } else {
-        let run_dir: PathBuf = ["flake/run_scripts/", cmd].iter().collect();
+        let run_dir: PathBuf = flake_dir.join("run_scripts").join(cmd);
         std::fs::create_dir_all(&run_dir)?;
         let run_sh: PathBuf = run_dir.join("run.sh");
         let run_sh_str: String = run_sh.into_os_string().to_string_lossy().to_string();
@@ -360,22 +382,26 @@ fn inner_main() -> Result<()> {
                 let full_args = vec!["develop", "-c", "bash", &s];
                 println!("{:?}", full_args);
                 Ok(Command::new("nix")
-                    .current_dir("flake")
+                    .current_dir(&flake_dir)
                     .args(full_args)
                     .status()?)
             })?;
         } else {
-            let build_output: PathBuf = ["flake", "result", "rootfs"].iter().collect();
+            let build_output: PathBuf = flake_dir.join("result/rootfs");
             let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
             if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
                 info!("Rebuilding flake");
-                rebuild_flake(use_generated_file_instead, "")?;
+                rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
             }
 
             let nixpkgs_url = format!(
                 "{}?rev={}",
-                &parsed_config.nixpkgs.url,
-                lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev, &flake_dir)?,
+                &parsed_config.outside_nixpkgs.url,
+                lookup_github_tag(
+                    &parsed_config.outside_nixpkgs.url,
+                    &parsed_config.outside_nixpkgs.rev,
+                    &flake_dir
+                )?,
             );
 
             if let Some(python) = &parsed_config.python {
@@ -550,16 +576,26 @@ fn inner_main() -> Result<()> {
                 singularity_args.push(e);
             }
 
-            singularity_args.push("flake/result/rootfs".into());
+            singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
             singularity_args.push("/bin/bash".into());
             singularity_args.push("/anysnake2/outer_run.sh".into());
             for s in top_level_slop.iter().skip(1) {
                 singularity_args.push(s.to_string());
             }
+            let dtach_socket = match &parsed_config.anysnake2.dtach {
+                true => Some(format!(
+                    "{}_{}",
+                    cmd,
+                    chrono::Local::now().format("%Y-%m-%d_%H:%M:%S")
+                )),
+                false => None,
+            };
+
             let singularity_result = run_singularity(
                 &singularity_args[..],
                 &nixpkgs_url,
                 Some(&run_dir.join("singularity.bash")),
+                dtach_socket,
                 &flake_dir,
             )?;
             if let Some(bash_script) = post_run_outside {
@@ -589,29 +625,47 @@ fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
 
 fn run_singularity(
     args: &[String],
-    nix_repo: &str,
+    outside_nix_repo: &str,
     log_file: Option<&PathBuf>,
+    dtach_socket: Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{}#singularity", nix_repo);
+    let singularity_url = format!("{}#singularity", outside_nix_repo);
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
-        let mut full_args = vec![
+        let mut nix_full_args: Vec<String> = Vec::new();
+        if let Some(dtach_socket) = &dtach_socket {
+            let dtach_dir = flake_dir.join("dtach");
+            std::fs::create_dir_all(dtach_dir)?;
+            let dtach_url = singularity_url.replace("#singularity", "#dtach");
+            register_nix_gc_root(&dtach_url, flake_dir)?;
+            nix_full_args.extend([
+                "shell".to_string(),
+                dtach_url,
+                "-c".to_string(),
+                "dtach".to_string(),
+                "-c".to_string(),
+                flake_dir.join("dtach").join(dtach_socket).to_string_lossy(),
+                "nix".to_string(),
+            ]);
+        }
+
+        nix_full_args.extend([
             "shell".to_string(),
             singularity_url.clone(),
             "-c".into(),
             "singularity".into(),
-        ];
+        ]);
         for arg in args {
-            full_args.push(arg.to_string());
+            nix_full_args.push(arg.to_string());
         }
-        let pp = pretty_print_singularity_call(&full_args);
+        let pp = pretty_print_singularity_call(&nix_full_args);
         if let Some(lf) = log_file {
             let o = format!("nix {}", pp.trim_start());
             std::fs::write(lf, o)?;
         }
         info!("nix {}", pp.trim_start());
-        Ok(Command::new("nix").args(full_args).status()?)
+        Ok(Command::new("nix").args(nix_full_args).status()?)
     })
 }
 
@@ -764,10 +818,13 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
     Ok(())
 }
 
-fn rebuild_flake(use_generated_file_instead: bool, target: &str) -> Result<()> {
-    let flake_dir: PathBuf = ["flake"].iter().collect();
+fn rebuild_flake(
+    use_generated_file_instead: bool,
+    target: &str,
+    flake_dir: impl AsRef<Path>,
+) -> Result<()> {
     std::fs::write(
-        flake_dir.join(".gitignore"),
+        flake_dir.as_ref().join(".gitignore"),
         "result
 run_scripts/
 .*.json
@@ -776,7 +833,7 @@ run_scripts/
     )?;
     debug!("writing flake");
     let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
-    if flake_dir.join("flake.lock").exists() {
+    if flake_dir.as_ref().join("flake.lock").exists() {
         gitargs.push("flake.nix");
     }
 
@@ -815,7 +872,7 @@ run_scripts/
         );
         bail!(msg);
     }
-    let build_unfinished_file = flake_dir.join(".build_unfinished");
+    let build_unfinished_file = flake_dir.as_ref().join(".build_unfinished");
     std::fs::write(&build_unfinished_file, "in_progress")?;
 
     if target != "flake" {
@@ -827,7 +884,7 @@ run_scripts/
                 "--keep-going"
                 ]
                 )
-                .current_dir("flake")
+                .current_dir(&flake_dir)
                 .status()
                 .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{} -v --show-trace'",
                     target))
@@ -875,7 +932,7 @@ fn safe_python_package_name(input: &str) -> String {
 fn fill_venv(
     python_version: &str,
     python: &[(String, String)],
-    nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
+    outside_nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = ["venv", python_version].iter().collect();
@@ -924,7 +981,7 @@ fn fill_venv(
                     &safe_pkg
                 ),
             ];
-            singularity_args.push("flake/result/rootfs".into());
+            singularity_args.push(flake_dir.join("/result/rootfs").to_string_lossy());
             singularity_args.push("bash".into());
             singularity_args.push("-c".into());
             singularity_args.push(format!(
@@ -933,8 +990,9 @@ fn fill_venv(
             ));
             let singularity_result = run_singularity(
                 &singularity_args[..],
-                nixpkgs_url,
+                outside_nixpkgs_url,
                 Some(&venv_dir.join("singularity.bash")),
+                None,
                 &flake_dir,
             )?;
             if !singularity_result.success() {
@@ -997,10 +1055,7 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
     if link.as_ref().exists() {
         std::fs::remove_file(&link)?;
     }
-    Ok(std::os::unix::fs::symlink(
-        &original,
-        &link,
-    )?)
+    Ok(std::os::unix::fs::symlink(&original, &link)?)
 }
 
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
@@ -1014,7 +1069,13 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &whoami::username()]
         .iter()
         .collect();
-    let flake_hash = sha256::digest(flake_dir.as_ref().to_owned().into_os_string().to_string_lossy());
+    let flake_hash = sha256::digest(
+        flake_dir
+            .as_ref()
+            .to_owned()
+            .into_os_string()
+            .to_string_lossy(),
+    );
 
     //first we store and hash the flake itself and record tha.
     let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
@@ -1085,4 +1146,49 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
         )?;
     }
     Ok(())
+}
+
+fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
+    let mut available: Vec<_> = std::fs::read_dir(flake_dir.as_ref().join("dtach")).context("Could not find dtach socket directory")?
+        .filter_map(|x| x.ok())
+        .collect();
+    if available.is_empty() {
+        bail!("No session to attach to available");
+    } else if available.len() == 1 {
+        println!("reattaching to {:?}", available[0].file_name());
+        return un_dtach(available[0].path(), outside_nix_repo);
+    } else {
+        available.sort_unstable_by_key(|x| x.file_name());
+        loop {
+            println!("please choose an entry to reattach (number+enter), or ctrl-c to abort");
+            for (ii, entry) in available.iter().enumerate() {
+                println!("\t{} {:?}", ii, entry.file_name());
+            }
+            let line1 = std::io::stdin().lock().lines().next().unwrap().unwrap();
+            for (ii, entry) in available.iter().enumerate() {
+                if format!("{}", ii) == line1 {
+                    return un_dtach(entry.path(), outside_nix_repo);
+                }
+            }
+            println!("sorry I did not understand that. \n")
+        }
+    }
+}
+
+fn un_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
+    let dtach_url = format!("{}#dtach", outside_nix_repo);
+    let nix_full_args = vec![
+        "shell".to_string(),
+        dtach_url,
+        "-c".to_string(),
+        "dtach".to_string(),
+        "-a".to_string(),
+        p.as_ref().to_owned().to_string_lossy(),
+    ];
+    let status = Command::new("nix").args(nix_full_args).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("dtach reattachment failed"))
+    }
 }

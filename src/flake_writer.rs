@@ -17,7 +17,13 @@ struct InputFlake {
 }
 
 impl InputFlake {
-    fn new(name: &str, url: &str, rev: &str, follows: &[&str], flake_dir: impl AsRef<Path>) -> Result<Self> {
+    fn new(
+        name: &str,
+        url: &str,
+        rev: &str,
+        follows: &[&str],
+        flake_dir: impl AsRef<Path>,
+    ) -> Result<Self> {
         let url = if url.ends_with('/') {
             url.strip_suffix('/').unwrap()
         } else {
@@ -41,9 +47,9 @@ pub fn write_flake(
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
     let flake_filename: PathBuf = if use_generated_file_instead {
-        ["flake", "flake.generated.nix"].iter().collect()
+        flake_dir.as_ref().join("flake.generated.nix")
     } else {
-        ["flake", "flake.nix"].iter().collect()
+        flake_dir.as_ref().join("flake.nix")
     };
     let old_flake_contents = {
         if flake_filename.exists() {
@@ -135,7 +141,7 @@ pub fn write_flake(
                 &parsed_config.mach_nix.url,
                 &parsed_config.mach_nix.rev,
                 &["nixpkgs", "flake-utils", "pypi-deps-db"],
-                &flake_dir
+                &flake_dir,
             )?);
 
             inputs.push(InputFlake::new(
@@ -143,7 +149,7 @@ pub fn write_flake(
                 "github:DavHau/pypi-deps-db",
                 &pypi_debs_db_rev,
                 &["nixpkgs", "mach-nix"],
-                &flake_dir
+                &flake_dir,
             )?);
 
             flake_contents
@@ -177,7 +183,7 @@ pub fn write_flake(
                     None => Vec::new(),
                 };
                 if flake.url.starts_with("path:/") {
-                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"))
+                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"));
                 }
                 inputs.push(InputFlake::new(
                     name,
@@ -228,13 +234,18 @@ pub fn write_flake(
             .args(&["init"])
             .current_dir(&flake_dir)
             .output()
-            .context(format!("Failed create git repo in {:?}", flake_dir.as_ref()))?;
+            .context(format!(
+                "Failed create git repo in {:?}",
+                flake_dir.as_ref()
+            ))?;
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let msg = format!(
                 "Failed to init git repo in  {:?}.\n Stdout {:?}\nStderr: {:?}",
-                flake_dir.as_ref(), stdout, stderr
+                flake_dir.as_ref(),
+                stdout,
+                stderr
             );
             bail!(msg);
         }
@@ -246,7 +257,8 @@ pub fn write_flake(
         }
         Ok(true)
     } else if old_flake_contents != flake_contents {
-        std::fs::write(flake_filename, flake_contents)?;
+        std::fs::write(&flake_filename, flake_contents)
+            .with_context(|| format!("failed writing {:?}", &flake_filename))?;
 
         Ok(true)
     } else {
@@ -316,7 +328,11 @@ fn pypi_deps_date_to_rev(date: NaiveDate, flake_dir: impl AsRef<Path>) -> Result
         bail!("Pypi-deps-db date is in the future!");
     }
 
-    let store_path: PathBuf = flake_dir.as_ref().join(".pypi-debs-db.lookup.json").iter().collect();
+    let store_path: PathBuf = flake_dir
+        .as_ref()
+        .join(".pypi-debs-db.lookup.json")
+        .iter()
+        .collect();
     let query_date_str = query_date.format("%Y%m%d").to_string();
     fetch_cached(
         store_path,
@@ -433,14 +449,19 @@ fn get_proxy_req() -> Result<ureq::Agent> {
     Ok(agent.build())
 }
 
-pub fn lookup_github_tag(url: &str, tag_or_rev: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
+pub fn lookup_github_tag(
+    url: &str,
+    tag_or_rev: &str,
+    flake_dir: impl AsRef<Path>,
+) -> Result<String> {
     if tag_or_rev.len() == 40 || !url.starts_with("github:") {
         Ok(tag_or_rev.to_string())
     } else {
         let repo = url.strip_prefix("github:").unwrap();
         fetch_cached(
-            &flake_dir.as_ref().join(format!(".github_{}.json", repo.replace("/", "_"))),
-
+            &flake_dir
+                .as_ref()
+                .join(format!(".github_{}.json", repo.replace("/", "_"))),
             tag_or_rev,
             GitHubTagRetriever {
                 repo: repo.to_string(),
@@ -454,7 +475,11 @@ trait Retriever {
     fn retrieve(&self) -> Result<HashMap<String, String>>;
 }
 
-fn fetch_cached(cache_filename: impl AsRef<Path>, query: &str, retriever: impl Retriever) -> Result<String> {
+fn fetch_cached(
+    cache_filename: impl AsRef<Path>,
+    query: &str,
+    retriever: impl Retriever,
+) -> Result<String> {
     let mut known: HashMap<String, String> = match cache_filename.as_ref().exists() {
         true => serde_json::from_str(&std::fs::read_to_string(&cache_filename)?)?,
         false => HashMap::new(),
@@ -509,15 +534,15 @@ impl Retriever for GitHubTagRetriever {
     }
 }
 
-fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
+fn nix_format(
+    input: &str,
+    nixpkgs_url: &str,
+    nixpkgs_rev: &str,
+    flake_dir: impl AsRef<Path>,
+) -> Result<String> {
     let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
     super::register_nix_gc_root(&full_url, flake_dir)?;
-    let full_args = vec![
-        "shell".to_string(),
-        full_url,
-        "-c".into(),
-        "nixfmt".into(),
-    ];
+    let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
     let mut child = Command::new("nix")
         .args(full_args)
         .stdin(Stdio::piped())

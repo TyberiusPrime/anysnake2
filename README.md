@@ -237,7 +237,8 @@ the [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples
 
 Build in commands (which you can not replace by config) are 
 
- * `build rootfs` - just build the (unpacked) container as a symlink tree
+ * `attach` attach to still running container (interactive if more than 1 present)
+ * * `build rootfs` - just build the (unpacked) container as a symlink tree
  * `build sif` - build the container image in flake/result/anysnake2_container.sif
  * `config` - list the available example configs (and config <name> to print one)
  * `develop` - run 'nix develop' on the flake and come back to flake/../
@@ -271,6 +272,21 @@ or download one of the prebuild binaries (which are statically linked against mu
 
 # Proxy support
 anysnake2 respects HTTPS_PROXY and HTTP_PROXY environment variables.
+
+
+# Dtach
+
+Singularity containers, unlike the daemon spawend docker containers of yore,
+die if you were using them via ssh and disconnect.
+
+That's no way to live. Anysnake2 therefore starts your containers in a ['dtach'](https://github.com/crigler/dtach),
+a lightweight screen alternative.
+
+You can manually detach by pressing 'ctrl+\'.
+
+To reattach after a disconnect, use `anysnake2 attach`.
+
+You can disable dtach by setting `container.detach = false` in your projects anysnake2.toml
 
 
 # Why are path:/ urls on flakes not allowed

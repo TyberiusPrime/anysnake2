@@ -39,11 +39,17 @@ pub struct Anysnake2 {
     #[serde(default = "Anysnake2::default_url")]
     pub url: String,
     pub do_not_modify_flake: Option<bool>,
+    #[serde(default = "Anysnake2::default_dtach")]
+    pub dtach: bool,
 }
 
 impl Anysnake2 {
     fn default_url() -> String {
         "github:TyberiusPrime/anysnake2".to_string()
+    }
+
+    fn default_dtach() -> bool {
+        true
     }
 }
 

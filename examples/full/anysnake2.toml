@@ -90,6 +90,7 @@ version = "1.55.0" # =stable.
 
 [container]
 home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
 
 [container.volumes_ro]
 "/opt" = "/opt"

@@ -11,6 +11,6 @@ takea
 /result
 examples/**/result
 examples/**/code
-examples/**/flake
+examples/**/.anysnake2_flake
 examples/**/venv
 hello_flake
