@@ -281,6 +281,10 @@ fn inner_main() -> Result<()> {
         print_version_and_exit();
     }
 
+    if let Ok(_) = std::env::var("SINGULARITY_NAME") {
+        bail!("Can't run anysnake within singularity container - nesting not supported");
+    }
+
     let mut parsed_config: config::ConfigToml = read_config(&matches)?;
 
     let flake_dir: PathBuf = ["flake"].iter().collect();
