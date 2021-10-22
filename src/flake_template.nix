@@ -56,6 +56,7 @@
                  ln -s $path/lib/* $out/rootfs/usr/lib/ || true
                  ln -s $path/share/* $out/rootfs/usr/share/ || true
               done
+              ln -s $out/rootfs/bin $out/rootfs/usr/bin
 
               mkdir -p $out/rootfs/etc/profile.d
               echo "echo hello world" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
