@@ -210,6 +210,7 @@ pub fn write_flake(
             &parsed_config.outside_nixpkgs.url,
             &parsed_config.outside_nixpkgs.rev,
         )?,
+        &flake_dir,
     )?;
 
     //print!("{}", flake_contents);
@@ -502,10 +503,12 @@ impl Retriever for GitHubTagRetriever {
     }
 }
 
-fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str) -> Result<String> {
+fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str, flake_dir: &Path) -> Result<String> {
+    let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
+    super::register_nix_gc_root(&full_url, &flake_dir)?;
     let full_args = vec![
         "shell".to_string(),
-        format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev),
+        full_url,
         "-c".into(),
         "nixfmt".into(),
     ];

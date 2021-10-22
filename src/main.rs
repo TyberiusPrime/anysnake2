@@ -4,10 +4,11 @@ use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use serde_derive::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -31,6 +32,24 @@ mod python_parsing;
 use flake_writer::lookup_github_tag;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+trait CloneStringLossy {
+    fn to_string_lossy(&self) -> String;
+}
+
+impl CloneStringLossy for PathBuf {
+    fn to_string_lossy(&self) -> String {
+        self.clone().into_os_string().to_string_lossy().to_string()
+    }
+}
+impl CloneStringLossy for Path {
+    fn to_string_lossy(&self) -> String {
+        self.to_owned()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string()
+    }
+}
 
 fn main() {
     let r = inner_main();
@@ -355,7 +374,7 @@ fn inner_main() -> Result<()> {
             );
 
             if let Some(python) = &parsed_config.python {
-                fill_venv(&python.version, &python_packages, &nixpkgs_url)?;
+                fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
             };
 
             let home_dir = PathBuf::from(replace_env_vars(
@@ -536,6 +555,7 @@ fn inner_main() -> Result<()> {
                 &singularity_args[..],
                 &nixpkgs_url,
                 Some(&run_dir.join("singularity.bash")),
+                &flake_dir,
             )?;
             if let Some(bash_script) = post_run_outside {
                 if let Err(e) = run_bash(&bash_script) {
@@ -566,11 +586,14 @@ fn run_singularity(
     args: &[String],
     nix_repo: &str,
     log_file: Option<&PathBuf>,
+    flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
+    let singularity_url = format!("{}#singularity", nix_repo);
+    register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut full_args = vec![
             "shell".to_string(),
-            format!("{}#singularity", nix_repo),
+            singularity_url.clone(),
             "-c".into(),
             "singularity".into(),
         ];
@@ -743,6 +766,7 @@ fn rebuild_flake(use_generated_file_instead: bool, target: &str) -> Result<()> {
         "result
 run_scripts/
 .*.json
+.gc_roots
 ",
     )?;
     debug!("writing flake");
@@ -847,6 +871,7 @@ fn fill_venv(
     python_version: &str,
     python: &[(String, String)],
     nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
+    flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = ["venv", python_version].iter().collect();
     std::fs::create_dir_all(&venv_dir)?;
@@ -905,6 +930,7 @@ fn fill_venv(
                 &singularity_args[..],
                 nixpkgs_url,
                 Some(&venv_dir.join("singularity.bash")),
+                &flake_dir,
             )?;
             if !singularity_result.success() {
                 bail!(
@@ -937,6 +963,121 @@ fn fill_venv(
             }
             */
         }
+    }
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct NixFlakePrefetchOutput {
+    storePath: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct NixBuildOutputs {
+    out: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct NixBuildOutput {
+    outputs: NixBuildOutputs,
+}
+
+fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Result<()> {
+    debug!(
+        "symlink_for_sure {:?} <- {:?}",
+        &original.as_ref(),
+        &link.as_ref()
+    );
+    if link.as_ref().exists() {
+        std::fs::remove_file(&link)?;
+    }
+    Ok(std::os::unix::fs::symlink(
+        std::fs::canonicalize(&original)?,
+        &link,
+    )?)
+}
+
+pub fn register_nix_gc_root(url: &str, flake_dir: &Path) -> Result<()> {
+    debug!("registering gc root for {}", url);
+    //where we store this stuff
+    let gc_roots = flake_dir.join(".gcroots");
+    std::fs::create_dir_all(&gc_roots)?;
+
+    //where nix goes on the hunt
+    //
+    let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &whoami::username()]
+        .iter()
+        .collect();
+    let flake_hash = sha256::digest(flake_dir.to_owned().into_os_string().to_string_lossy());
+
+    //first we store and hash the flake itself and record tha.
+    let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
+    let flake_symlink_here = gc_roots.join(&without_hash.replace("/", "_"));
+    if !flake_symlink_here.exists() {
+        debug!("nix prefetching flake {}", &without_hash);
+        run_without_ctrl_c(|| {
+            let output = std::process::Command::new("nix")
+                .args(&["flake", "prefetch", without_hash, "--json"])
+                .output()?;
+            if !output.status.success() {
+                Err(anyhow!("nix build failed"))
+            } else {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
+                symlink_for_sure(&j.storePath, &flake_symlink_here)?;
+                symlink_for_sure(
+                    &flake_symlink_here,
+                    &gc_per_user_base.join(&format!(
+                        "{}_{}",
+                        &flake_hash,
+                        &without_hash.replace("/", "_")
+                    )),
+                )?;
+                //now from the gc_dir
+                Ok(())
+            }
+        })?;
+    }
+
+    //now the nix build.
+
+    let out_dir = gc_roots.join(&url.replace("/", "_"));
+    let rev_file = gc_roots.join(format!("{}.rev", url.replace("/", "_")));
+    let last = std::fs::read_to_string(&rev_file).unwrap_or_else(|_| "".to_string());
+    if last != url || !out_dir.exists() {
+        std::fs::remove_file(&out_dir).ok();
+        std::fs::write(&rev_file, &url).ok();
+        debug!("nix building {}", &url);
+
+        let store_path = run_without_ctrl_c(|| {
+            let output = std::process::Command::new("nix")
+                .args(&[
+                    "build",
+                    url,
+                    "--max-jobs",
+                    "auto",
+                    "--cores",
+                    "4",
+                    "--no-link",
+                    "--json",
+                ])
+                .output()?;
+            if !output.status.success() {
+                Err(anyhow!("nix build failed"))
+            } else {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                println!("{}", stdout);
+                let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout)?;
+                let j = j.into_iter().next().unwrap();
+                Ok(j.outputs.out)
+            }
+        })?;
+        symlink_for_sure(store_path, &out_dir)?;
+        symlink_for_sure(
+            &out_dir,
+            &gc_per_user_base.join(&format!("{}_{}", &flake_hash, &url.replace("/", "_"))),
+        )?;
     }
     Ok(())
 }

@@ -86,7 +86,7 @@ version = "1.55.0" # =stable.
 
 
 [container]
-home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
 
 [container.volumes_ro]
 "/opt" = "/opt"
@@ -101,11 +101,13 @@ home = "$HOME/singularity_home/$USER" # where to locate the singularity home. De
 "/var/run/docker.sock" = "/var/run/docker.sock"
 
 
-[env]
+[container.env]
 MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
 MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
 MBF_AUTH_USER = "feed"
 MBF_AUTH_PASSWORD = "feed"
+NICE_HOSTNAME="$NICE_HOSTNAME"
+ANYSNAKE2_SOURCE="$PWD"
 
 
 [cmd.default]
@@ -136,8 +138,6 @@ echo 'post run outside'
 
 [cmd.shell]
 run = """
-bash -c set
-set
 fish
 """
 
