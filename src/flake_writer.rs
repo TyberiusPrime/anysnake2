@@ -171,6 +171,9 @@ pub fn write_flake(
                     Some(f) => f.iter().map(|x| &x[..]).collect(),
                     None => Vec::new(),
                 };
+                if flake.url.starts_with("path:/") {
+                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"))
+                }
                 inputs.push(InputFlake::new(
                     name,
                     &flake

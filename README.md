@@ -271,3 +271,18 @@ or download one of the prebuild binaries (which are statically linked against mu
 
 # Proxy support
 anysnake2 respects HTTPS_PROXY and HTTP_PROXY environment variables.
+
+
+# Why are path:/ urls on flakes not allowed
+
+I've found nix flakes to mishandle 'path:/<absolute_path>?rev=xyz' style input urls.
+As in it wouldn't actually checkout xyz, but push the whole repo including .git into the 
+store. Then if you changed the repo in any way, it would fail with a narHash mismatch.
+
+The workaround is to use just an /absolute_path instead, for "/absolut_path?rev=xyz" 
+is being handled correctly.
+
+To avoid you falling into this trap, anysnake2 requests path:// flake definitions.
+
+
+

@@ -323,8 +323,12 @@ fn inner_main() -> Result<()> {
         let run_sh_str: String = run_sh.into_os_string().to_string_lossy().to_string();
         std::fs::write(
             &run_sh_str,
-            format!("#/bin/bash\ncd ..&& echo 'starting nix develop shell'\n {}\n", &parsed_config.dev_shell.shell),
-        ).context("Failed to write run.sh")?; // the -i makes it read /etc/bashrc
+            format!(
+                "#/bin/bash\ncd ..&& echo 'starting nix develop shell'\n {}\n",
+                &parsed_config.dev_shell.shell
+            ),
+        )
+        .context("Failed to write run.sh")?; // the -i makes it read /etc/bashrc
 
         if cmd == "develop" {
             run_without_ctrl_c(|| {
@@ -788,7 +792,12 @@ run_scripts/
     if target != "flake" {
         let nix_build_result = run_without_ctrl_c(|| {
             Command::new("nix")
-                .args(&["build", &format!("./#{}", target), "-v"])
+                .args(&["build", &format!("./#{}", target), "-v",
+                "--max-jobs", "auto",
+                "--cores", "4",
+                "--keep-going"
+                ]
+                )
                 .current_dir("flake")
                 .status()
                 .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{} -v --show-trace'",
