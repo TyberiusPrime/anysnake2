@@ -17,7 +17,7 @@ struct InputFlake {
 }
 
 impl InputFlake {
-    fn new(name: &str, url: &str, rev: &str, follows: &[&str]) -> Result<Self> {
+    fn new(name: &str, url: &str, rev: &str, follows: &[&str], flake_dir: impl AsRef<Path>) -> Result<Self> {
         let url = if url.ends_with('/') {
             url.strip_suffix('/').unwrap()
         } else {
@@ -26,7 +26,7 @@ impl InputFlake {
         Ok(InputFlake {
             name: name.to_string(),
             url: url.to_string(),
-            rev: lookup_github_tag(url, rev)?,
+            rev: lookup_github_tag(url, rev, flake_dir)?,
             follows: follows.iter().map(|x| x.to_string()).collect(),
         })
     }
@@ -34,7 +34,7 @@ impl InputFlake {
 
 #[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
-    flake_dir: &Path,
+    flake_dir: impl AsRef<Path>,
     parsed_config: &config::ConfigToml,
     python_packages: &[(String, String)],
     use_generated_file_instead: bool,
@@ -60,6 +60,7 @@ pub fn write_flake(
         &parsed_config.nixpkgs.url,
         &parsed_config.nixpkgs.rev,
         &[],
+        &flake_dir,
     )?);
     let mut nixpkgs_pkgs = match &parsed_config.nixpkgs.packages {
         Some(pkgs) => pkgs.clone(),
@@ -84,6 +85,7 @@ pub fn write_flake(
         &parsed_config.flake_util.url,
         &parsed_config.flake_util.rev,
         &["nixpkgs"],
+        &flake_dir,
     )?);
 
     flake_contents = match &parsed_config.rust.version {
@@ -93,6 +95,7 @@ pub fn write_flake(
                 &parsed_config.rust.rust_overlay_url,
                 &parsed_config.rust.rust_overlay_rev,
                 &["nixpkgs", "flake-utils"],
+                &flake_dir,
             )?);
             flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
             .replace(
@@ -125,13 +128,14 @@ pub fn write_flake(
             let ecosystem_date = python
                 .parsed_ecosystem_date()
                 .context("Failed to parse python.ecosystem-date")?;
-            let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date)?;
+            let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date, &flake_dir)?;
 
             inputs.push(InputFlake::new(
                 "mach-nix",
                 &parsed_config.mach_nix.url,
                 &parsed_config.mach_nix.rev,
                 &["nixpkgs", "flake-utils", "pypi-deps-db"],
+                &flake_dir
             )?);
 
             inputs.push(InputFlake::new(
@@ -139,6 +143,7 @@ pub fn write_flake(
                 "github:DavHau/pypi-deps-db",
                 &pypi_debs_db_rev,
                 &["nixpkgs", "mach-nix"],
+                &flake_dir
             )?);
 
             flake_contents
@@ -181,6 +186,7 @@ pub fn write_flake(
                         .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
                     &flake.rev,
                     &rev_follows[..],
+                    &flake_dir,
                 )?);
                 for pkg in &flake.packages {
                     flake_packages += &format!("${{{}.{}}}", name, pkg);
@@ -209,25 +215,26 @@ pub fn write_flake(
         &lookup_github_tag(
             &parsed_config.outside_nixpkgs.url,
             &parsed_config.outside_nixpkgs.rev,
+            &flake_dir,
         )?,
         &flake_dir,
     )?;
 
     //print!("{}", flake_contents);
-    let mut git_path = flake_dir.to_path_buf();
+    let mut git_path = flake_dir.as_ref().to_path_buf();
     git_path.push(".git");
     if !git_path.exists() {
         let output = Command::new("git")
             .args(&["init"])
             .current_dir(&flake_dir)
             .output()
-            .context(format!("Failed create git repo in {:?}", flake_dir))?;
+            .context(format!("Failed create git repo in {:?}", flake_dir.as_ref()))?;
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let msg = format!(
                 "Failed to init git repo in  {:?}.\n Stdout {:?}\nStderr: {:?}",
-                flake_dir, stdout, stderr
+                flake_dir.as_ref(), stdout, stderr
             );
             bail!(msg);
         }
@@ -294,7 +301,7 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
     Ok(res)
 }
 
-fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
+fn pypi_deps_date_to_rev(date: NaiveDate, flake_dir: impl AsRef<Path>) -> Result<String> {
     let query_date = date.and_hms(0, 0, 0);
     //chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
     //.context("Failed to parse pypi-deb-db date")?;
@@ -309,7 +316,7 @@ fn pypi_deps_date_to_rev(date: NaiveDate) -> Result<String> {
         bail!("Pypi-deps-db date is in the future!");
     }
 
-    let store_path: PathBuf = ["flake", ".pypi-debs-db.lookup.json"].iter().collect();
+    let store_path: PathBuf = flake_dir.as_ref().join(".pypi-debs-db.lookup.json").iter().collect();
     let query_date_str = query_date.format("%Y%m%d").to_string();
     fetch_cached(
         store_path,
@@ -426,15 +433,14 @@ fn get_proxy_req() -> Result<ureq::Agent> {
     Ok(agent.build())
 }
 
-pub fn lookup_github_tag(url: &str, tag_or_rev: &str) -> Result<String> {
+pub fn lookup_github_tag(url: &str, tag_or_rev: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     if tag_or_rev.len() == 40 || !url.starts_with("github:") {
         Ok(tag_or_rev.to_string())
     } else {
         let repo = url.strip_prefix("github:").unwrap();
         fetch_cached(
-            [format!("flake/.github_{}.json", repo.replace("/", "_"))]
-                .iter()
-                .collect(),
+            &flake_dir.as_ref().join(format!(".github_{}.json", repo.replace("/", "_"))),
+
             tag_or_rev,
             GitHubTagRetriever {
                 repo: repo.to_string(),
@@ -448,8 +454,8 @@ trait Retriever {
     fn retrieve(&self) -> Result<HashMap<String, String>>;
 }
 
-fn fetch_cached(cache_filename: PathBuf, query: &str, retriever: impl Retriever) -> Result<String> {
-    let mut known: HashMap<String, String> = match cache_filename.exists() {
+fn fetch_cached(cache_filename: impl AsRef<Path>, query: &str, retriever: impl Retriever) -> Result<String> {
+    let mut known: HashMap<String, String> = match cache_filename.as_ref().exists() {
         true => serde_json::from_str(&std::fs::read_to_string(&cache_filename)?)?,
         false => HashMap::new(),
     };
@@ -503,9 +509,9 @@ impl Retriever for GitHubTagRetriever {
     }
 }
 
-fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str, flake_dir: &Path) -> Result<String> {
+fn nix_format(input: &str, nixpkgs_url: &str, nixpkgs_rev: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
-    super::register_nix_gc_root(&full_url, &flake_dir)?;
+    super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec![
         "shell".to_string(),
         full_url,

@@ -189,6 +189,7 @@ fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
 fn switch_to_configured_version(
     parsed_config: &config::ConfigToml,
     matches: &ArgMatches<'static>,
+    flake_dir: impl AsRef<Path>
 ) -> Result<()> {
     if parsed_config.anysnake2.rev == "dev" {
         info!("Using development version of anysnake");
@@ -201,7 +202,7 @@ fn switch_to_configured_version(
         let repo = format!(
             "{}?rev={}",
             &parsed_config.anysnake2.url,
-            lookup_github_tag(&parsed_config.anysnake2.url, &parsed_config.anysnake2.rev)?
+            lookup_github_tag(&parsed_config.anysnake2.url, &parsed_config.anysnake2.rev, flake_dir)?
         );
 
         let mut args = vec![
@@ -287,10 +288,10 @@ fn inner_main() -> Result<()> {
 
     let mut parsed_config: config::ConfigToml = read_config(&matches)?;
 
-    let flake_dir: PathBuf = ["flake"].iter().collect();
+    let flake_dir: PathBuf = [".anysnake_flake"].iter().collect();
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
-    switch_to_configured_version(&parsed_config, &matches)?;
+    switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
 
     if !(parsed_config.cmd.contains_key(cmd) || cmd == "build" || cmd == "run" || cmd == "develop")
     {
@@ -374,7 +375,7 @@ fn inner_main() -> Result<()> {
             let nixpkgs_url = format!(
                 "{}?rev={}",
                 &parsed_config.nixpkgs.url,
-                lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev)?,
+                lookup_github_tag(&parsed_config.nixpkgs.url, &parsed_config.nixpkgs.rev, &flake_dir)?,
             );
 
             if let Some(python) = &parsed_config.python {
@@ -997,15 +998,15 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
         std::fs::remove_file(&link)?;
     }
     Ok(std::os::unix::fs::symlink(
-        std::fs::canonicalize(&original)?,
+        &original,
         &link,
     )?)
 }
 
-pub fn register_nix_gc_root(url: &str, flake_dir: &Path) -> Result<()> {
+pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
     debug!("registering gc root for {}", url);
     //where we store this stuff
-    let gc_roots = flake_dir.join(".gcroots");
+    let gc_roots = flake_dir.as_ref().join(".gcroots");
     std::fs::create_dir_all(&gc_roots)?;
 
     //where nix goes on the hunt
@@ -1013,7 +1014,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: &Path) -> Result<()> {
     let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &whoami::username()]
         .iter()
         .collect();
-    let flake_hash = sha256::digest(flake_dir.to_owned().into_os_string().to_string_lossy());
+    let flake_hash = sha256::digest(flake_dir.as_ref().to_owned().into_os_string().to_string_lossy());
 
     //first we store and hash the flake itself and record tha.
     let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
