@@ -287,7 +287,7 @@ fn inner_main() -> Result<()> {
     if cmd == "version" {
         print_version_and_exit();
     }
-    if let Ok(_) = std::env::var("SINGULARITY_NAME") {
+    if std::env::var("SINGULARITY_NAME").is_ok() {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
@@ -639,7 +639,7 @@ fn run_singularity(
             std::fs::create_dir_all(dtach_dir)?;
             let dtach_url = singularity_url.replace("#singularity", "#dtach");
             register_nix_gc_root(&dtach_url, flake_dir)?;
-            nix_full_args.extend([
+            nix_full_args.extend(vec![ //vec just to shut up clippy
                 "shell".to_string(),
                 dtach_url,
                 "-c".to_string(),
@@ -650,7 +650,7 @@ fn run_singularity(
             ]);
         }
 
-        nix_full_args.extend([
+        nix_full_args.extend(vec![ //vec just to shutup clippy
             "shell".to_string(),
             singularity_url.clone(),
             "-c".into(),
@@ -1156,7 +1156,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
         bail!("No session to attach to available");
     } else if available.len() == 1 {
         println!("reattaching to {:?}", available[0].file_name());
-        return un_dtach(available[0].path(), outside_nix_repo);
+        run_dtach(available[0].path(), outside_nix_repo)
     } else {
         available.sort_unstable_by_key(|x| x.file_name());
         loop {
@@ -1167,7 +1167,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
             let line1 = std::io::stdin().lock().lines().next().unwrap().unwrap();
             for (ii, entry) in available.iter().enumerate() {
                 if format!("{}", ii) == line1 {
-                    return un_dtach(entry.path(), outside_nix_repo);
+                    return run_dtach(entry.path(), outside_nix_repo);
                 }
             }
             println!("sorry I did not understand that. \n")
@@ -1175,7 +1175,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
     }
 }
 
-fn un_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
+fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     let dtach_url = format!("{}#dtach", outside_nix_repo);
     let nix_full_args = vec![
         "shell".to_string(),
