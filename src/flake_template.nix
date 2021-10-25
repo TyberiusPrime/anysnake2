@@ -60,7 +60,6 @@
               ln -s $out/rootfs/bin $out/rootfs/usr/bin
 
               mkdir -p $out/rootfs/etc/profile.d
-              echo "echo hello world" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
               echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
               echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
 
