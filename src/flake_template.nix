@@ -29,8 +29,7 @@
           in {
             script_file = script_file;
 
-            derivation = pkgs.runCommand name {
-            } ''
+            derivation = pkgs.runCommand name { } ''
               set -o pipefail
               shopt -s nullglob
               mkdir -p $out/rootfs/usr/lib
@@ -50,18 +49,26 @@
               done
 
               # the later entries shadow the earlier ones. and the python environment beats everything else
+              set -x
+              # python packages beat the others# python packages beat the others..
+              #${pkgs.xorg.lndir}/bin/lndir $mypy2/bin $out/rootfs/bin/ || true
               for path in $(tac ${script_file});
                  do
-                 ln -s $path/bin/* $out/rootfs/bin/ || true
-                 ln -s $path/etc/* $out/rootfs/etc || true
-                 ln -s $path/lib/* $out/rootfs/usr/lib/ || true
-                 ln -s $path/share/* $out/rootfs/usr/share/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir $path/bin $out/rootfs/bin/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir $path/etc $out/rootfs/etc || true
+                 ${pkgs.xorg.lndir}/bin/lndir $path/lib $out/rootfs/usr/lib/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir $path/share $out/rootfs/usr/share/ || true
+                 # fi
               done
               ln -s $out/rootfs/bin $out/rootfs/usr/bin
+              #mkdir $out/python_env
+              #ln -s $mypy2/* $out/python_env
 
               mkdir -p $out/rootfs/etc/profile.d
               echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
               echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+              #echo "export PATH=/python_env/bin:/bin:/usr/bin/" >>$out/rootfs/etc/bashrc 
+              #echo "export PYTHONPATH=$PYTHONPATH:/python_env/lib/python%PYTHON_MAJOR_DOT_MINOR%/site-packages" >>$out/rootfs/etc/bashrc 
 
             '';
           };
@@ -146,14 +153,15 @@
         defaultPackage = buildSymlinkImage _args;
         sif_image = buildSingularityImage _args;
         devShell = pkgs.stdenv.mkDerivation {
-           name="anysnake2-devshell";
-           shellHook = ''
-             export PATH=${defaultPackage}/rootfs/bin:$PATH;
-             '';
-             nativeBuildInputs = with pkgs; [
-               #%DEVSHELL_INPUTS%
-           ];
-         };
+          name = "anysnake2-devshell";
+          shellHook = ''
+            export PATH=${defaultPackage}/rootfs/bin:$PATH;
+          '';
+          nativeBuildInputs = with pkgs;
+            [
+              #%DEVSHELL_INPUTS%
+            ];
+        };
       });
 
 }

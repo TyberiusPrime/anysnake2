@@ -1053,10 +1053,11 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
         &original.as_ref(),
         &link.as_ref()
     );
-    if link.as_ref().exists() {
+    if std::fs::read_link(&link).is_ok(){ // ie it existed...
+        debug!("removing old symlink {:?}", &link.as_ref());
         std::fs::remove_file(&link)?;
     }
-    Ok(std::os::unix::fs::symlink(&original, &link)?)
+    Ok(std::os::unix::fs::symlink(&original, &link).with_context(||format!("Failed to symlink {:?} to {:?}", &original.as_ref(), &link.as_ref()))?)
 }
 
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
@@ -1094,7 +1095,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
                 let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
                 symlink_for_sure(&j.storePath, &flake_symlink_here)?;
                 symlink_for_sure(
-                    &flake_symlink_here,
+                    &gc_roots.canonicalize()?.join(&without_hash.replace("/", "_")),
                     &gc_per_user_base.join(&format!(
                         "{}_{}",
                         &flake_hash,
@@ -1142,7 +1143,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
         })?;
         symlink_for_sure(store_path, &out_dir)?;
         symlink_for_sure(
-            &out_dir,
+            &out_dir.parent().context("parent not found")?.canonicalize()?.join(&url.replace("/", "_")),
             &gc_per_user_base.join(&format!("{}_{}", &flake_hash, &url.replace("/", "_"))),
         )?;
     }

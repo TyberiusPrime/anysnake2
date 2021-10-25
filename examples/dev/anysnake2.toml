@@ -27,6 +27,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"ripgrep",
 	"strace",
 	"which",
+	"mercurial", # good test case for breaking site-packages
 	] # optional
 
 [outside_nixpkgs]
@@ -48,12 +49,19 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-scipy=""
-pypipegraph2=">2.1"
-mbf_r = "editable/code"  # see [clones.code] below
-mbf_sampledata = "editable/code"
-dppd = "editable/code"
-dppd_plotnine = "editable/code"
+#scipy=""
+#pypipegraph2=">2.1"
+##mbf_r = "editable/code"  # see [clones.code] below
+#mbf_sampledata = "editable/code"
+#dppd = "editable/code"
+#dppd_plotnine = "editable/code"
+#mercurial="5.8"
+
+pypipegraph2=""
+jupyter=""
+requests=""
+dppd_plotnine=""
+
 # pandas="<1.0"
 
 [clones.code] # target directory

@@ -125,6 +125,7 @@ pub fn write_flake(
                 bail!(
                         format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
             }
+            let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
             let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
@@ -155,6 +156,7 @@ pub fn write_flake(
             flake_contents
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
+                .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
                     "\"%MACHNIX%\"",
