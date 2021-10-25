@@ -352,7 +352,7 @@ struct PyPiDepsDBRetriever {
 impl PyPiDepsDBRetriever {
     fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
         let url = format!(
-            "http://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
+            "https://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
             page
         );
         let body: String = get_proxy_req()?.get(&url).call()?.into_string()?;
@@ -439,9 +439,9 @@ fn get_proxy_req() -> Result<ureq::Agent> {
         None
     };
     if let Some(proxy_url) = proxy_url {
-        let proxy_url = proxy_url
-            .strip_prefix("https://")
-            .unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
+        //let proxy_url = proxy_url
+            //.strip_prefix("https://")
+            //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
         debug!("using proxy_url {}", proxy_url);
         let proxy = ureq::Proxy::new(proxy_url)?;
         agent = agent.proxy(proxy)
