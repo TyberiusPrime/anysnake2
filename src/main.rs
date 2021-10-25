@@ -129,7 +129,7 @@ fn parse_args() -> ArgMatches<'static> {
                 .subcommand(SubCommand::with_name("full"))
         )
         .subcommand(SubCommand::with_name("develop").about("run nix develop, and go back to this dir with your favourite shell"))
-        .subcommand(SubCommand::with_name("version").about("output version of this build"))
+        .subcommand(SubCommand::with_name("version").about("the version actually used by the config file. Error if no config file is present (use --version for the version of this binary"))
         .subcommand(SubCommand::with_name("attach").about("attach to previously running session"))
         .subcommand(
             SubCommand::with_name("run")
@@ -182,7 +182,7 @@ fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
         "Could not find config file {}. Use --help for help",
         config_file
     ))?;
-    let mut parsed_config: config::ConfigToml = toml::from_str(&raw_config)
+    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
         .with_context(|| format!("Failure parsing {:?}", &abs_config_path))?;
     parsed_config.anysnake2_toml_path = Some(abs_config_path);
     Ok(parsed_config)
@@ -203,9 +203,9 @@ fn switch_to_configured_version(
         info!("restarting with version {}", &parsed_config.anysnake2.rev);
         let repo = format!(
             "{}?rev={}",
-            &parsed_config.anysnake2.url,
+            &parsed_config.anysnake2.url.as_ref().unwrap(),
             lookup_github_tag(
-                &parsed_config.anysnake2.url,
+                &parsed_config.anysnake2.url.as_ref().unwrap(),
                 &parsed_config.anysnake2.rev,
                 flake_dir
             )?
@@ -284,10 +284,7 @@ fn inner_main() -> Result<()> {
 
     configure_logging(&matches);
 
-    if cmd == "version" {
-        print_version_and_exit();
-    }
-    if std::env::var("SINGULARITY_NAME").is_ok() {
+        if std::env::var("SINGULARITY_NAME").is_ok() {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
@@ -297,6 +294,10 @@ fn inner_main() -> Result<()> {
     std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
     switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
+    if cmd == "version" {
+        print_version_and_exit();
+    }
+
     if cmd == "attach" {
         let outside_nixpkgs_url = format!(
             "{}?rev={}",

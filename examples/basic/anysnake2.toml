@@ -1,7 +1,8 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-rev = "dev"
+rev = "0.5.2"
+use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
 
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt

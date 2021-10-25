@@ -9,7 +9,7 @@ to give you 'virtual environments' that are fully defined in an easy to use [tom
 # How it works
 
 The first thing the anysnake2 does is read the anysnake2 version from your project config file.
-It then restarts itself with that exact anysnake2 version using Nix.
+It then restarts itself with that exact anysnake2 version using Nix (see below).
 
 Next it writes a [Nix flake](https://nixos.wiki/wiki/Flakes), and turns it into either a symlink forest that works
 as a rootless singularity container.
@@ -269,6 +269,18 @@ But with the auto-use-the-specified-version-mechanism, it's a bit of a moot poin
 Either add this repository as a flake to your nix configuration,
 or download one of the prebuild binaries (which are statically linked against musl) and place it somewhere in your $PATH.
 
+# The auto-use-the-specified-version-mechanism
+
+If anysnake2 find's it's own version to differ from the one definined in the config file,
+it will restart itself using `nix shell github:.../`.
+
+By default it will use the [TyberiusPrime/anysnake2_release_flakes](https://github.com/TyberiusPrime/anysnake2_release_flakes) repository, which 
+provides download flakes for the releases from [TyberiusPrime/anysnake2](https://github.com/TyberiusPrime/anysnake2),
+but if you specify 'use_binary=false' in the anysnake2 section, it will rebuild instead. 
+
+Either way you can replace the repository the anysnake2 pulls itself from,
+see the [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml)).
+
 
 # Proxy support
 anysnake2 respects HTTPS_PROXY and HTTP_PROXY environment variables.
@@ -292,6 +304,7 @@ You can disable dtach by setting `container.detach = false` in your projects any
 # Why are path:/ urls on flakes not allowed
 
 I've found nix flakes to mishandle 'path:/<absolute_path>?rev=xyz' style input urls.
+
 As in it wouldn't actually checkout xyz, but push the whole repo including .git into the 
 store. Then if you changed the repo in any way, it would fail with a narHash mismatch.
 

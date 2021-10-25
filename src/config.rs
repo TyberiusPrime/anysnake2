@@ -33,21 +33,39 @@ pub struct ConfigToml {
     pub dev_shell: DevShell,
 }
 
+impl ConfigToml {
+
+    pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
+        let mut res: ConfigToml = toml::from_str(&raw_config)?;
+        res.anysnake2.url = match res.anysnake2.url {
+            Some(url) => Some(url),
+            None => {
+                match res.anysnake2.use_binary {
+                    true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
+                    false => Some("github:TyberiusPrime/anysnake2".to_string()),
+                }
+            }
+        };
+        Ok(res)
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Anysnake2 {
     pub rev: String,
-    #[serde(default = "Anysnake2::default_url")]
-    pub url: String,
+    #[serde(default = "Anysnake2::default_use_binary")]
+    pub use_binary: bool,
+    pub url: Option<String>,
     pub do_not_modify_flake: Option<bool>,
     #[serde(default = "Anysnake2::default_dtach")]
     pub dtach: bool,
 }
 
 impl Anysnake2 {
-    fn default_url() -> String {
-        "github:TyberiusPrime/anysnake2".to_string()
-    }
 
+    fn default_use_binary() -> bool {
+        true
+    }
     fn default_dtach() -> bool {
         true
     }
