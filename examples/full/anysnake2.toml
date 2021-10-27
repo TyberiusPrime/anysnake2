@@ -40,7 +40,13 @@ packages = [ # use https://search.nixos.org/packages to search
 [flake-util]
 # the revision used by flake-util
 # rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
-# url = oxalica/rust-overlay
+# url = "github:/oxalica/rust-overlay"
+
+[mach-nix]
+# the revision used by flake-util
+# rev = "dc94135e31d5c90c40a00a6cbdf9330526e8153b" # optional
+# url = "github:/DavHau/mach-nix"
+
 
 
 [python] # python section is optional

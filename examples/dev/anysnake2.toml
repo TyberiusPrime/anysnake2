@@ -28,6 +28,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"strace",
 	"which",
 	"mercurial", # good test case for breaking site-packages
+	"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts ]; }"
 	] # optional
 
 [outside_nixpkgs]

@@ -15,14 +15,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /* TODO
- *
- * running container managment (does it die when you quit the shell. Yes it does.? can we reattach?
-   should we just all use screen all the time?)
 
  * R
+ 
  * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
 
  * per command volumes? do we need these?
+
 */
 
 mod config;
@@ -144,7 +143,7 @@ fn parse_args() -> ArgMatches<'static> {
         .get_matches()
 }
 
-fn handle_config_command(matches: &ArgMatches<'static>) {
+fn handle_config_command(matches: &ArgMatches<'static>) -> Result<()> {
     if let ("config", Some(sc)) = matches.subcommand() {
         {
             match sc.subcommand().0 {
@@ -153,14 +152,19 @@ fn handle_config_command(matches: &ArgMatches<'static>) {
                     std::include_str!("../examples/minimal/anysnake2.toml")
                 ),
                 "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
-                _ => {
+                "basic" => {
                     // includes basic
                     println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
+                }
+                _ => {
+                    bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
                 }
             }
             std::process::exit(0);
         }
     }
+    println!("ok");
+    Ok(())
 }
 
 fn configure_logging(matches: &ArgMatches<'static>) {
@@ -177,11 +181,18 @@ fn configure_logging(matches: &ArgMatches<'static>) {
 
 fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
-    let abs_config_path = std::fs::canonicalize(config_file)?;
-    let raw_config = std::fs::read_to_string(&abs_config_path).context(format!(
-        "Could not find config file {}. Use --help for help",
-        config_file
-    ))?;
+    let abs_config_path = std::fs::canonicalize(config_file).with_context(|| {
+        format!(
+            "Could not find config file '{}'. Use --help for help",
+            config_file
+        )
+    })?;
+    let raw_config = std::fs::read_to_string(&abs_config_path).with_context(|| {
+        format!(
+            "Could not find config file '{}'. Use --help for help",
+            config_file
+        )
+    })?;
     let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
         .with_context(|| format!("Failure parsing {:?}", &abs_config_path))?;
     parsed_config.anysnake2_toml_path = Some(abs_config_path);
@@ -225,6 +236,7 @@ fn switch_to_configured_version(
                 args.push(argument);
             }
             trace!("new args {:?}", args);
+            debug!("running nix {}", &args.join(" "));
             let status = run_without_ctrl_c(|| Ok(Command::new("nix").args(&args).status()?))?;
             //now push
             std::process::exit(status.code().unwrap());
@@ -264,8 +276,9 @@ fn collect_python_packages(
 fn inner_main() -> Result<()> {
     install_ctrl_c_handler()?;
     let matches = parse_args();
+    configure_logging(&matches);
 
-    handle_config_command(&matches);
+    handle_config_command(&matches)?;
     let top_level_slop: Vec<&str> = match matches.values_of("slop") {
         Some(slop) => slop.collect(),
         None => Vec::new(),
@@ -282,9 +295,7 @@ fn inner_main() -> Result<()> {
         }
     };
 
-    configure_logging(&matches);
-
-        if std::env::var("SINGULARITY_NAME").is_ok() {
+    if std::env::var("SINGULARITY_NAME").is_ok() {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
@@ -640,7 +651,8 @@ fn run_singularity(
             std::fs::create_dir_all(dtach_dir)?;
             let dtach_url = singularity_url.replace("#singularity", "#dtach");
             register_nix_gc_root(&dtach_url, flake_dir)?;
-            nix_full_args.extend(vec![ //vec just to shut up clippy
+            nix_full_args.extend(vec![
+                //vec just to shut up clippy
                 "shell".to_string(),
                 dtach_url,
                 "-c".to_string(),
@@ -651,7 +663,8 @@ fn run_singularity(
             ]);
         }
 
-        nix_full_args.extend(vec![ //vec just to shutup clippy
+        nix_full_args.extend(vec![
+            //vec just to shutup clippy
             "shell".to_string(),
             singularity_url.clone(),
             "-c".into(),
@@ -1053,11 +1066,20 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
         &original.as_ref(),
         &link.as_ref()
     );
-    if std::fs::read_link(&link).is_ok(){ // ie it existed...
+    if std::fs::read_link(&link).is_ok() {
+        // ie it existed...
         debug!("removing old symlink {:?}", &link.as_ref());
         std::fs::remove_file(&link)?;
     }
-    Ok(std::os::unix::fs::symlink(&original, &link).with_context(||format!("Failed to symlink {:?} to {:?}", &original.as_ref(), &link.as_ref()))?)
+    Ok(
+        std::os::unix::fs::symlink(&original, &link).with_context(|| {
+            format!(
+                "Failed to symlink {:?} to {:?}",
+                &original.as_ref(),
+                &link.as_ref()
+            )
+        })?,
+    )
 }
 
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
@@ -1095,7 +1117,9 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
                 let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
                 symlink_for_sure(&j.storePath, &flake_symlink_here)?;
                 symlink_for_sure(
-                    &gc_roots.canonicalize()?.join(&without_hash.replace("/", "_")),
+                    &gc_roots
+                        .canonicalize()?
+                        .join(&without_hash.replace("/", "_")),
                     &gc_per_user_base.join(&format!(
                         "{}_{}",
                         &flake_hash,
@@ -1143,7 +1167,11 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
         })?;
         symlink_for_sure(store_path, &out_dir)?;
         symlink_for_sure(
-            &out_dir.parent().context("parent not found")?.canonicalize()?.join(&url.replace("/", "_")),
+            &out_dir
+                .parent()
+                .context("parent not found")?
+                .canonicalize()?
+                .join(&url.replace("/", "_")),
             &gc_per_user_base.join(&format!("{}_{}", &flake_hash, &url.replace("/", "_"))),
         )?;
     }
@@ -1151,7 +1179,8 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 }
 
 fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
-    let mut available: Vec<_> = std::fs::read_dir(flake_dir.as_ref().join("dtach")).context("Could not find dtach socket directory")?
+    let mut available: Vec<_> = std::fs::read_dir(flake_dir.as_ref().join("dtach"))
+        .context("Could not find dtach socket directory")?
         .filter_map(|x| x.ok())
         .collect();
     if available.is_empty() {
