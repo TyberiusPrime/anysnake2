@@ -42,7 +42,7 @@
               touch $out/rootfs/etc/group
 
               mkdir -p $out/rootfs/{bin,etc,share}
-              mkdir -p $out/rootfs/usr/{bin,lib/share}
+              mkdir -p $out/rootfs/usr/{lib/share}
               for path in "${mypy2}/bin/"*;
                 do
                   ln -s $path $out/rootfs/bin/

@@ -982,7 +982,7 @@ fn fill_venv(
                     &safe_pkg
                 ),
             ];
-            singularity_args.push(flake_dir.join("/result/rootfs").to_string_lossy());
+            singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
             singularity_args.push("bash".into());
             singularity_args.push("-c".into());
             singularity_args.push(format!(
