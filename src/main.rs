@@ -16,16 +16,13 @@ use std::sync::Arc;
 
 /* TODO
 
- * R
- 
+ * R/r_ecosystem_track
+
  * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
 
  * per command volumes? do we need these?
 
- * jupyterWith, upgrade to notebook containing once https://github.com/tweag/jupyterWith/pull/142
- * is merged/done
- *
- * establish a test matrix 
+ * establish a test matrix
  *
  * ensure that the singularity sif container  actually contains everything...
 */
@@ -685,6 +682,19 @@ fn run_singularity(
             std::fs::write(lf, o)?;
         }
         info!("nix {}", pp.trim_start());
+        { // dtach eats the current screen
+          // so we want to push enough newlines to preserve our output
+            use terminal_size::{terminal_size, Height, Width};
+            let empty_lines = match terminal_size() {
+                Some((Width(_w), Height(h))) => {h},
+                None => 50,
+            };
+            for _ in 0..empty_lines {
+                println!("");
+            }
+        }
+        std::io::stdout().flush()?;
+
         Ok(Command::new("nix").args(nix_full_args).status()?)
     })
 }

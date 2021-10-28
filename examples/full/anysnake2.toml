@@ -18,7 +18,7 @@ rev = "0.3.1"
 							 # This is an escape hatch.
 
 [dev_shell] # optional
-    shell = "fish"
+    shell = "fish" # optional
 	inputs = [ # optional
 		# these are packages that show up only when you do 'nix develop'
 		"rust-analyzer"
