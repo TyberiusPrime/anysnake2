@@ -11,7 +11,7 @@ to give you 'virtual environments' that are fully defined in an easy to use [tom
 The first thing the anysnake2 does is read the anysnake2 version from your project config file.
 It then restarts itself with that exact anysnake2 version using Nix (see below).
 
-Next it writes a [Nix flake](https://nixos.wiki/wiki/Flakes), and turns it into either a symlink forest that works
+Next it writes a [Nix flake](https://nixos.wiki/wiki/Flakes), and turns it into a 'symlink forest' which works
 as a rootless singularity container.
 
 Last it extracts container settings from the config file and runs a bash script inside the container for you. 
@@ -123,7 +123,7 @@ ecosystem date we've been using. Change that to just a day later, and rerun `nix
 pandas 1.3.0 instead.
 
 (A quick way to check the pandas version is
-nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 run -- python -c "'import pandas; print(pandas.__version__)'".
+`nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 run -- python -c "'import pandas; print(pandas.__version__)'"`.
 Yes the escaping between nix shell, anysnake and python in series is a bit of a mess.)
 
 
