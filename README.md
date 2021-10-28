@@ -131,16 +131,7 @@ Instead of the default command (which is defined by cmd.default in the config to
 name (minus some build-in-exclusions), like the `shell` command defined above.
 `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 shell`, will execute a fish shell inside your container.
 
-
-# Installation
-
-...
-
-
 # Using R
-
-(Note: r_ecosystem_track is not ready yet, and not integrated into anysnake2 as of 2021-19-10,
-but this is how it's going to work).
 
 Including R and R packages using
 [r_ecosystem_track](https://github.com/TyberiusPrime/r_ecosystem_track) is even
@@ -158,7 +149,9 @@ packages = [
 ]
 ```
 
-(as of 2021-10-18, r_ecosystem_track is not ready yet, and there is no R integration.)
+(Note: r_ecosystem_track is not ready yet, and not integrated into anysnake2 as of 2021-19-10,
+but this is how it's going to work. For now ,the r packages come from nixpkgs).
+
 
 
 # Using rust
@@ -195,43 +188,44 @@ For example to clone into the 'code' directory, use this
 
 ```toml
 [clones.code] # target directory
-# seperate from python packages so you can clone other stuff as well
+# separate from python packages so you can clone other stuff as well
 dppd="git+https://github.com/TyberiusPrime/dppd
 ```
 
-You can use `[clone_regexps]` to save on typing here - see [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml). 
-Also the cloning happens only if the target folder does not exist yet (no automatic pull).
+You can use `[clone_regexps]` to save on typing here - see [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml). Also the cloning happens only if the target folder does not exist yet (no automatic pull). Mercurial cloning is available by using hg+https instead of git+https.
 
 You can then include this package in your python packages list like this
-`dppd=editable/code`. Anysnake2 will then (once) run a container tht 
-runs `pip install -e .` on that (possibly cloned) folder, and include it
+`dppd=editable/code`. Anysnake2 will then (once) run a container running 
+`pip install -e .` on the given (possibly cloned) folder, and include it
 in the containers python path. It will also, on every run, parse the
 requirements.txt/setup.cfg of the package and add it's requirements to
 the python packages to resolve & install.
 
 # Jupyter
 
-Just add 'jupyter=""' to your python packages (optionally specifying a version).
+Just add `jupyter=""` to your python packages (optionally specifying a version).
 
 
-If you want jupyterlab, add 'jupyterlab=""'.
+If you want jupyterlab, add `jupyterlab=""`.
 
 If you want pip installable dependencies, like [jupyter-black](pypi.org/project/jupyter-black/) or [jupyterlab_code_formatter](https://jupyterlab-code-formatter.readthedocs.io/en/latest/installation.html#installation-step-1-installing-the-plugin-itself), add them the same way. The later will need both [black](https://pypi.org/project/black/) and [isort](https://pycqa.github.io/isort/) installed as well.
 
-If you want an R kernel, add 'IRkernel' to your R packages. 
+If you want an R kernel, add `IRkernel` to your `[R]/packages` list. 
 
-If you want [EvCxR](https://github.com/google/evcxr/blob/main/evcxr_jupyter/README.md) for a rust kernel,
-add 'evcxr' to your "[nixpkgs].packages".
+If you want
+[EvCxR](https://github.com/google/evcxr/blob/main/evcxr_jupyter/README.md) for
+a rust kernel, add 'evcxr' to your `[nixpkgs]/packages`.
 
-For both R and EvCxR, anysnake2 will automatically detect their presence and copy the kernelspec to 'the right place'.
+For both R and EvCxR, anysnake2 will automatically detect their presence and
+copy the kernelspec to 'the right place'.
 
-For other kernels, you'll need to figure out how to dump the kernel spec into rootfs/usr/share/jupyter/kernels,
-patch flake_writer.rs and submit a PR.
+For other kernels, you'll need to figure out how to dump the kernel spec into
+rootfs/usr/share/jupyter/kernels, patch flake_writer.rs and submit a PR.
 
 Why are we not using [jupyterWith][https://github.com/tweag/jupyterWith]? Well, three reasons: 
-* 
-* it's currently not wrapping jupyter-notebook,
-* it throws in another couple of python environments into the mix (one for the jupyter one for jupyterWith)
+ 
+* it's currently [not wrapping jupyter-notebook](https://github.com/tweag/jupyterWith/pull/142),
+* it throws in another couple of python environments into the mix.
 * I failed in convincing it to actually install a jupyter extension. It tries funky stuff with jupyter-labs extension manager,
   when all I needed was to add a couple of pip installable packages.
 
@@ -251,9 +245,9 @@ Rebuilding happens automatically whenever
 Anysnake2 uses [singularity](https://singularity.hpcng.org/) as a container runtime,
 since it offers rootless containers that can run from locally
 unpacked images (running from an image file unfortunately requires root and 
-the +s binary singularity usess for that is not available using nix).
+the +s binary singularity uses for that is not available using nix).
 
-The actual run command is printed out on every run, and also stored in 'flake/run_scripts/<cmd>/singularity.bash'.
+The actual run command is printed out on every run, and also stored in 'flake/run_scripts/<cmd>/singularity.bash' (dtach seems to eat the output at the moment though).
 
 You can influence the mounted volumes using `[container.volumes_ro]` for read only and `[container.volumes_rw`] for read/write
 volumes. Environment variables can be set using the `[container.env]` section.
@@ -266,10 +260,11 @@ the [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples
 Build in commands (which you can not replace by config) are 
 
  * `attach` attach to still running container (interactive if more than 1 present)
- * * `build rootfs` - just build the (unpacked) container as a symlink tree
- * `build sif` - build the container image in flake/result/anysnake2_container.sif
- * `config` - list the available example configs (and config <name> to print one)
- * `develop` - run 'nix develop' on the flake and come back to flake/../
+ * `build rootfs` - just build the (unpacked) container as a symlink tree
+ * `build sif` - build the container image in .anysnake2_flake/result/anysnake2_container.sif
+ * `build flake` - just write the flake to .anysnake2_flake/flake.nix
+ * `config` - list the available example configurations (use config <name> to print one)
+ * `develop` - run 'nix develop' on the flake and come back to flake/../ (shell can be configured via `[devShell]/shell`)
  * `help` - help
  * `version` - output anysnake2 version
  * `run --` - run arbitrary commands (without pre/post wrappers). Everything after -- is passed on to the container
