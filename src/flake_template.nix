@@ -10,10 +10,11 @@
 
     flake-utils.lib.eachDefaultSystem (system:
       let
-        #%OVERLAY_AND_PACKAGES%
+        overlays = "%OVERLAY_AND_PACKAGES%";
+        pkgs = import nixpkgs { inherit system overlays; };
         mach-nix_ = "%MACHNIX%";
-
         my_rust = "%RUST%";
+        #%RPACKAGES%
 
         _buildSymlinkImage =
           { name, script, python_requirements, additional_mkPythonArgs ? { } }:
@@ -25,7 +26,8 @@
             else
               null;
             mypy2 = if mach-nix_ != null then (mypy.outPath) else "";
-            script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + script);
+            #%jupyterWith%
+            script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + myjupyter + "\n" + script);
           in {
             script_file = script_file;
 

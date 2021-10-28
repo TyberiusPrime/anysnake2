@@ -41,8 +41,8 @@ impl InputFlake {
 #[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
-    parsed_config: &config::ConfigToml,
-    python_packages: &[(String, String)],
+    parsed_config: &mut config::ConfigToml,
+    python_packages: &Vec<(String, String)>,
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
@@ -94,6 +94,8 @@ pub fn write_flake(
         &flake_dir,
     )?);
 
+    let mut overlays = Vec::new();
+
     flake_contents = match &parsed_config.rust.version {
         Some(version) => {
             inputs.push(InputFlake::new(
@@ -103,20 +105,65 @@ pub fn write_flake(
                 &["nixpkgs", "flake-utils"],
                 &flake_dir,
             )?);
+            overlays.push("[ (import rust-overlay) ]".to_string());
             flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
-            .replace(
-            "#%OVERLAY_AND_PACKAGES%",
-            "
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
-        ")
         }
-        None => flake_contents.replace("\"%RUST%\"", "\"\"").replace(
-            "#%OVERLAY_AND_PACKAGES%",
-            "
-        pkgs = import nixpkgs { inherit system; };
-        ",
-        ),
+        None => flake_contents.replace("\"%RUST%\"", "\"\""),
+    };
+
+    flake_contents = match &parsed_config.jupyterwith {
+        Some(jupyterwith) => {
+            inputs.push(InputFlake::new(
+                "jupyterWith",
+                &jupyterwith.url,
+                &jupyterwith.rev,
+                &["nixpkgs", "flake-utils"],
+                &flake_dir,
+            )?);
+            overlays.push("(nixpkgs.lib.attrValues jupyterWith.overlays)".to_string());
+
+            let mut kernel_names = Vec::<String>::new();
+            let mut kernel_block = String::new();
+
+            if let Some(python) = &mut parsed_config.python {
+                if !python.packages.contains_key(&"jupyter".to_string()) {
+                    python
+                        .packages
+                        .insert("jupyter".to_string(), "".to_string());
+                }
+                kernel_names.push("kernel_iPython".to_string());
+                kernel_block += "
+                          kernel_iPython = pkgs.jupyterWith.kernels.iPythonWith {
+                          name = \"mach-nix-jupyter\";
+                          python3 = mypy.python;
+                          packages = mypy.python.pkgs.selectPkgs;
+                        };
+                "
+            }
+            if let Some(_r) = &mut parsed_config.r {
+                //jupyterWith add's IRKernel by itself
+                kernel_names.push("kernel_irkernel".to_string());
+                kernel_block += "
+                          kernel_irkernel = pkgs.jupyterWith.kernels.iRWith {
+                          name = \"anysnake2_r_kernel\";
+                          packages = _: r_packages;
+                        };
+                "
+            }
+            flake_contents.replace(
+                "#%jupyterWith%",
+                &format!(
+                    "
+                        {kernel_block}
+                        jp = pkgs.jupyterWith.jupyterlabWith {{ kernels = [{kernels}]; }};
+                        myjupyter = \"${{jp}}\";
+               ",
+                    kernels = &kernel_names.join(" "),
+                    kernel_block = kernel_block
+                ),
+            )
+        }
+        None => flake_contents.replace("#%jupyterWith%", "myjupyter = \"\";"),
     };
 
     flake_contents = match &parsed_config.python {
@@ -210,6 +257,20 @@ pub fn write_flake(
     };
     flake_contents = flake_contents.replace("#%DEVSHELL_INPUTS%", &dev_shell_inputs);
 
+    flake_contents = match &parsed_config.r {
+        Some(r_config) => {
+            let r_packages = format!(
+                "
+                r_packages = with pkgs.rPackages; [ {} ];
+                rWrapper = pkgs.rWrapper.override{{ packages = r_packages; }};
+                ",
+                r_config.packages.join(" ")
+            );
+            flake_contents.replace("#%RPACKAGES%", &r_packages)
+        }
+        None => flake_contents.replace("#%RPACKAGES%", ""),
+    };
+
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");
 
@@ -227,6 +288,8 @@ pub fn write_flake(
         )?,
         &flake_dir,
     )?;
+
+    flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", &overlays.join("++"));
 
     //print!("{}", flake_contents);
     let mut git_path = flake_dir.as_ref().to_path_buf();
@@ -442,8 +505,8 @@ fn get_proxy_req() -> Result<ureq::Agent> {
     };
     if let Some(proxy_url) = proxy_url {
         //let proxy_url = proxy_url
-            //.strip_prefix("https://")
-            //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
+        //.strip_prefix("https://")
+        //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
         debug!("using proxy_url {}", proxy_url);
         let proxy = ureq::Proxy::new(proxy_url)?;
         agent = agent.proxy(proxy)

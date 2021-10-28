@@ -28,7 +28,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"strace",
 	"which",
 	"mercurial", # good test case for breaking site-packages
-	"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts ]; }"
+	#"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts IRkernel]; }"
 	] # optional
 
 [outside_nixpkgs]
@@ -59,7 +59,6 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 #mercurial="5.8"
 
 pypipegraph2=""
-jupyter=""
 requests=""
 dppd_plotnine=""
 
@@ -72,6 +71,7 @@ dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
 mbf_r="@mbf"
 mbf_sampledata="@mbf/mbf_sampledata"
 
+[jupyterwith]
 
 [R]
 ecosystem_date="2021-10-11" # you get whatever packages were current that day.
@@ -152,7 +152,7 @@ fish
 
 [cmd.jupyter]
 run = """
-jupyter
+jupyter notebook
 """
 # ports are exposed by default (using host network!)
 

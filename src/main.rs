@@ -22,6 +22,10 @@ use std::sync::Arc;
 
  * per command volumes? do we need these?
 
+ * jupyterWith, upgrade to notebook containing once https://github.com/tweag/jupyterWith/pull/142
+ * is merged/done
+ *
+ * establish a test matrix
 */
 
 mod config;
@@ -344,7 +348,7 @@ fn inner_main() -> Result<()> {
 
     let flake_changed = flake_writer::write_flake(
         &flake_dir,
-        &parsed_config,
+        &mut parsed_config,
         &python_packages,
         use_generated_file_instead,
     )?;
@@ -657,8 +661,10 @@ fn run_singularity(
                 dtach_url,
                 "-c".to_string(),
                 "dtach".to_string(),
-                "-c".to_string(),
+                "-c".to_string(), // create a new session
                 flake_dir.join("dtach").join(dtach_socket).to_string_lossy(),
+                "-r".to_string(),
+                "none".to_string(),
                 "nix".to_string(),
             ]);
         }

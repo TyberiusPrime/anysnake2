@@ -52,8 +52,6 @@ packages = [ # use https://search.nixos.org/packages to search
 [python] # python section is optional
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
-# mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
-# mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
@@ -80,6 +78,12 @@ packages = [
 	"ggplot2",
 	"affy",
 	]
+
+
+[jupyterwith] # include jupyter 
+# url = "github:tweag/jupyterWith" # optional, change where we're retrieving it from.
+# rev = "73bdac9ca036c0303fc3a487129e23f9c4ad0bcf"
+
 
 [flakes.hello]
     # note that this flake is locked to the newest version when installing

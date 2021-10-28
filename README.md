@@ -209,6 +209,18 @@ in the containers python path. It will also, on every run, parse the
 requirements.txt/setup.cfg of the package and add it's requirements to
 the python packages to resolve & install.
 
+# Jupyter
+
+We'er using [jupyterWith](https://github.com/tweag/jupyterWith) to generate
+reproducible notebook environments. It's not perfect, it currently only wraps
+jupyter-lab (not jupyter notebook, see [this
+PR](https://github.com/tweag/jupyterWith/pull/142), and extensions are not yet
+nixified (because apperantly jupyter insists on writing into it's extension
+directory to enable/disable extensions, I tell you it's package managers all
+the way down that are composing the black matter of this universe...).
+
+Anyway, you can enable it by adding an (empty) ```[jupyterwith]``` section in your anysnake2.toml.
+
 # Rebuilding
 
 Rebuilding happens automatically whenever 
@@ -299,6 +311,8 @@ You can manually detach by pressing 'ctrl+\'.
 To reattach after a disconnect, use `anysnake2 attach`.
 
 You can disable dtach by setting `container.detach = false` in your projects anysnake2.toml
+
+I have not found a way to get dtach not to clear your screen - we might need something else.
 
 
 # Why are path:/ urls on flakes not allowed
