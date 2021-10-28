@@ -79,12 +79,6 @@ packages = [
 	"affy",
 	]
 
-
-[jupyterwith] # include jupyter 
-# url = "github:tweag/jupyterWith" # optional, change where we're retrieving it from.
-# rev = "73bdac9ca036c0303fc3a487129e23f9c4ad0bcf"
-
-
 [flakes.hello]
     # note that this flake is locked to the newest version when installing
 	# pass ?rev=sha if you want to tie things down in your anysnake2.toml

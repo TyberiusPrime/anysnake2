@@ -78,14 +78,6 @@ pub fn write_flake(
 
     nixpkgs_pkgs.push("cacert".to_string()); //so we have SSL certs inside
 
-    let nixpkgs_pkgs: String = nixpkgs_pkgs
-        .iter()
-        .map(|x| format!("${{{}}}\n", x))
-        .collect::<Vec<String>>()
-        .join("");
-
-    flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
-
     inputs.push(InputFlake::new(
         "flake-utils",
         &parsed_config.flake_util.url,
@@ -95,76 +87,8 @@ pub fn write_flake(
     )?);
 
     let mut overlays = Vec::new();
+    let mut rust_extensions = vec!["rustfmt", "clippy"];
 
-    flake_contents = match &parsed_config.rust.version {
-        Some(version) => {
-            inputs.push(InputFlake::new(
-                "rust-overlay",
-                &parsed_config.rust.rust_overlay_url,
-                &parsed_config.rust.rust_overlay_rev,
-                &["nixpkgs", "flake-utils"],
-                &flake_dir,
-            )?);
-            overlays.push("[ (import rust-overlay) ]".to_string());
-            flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ \"rustfmt\" \"clippy\"]; }}", version))
-        }
-        None => flake_contents.replace("\"%RUST%\"", "\"\""),
-    };
-
-    flake_contents = match &parsed_config.jupyterwith {
-        Some(jupyterwith) => {
-            inputs.push(InputFlake::new(
-                "jupyterWith",
-                &jupyterwith.url,
-                &jupyterwith.rev,
-                &["nixpkgs", "flake-utils"],
-                &flake_dir,
-            )?);
-            overlays.push("(nixpkgs.lib.attrValues jupyterWith.overlays)".to_string());
-
-            let mut kernel_names = Vec::<String>::new();
-            let mut kernel_block = String::new();
-
-            if let Some(python) = &mut parsed_config.python {
-                if !python.packages.contains_key(&"jupyter".to_string()) {
-                    python
-                        .packages
-                        .insert("jupyter".to_string(), "".to_string());
-                }
-                kernel_names.push("kernel_iPython".to_string());
-                kernel_block += "
-                          kernel_iPython = pkgs.jupyterWith.kernels.iPythonWith {
-                          name = \"mach-nix-jupyter\";
-                          python3 = mypy.python;
-                          packages = mypy.python.pkgs.selectPkgs;
-                        };
-                "
-            }
-            if let Some(_r) = &mut parsed_config.r {
-                //jupyterWith add's IRKernel by itself
-                kernel_names.push("kernel_irkernel".to_string());
-                kernel_block += "
-                          kernel_irkernel = pkgs.jupyterWith.kernels.iRWith {
-                          name = \"anysnake2_r_kernel\";
-                          packages = _: r_packages;
-                        };
-                "
-            }
-            flake_contents.replace(
-                "#%jupyterWith%",
-                &format!(
-                    "
-                        {kernel_block}
-                        jp = pkgs.jupyterWith.jupyterlabWith {{ kernels = [{kernels}]; }};
-                        myjupyter = \"${{jp}}\";
-               ",
-                    kernels = &kernel_names.join(" "),
-                    kernel_block = kernel_block
-                ),
-            )
-        }
-        None => flake_contents.replace("#%jupyterWith%", "myjupyter = \"\";"),
-    };
 
     flake_contents = match &parsed_config.python {
         Some(python) => {
@@ -266,10 +190,76 @@ pub fn write_flake(
                 ",
                 r_config.packages.join(" ")
             );
+            nixpkgs_pkgs.push("rWrapper".to_string());
             flake_contents.replace("#%RPACKAGES%", &r_packages)
         }
         None => flake_contents.replace("#%RPACKAGES%", ""),
     };
+
+    let mut jupyter_kernels = String::new();
+    if let Some(r) = &parsed_config.r {
+        // install R kernel
+        if r.packages.contains(&"IRkernel".to_string())
+            && python_packages.iter().any(|(k, _)| k == "jupyter")
+        {
+            jupyter_kernels.push_str(
+                "
+            mkdir $out/rootfs/usr/share/jupyter/kernels/R
+            cp $out/rootfs/R_libs/IRkernel/kernelspec/* $out/rootfs/usr/share/jupyter/kernels/R -r
+            ",
+            );
+        }
+    }
+    if nixpkgs_pkgs.contains(&"evcxr".to_string()) {
+        jupyter_kernels.push_str(
+            "
+            JUPYTER_PATH=$out/rootfs/usr/share/jupyter $out/rootfs/bin/evcxr_jupyter --install
+        ",
+        );
+        rust_extensions.push("rust-src");
+    }
+    if !jupyter_kernels.is_empty() {
+        jupyter_kernels = "
+            mv $out/rootfs/usr/share/jupyter/kernels $out/rootfs/usr/share/jupyter/kernels_
+            mkdir $out/rootfs/usr/share/jupyter/kernels
+            cp $out/rootfs/usr/share/jupyter/kernels_/* $out/rootfs/usr/share/jupyter/kernels -r
+            unlink $out/rootfs/usr/share/jupyter/kernels_
+            "
+        .to_string()
+            + &jupyter_kernels;
+    }
+
+    flake_contents = flake_contents.replace("#%INSTALL_JUPYTER_KERNELS%", &jupyter_kernels);
+
+    let nixpkgs_pkgs: String = nixpkgs_pkgs
+        .iter()
+        .map(|x| format!("${{{}}}\n", x))
+        .collect::<Vec<String>>()
+        .join("");
+
+
+    flake_contents = match &parsed_config.rust.version {
+        Some(version) => {
+            inputs.push(InputFlake::new(
+                "rust-overlay",
+                &parsed_config.rust.rust_overlay_url,
+                &parsed_config.rust.rust_overlay_rev,
+                &["nixpkgs", "flake-utils"],
+                &flake_dir,
+            )?);
+            overlays.push("[ (import rust-overlay) ]".to_string());
+            let str_rust_extensions: Vec<String> = rust_extensions
+                .into_iter()
+                .map(|x| format!("\"{}\"", x))
+                .collect();
+            let str_rust_extensions: String = str_rust_extensions.join(" ");
+
+            flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {rust_extensions}]; }}", version, rust_extensions = str_rust_extensions))
+        }
+        None => flake_contents.replace("\"%RUST%\"", "\"\""),
+    };
+
+    flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
 
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");

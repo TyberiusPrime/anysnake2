@@ -33,8 +33,6 @@ pub struct ConfigToml {
     pub dev_shell: DevShell,
     #[serde(rename="R")]
     pub r: Option<R>,
-    #[serde(default)]
-    pub jupyterwith: Option<JupyterWith>,
 
 }
 
@@ -244,33 +242,6 @@ pub struct R {
     pub ecosystem_date: String,
     pub packages: Vec<String>,
 }
-
-#[derive(Deserialize, Debug)]
-pub struct JupyterWith {
-    #[serde(default = "JupyterWith::default_rev")]
-    pub rev: String,
-    #[serde(default = "JupyterWith::default_url")]
-    pub url: String,
-}
-
-impl Default for JupyterWith {
-    fn default() -> Self {
-        JupyterWith {
-            rev: Self::default_rev(),
-            url: Self::default_url(),
-        }
-    }
-}
-
-impl WithDefaultFlakeSource for JupyterWith {
-    fn default_rev() -> String {
-        "73bdac9ca036c0303fc3a487129e23f9c4ad0bcf".to_string() // 3.3.0 does not support overwritting py-deps-db
-    }
-    fn default_url() -> String {
-        "github:tweag/jupyterWith".to_string()
-    }
-}
-
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
     const FORMAT: &str = "%Y-%m-%d %H:%M:%S";

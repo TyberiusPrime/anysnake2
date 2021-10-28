@@ -211,15 +211,31 @@ the python packages to resolve & install.
 
 # Jupyter
 
-We'er using [jupyterWith](https://github.com/tweag/jupyterWith) to generate
-reproducible notebook environments. It's not perfect, it currently only wraps
-jupyter-lab (not jupyter notebook, see [this
-PR](https://github.com/tweag/jupyterWith/pull/142), and extensions are not yet
-nixified (because apperantly jupyter insists on writing into it's extension
-directory to enable/disable extensions, I tell you it's package managers all
-the way down that are composing the black matter of this universe...).
+Just add 'jupyter=""' to your python packages (optionally specifying a version).
 
-Anyway, you can enable it by adding an (empty) ```[jupyterwith]``` section in your anysnake2.toml.
+
+If you want jupyterlab, add 'jupyterlab=""'.
+
+If you want pip installable dependencies, like [jupyter-black](pypi.org/project/jupyter-black/) or [jupyterlab_code_formatter](https://jupyterlab-code-formatter.readthedocs.io/en/latest/installation.html#installation-step-1-installing-the-plugin-itself), add them the same way. The later will need both [black](https://pypi.org/project/black/) and [isort](https://pycqa.github.io/isort/) installed as well.
+
+If you want an R kernel, add 'IRkernel' to your R packages. 
+
+If you want [EvCxR](https://github.com/google/evcxr/blob/main/evcxr_jupyter/README.md) for a rust kernel,
+add 'evcxr' to your "[nixpkgs].packages".
+
+For both R and EvCxR, anysnake2 will automatically detect their presence and copy the kernelspec to 'the right place'.
+
+For other kernels, you'll need to figure out how to dump the kernel spec into rootfs/usr/share/jupyter/kernels,
+patch flake_writer.rs and submit a PR.
+
+Why are we not using [jupyterWith][https://github.com/tweag/jupyterWith]? Well, three reasons: 
+* 
+* it's currently not wrapping jupyter-notebook,
+* it throws in another couple of python environments into the mix (one for the jupyter one for jupyterWith)
+* I failed in convincing it to actually install a jupyter extension. It tries funky stuff with jupyter-labs extension manager,
+  when all I needed was to add a couple of pip installable packages.
+
+
 
 # Rebuilding
 

@@ -25,7 +25,9 @@ use std::sync::Arc;
  * jupyterWith, upgrade to notebook containing once https://github.com/tweag/jupyterWith/pull/142
  * is merged/done
  *
- * establish a test matrix
+ * establish a test matrix 
+ *
+ * ensure that the singularity sif container  actually contains everything...
 */
 
 mod config;
@@ -663,8 +665,6 @@ fn run_singularity(
                 "dtach".to_string(),
                 "-c".to_string(), // create a new session
                 flake_dir.join("dtach").join(dtach_socket).to_string_lossy(),
-                "-r".to_string(),
-                "none".to_string(),
                 "nix".to_string(),
             ]);
         }

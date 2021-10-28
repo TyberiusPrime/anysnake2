@@ -28,7 +28,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"strace",
 	"which",
 	"mercurial", # good test case for breaking site-packages
-	#"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts IRkernel]; }"
+	"evcxr",
 	] # optional
 
 [outside_nixpkgs]
@@ -61,7 +61,11 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 pypipegraph2=""
 requests=""
 dppd_plotnine=""
-
+jupyter=""
+jupyter-black=""
+jupyterlab=""
+jupyterlab_code_formatter=""
+isort=""
 # pandas="<1.0"
 
 [clones.code] # target directory
@@ -71,13 +75,12 @@ dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
 mbf_r="@mbf"
 mbf_sampledata="@mbf/mbf_sampledata"
 
-[jupyterwith]
-
 [R]
 ecosystem_date="2021-10-11" # you get whatever packages were current that day.
 packages = [
 	"ggplot2",
 	"affy",
+	"IRkernel",
 	]
 
 [flakes.hello]

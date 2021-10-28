@@ -26,8 +26,8 @@
             else
               null;
             mypy2 = if mach-nix_ != null then (mypy.outPath) else "";
-            #%jupyterWith%
-            script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + myjupyter + "\n" + script);
+            script_file = pkgs.writeScript "reqs.sh"
+              (mypy2 + "\n" + script);
           in {
             script_file = script_file;
 
@@ -45,23 +45,32 @@
 
               mkdir -p $out/rootfs/{bin,etc,share}
               mkdir -p $out/rootfs/usr/{lib/share}
-              for path in "${mypy2}/bin/"*;
-                do
-                  ln -s $path $out/rootfs/bin/
-              done
+              mkdir -p $out/rootfs/R_libs
 
               # the later entries shadow the earlier ones. and the python environment beats everything else
               set -x
               # python packages beat the others# python packages beat the others..
-              #${pkgs.xorg.lndir}/bin/lndir $mypy2/bin $out/rootfs/bin/ || true
+              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
+
+              # symlink the direct dependencies first...
               for path in $(tac ${script_file});
                  do
-                 ${pkgs.xorg.lndir}/bin/lndir $path/bin $out/rootfs/bin/ || true
-                 ${pkgs.xorg.lndir}/bin/lndir $path/etc $out/rootfs/etc || true
-                 ${pkgs.xorg.lndir}/bin/lndir $path/lib $out/rootfs/usr/lib/ || true
-                 ${pkgs.xorg.lndir}/bin/lndir $path/share $out/rootfs/usr/share/ || true
-                 # fi
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
               done
+              # is it smart to symlink the dependencies as well?
+              for path in $(cat ${pkgs.writeReferencesToFile [ script_file ]});
+                 do
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
+                 ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
+              done
+
               ln -s $out/rootfs/bin $out/rootfs/usr/bin
               #mkdir $out/python_env
               #ln -s $mypy2/* $out/python_env
@@ -71,6 +80,8 @@
               echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
               #echo "export PATH=/python_env/bin:/bin:/usr/bin/" >>$out/rootfs/etc/bashrc 
               #echo "export PYTHONPATH=$PYTHONPATH:/python_env/lib/python%PYTHON_MAJOR_DOT_MINOR%/site-packages" >>$out/rootfs/etc/bashrc 
+
+              #%INSTALL_JUPYTER_KERNELS%
 
             '';
           };
@@ -94,6 +105,7 @@
 
             ${pkgs.rsync}/bin/rsync -arW ${symlink_image.derivation}/rootfs/ $out/rootfs/
             chmod +w $out/rootfs -R # because we don't have write on the directories
+            #make sure we got everything from the nix store, right?
             ${pkgs.rsync}/bin/rsync -arW --exclude=* --files-from=${
               pkgs.writeReferencesToFile [ symlink_image.script_file ]
             } / $out/rootfs/ 
