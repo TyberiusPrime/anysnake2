@@ -66,6 +66,7 @@ jupyter-black=""
 jupyterlab=""
 jupyterlab_code_formatter=""
 isort=""
+dppd="editable/code"
 # pandas="<1.0"
 
 [clones.code] # target directory

@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use log::{debug, warn};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};

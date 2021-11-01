@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+
 struct InputFlake {
     name: String,
     url: String,
@@ -260,6 +261,7 @@ pub fn write_flake(
     };
 
     flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
+    flake_contents = flake_contents.replace("%FLAKE_DIR%", &flake_dir.as_ref().to_string_lossy());
 
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");

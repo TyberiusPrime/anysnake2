@@ -171,6 +171,7 @@
           shellHook = ''
             export PATH=${defaultPackage}/rootfs/bin:$PATH;
           '';
+          PYTHONPATH="%FLAKEDIR%/venv";
           nativeBuildInputs = with pkgs;
             [
               #%DEVSHELL_INPUTS%

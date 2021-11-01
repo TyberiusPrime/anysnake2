@@ -425,6 +425,19 @@ fn inner_main() -> Result<()> {
         )
         .context("Failed to write run.sh")?; // the -i makes it read /etc/bashrc
 
+        let nixpkgs_url = format!(
+            "{}?rev={}",
+            &parsed_config.outside_nixpkgs.url,
+            lookup_github_tag(
+                &parsed_config.outside_nixpkgs.url,
+                &parsed_config.outside_nixpkgs.rev,
+                &flake_dir
+            )?,
+        );
+        if let Some(python) = &parsed_config.python {
+            fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
+        };
+
         if cmd == "develop" {
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
@@ -442,20 +455,6 @@ fn inner_main() -> Result<()> {
                 info!("Rebuilding flake");
                 rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
             }
-
-            let nixpkgs_url = format!(
-                "{}?rev={}",
-                &parsed_config.outside_nixpkgs.url,
-                lookup_github_tag(
-                    &parsed_config.outside_nixpkgs.url,
-                    &parsed_config.outside_nixpkgs.rev,
-                    &flake_dir
-                )?,
-            );
-
-            if let Some(python) = &parsed_config.python {
-                fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
-            };
 
             let home_dir = PathBuf::from(replace_env_vars(
                 parsed_config.container.home.as_deref().unwrap_or("$HOME"),
@@ -548,9 +547,10 @@ fn inner_main() -> Result<()> {
                 "ro".to_string(),
             ));
             if let Some(python) = parsed_config.python {
-                let venv_dir: PathBuf = ["venv", &python.version].iter().collect();
+                let venv_dir: PathBuf = flake_dir.join("venv").join(&python.version);
+                error!("{:?}", venv_dir);
                 binds.push((
-                    format!("venv/{}", python.version),
+                    format!("{}", venv_dir.to_string_lossy()),
                     "/anysnake2/venv".to_string(),
                     "ro".to_string(),
                 ));
@@ -564,7 +564,7 @@ fn inner_main() -> Result<()> {
                         .iter()
                         .collect();
                     binds.push((
-                        target_dir.into_os_string().to_string_lossy().to_string(),
+                        target_dir.to_string_lossy(),
                         format!("/anysnake2/venv/linked_in/{}", safe_pkg),
                         "ro".to_string(),
                     ));
@@ -1009,7 +1009,7 @@ fn fill_venv(
     outside_nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
     flake_dir: &Path,
 ) -> Result<()> {
-    let venv_dir: PathBuf = ["venv", python_version].iter().collect();
+    let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
     std::fs::create_dir_all(&venv_dir)?;
     let mut to_build = Vec::new();
     for (pkg, spec) in python
