@@ -630,11 +630,17 @@ fn inner_main() -> Result<()> {
                 singularity_args.push(s.to_string());
             }
             let dtach_socket = match &parsed_config.anysnake2.dtach {
-                true => Some(format!(
-                    "{}_{}",
-                    cmd,
-                    chrono::Local::now().format("%Y-%m-%d_%H:%M:%S")
-                )),
+                true => {
+                    if std::env::var("STY").is_err() && std::env::var("TMUX").is_err() {
+                        Some(format!(
+                            "{}_{}",
+                            cmd,
+                            chrono::Local::now().format("%Y-%m-%d_%H:%M:%S")
+                        ))
+                    } else {
+                        None
+                    }
+                }
                 false => None,
             };
 
@@ -681,7 +687,7 @@ fn run_singularity(
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
-        if let Some(dtach_socket) = &dtach_socket {
+        let using_dtach = if let Some(dtach_socket) = &dtach_socket {
             let dtach_dir = flake_dir.join("dtach");
             std::fs::create_dir_all(dtach_dir)?;
             let dtach_url = singularity_url.replace("#singularity", "#dtach");
@@ -696,7 +702,10 @@ fn run_singularity(
                 flake_dir.join("dtach").join(dtach_socket).to_string_lossy(),
                 "nix".to_string(),
             ]);
-        }
+            true
+        } else {
+            false
+        };
 
         nix_full_args.extend(vec![
             //vec just to shutup clippy
@@ -714,7 +723,7 @@ fn run_singularity(
             std::fs::write(lf, o)?;
         }
         info!("nix {}", pp.trim_start());
-        {
+        if using_dtach {
             // dtach eats the current screen
             // so we want to push enough newlines to preserve our output
             use terminal_size::{terminal_size, Height, Width};

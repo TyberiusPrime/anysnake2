@@ -319,14 +319,14 @@ a lightweight screen alternative.
 
 You can manually detach by pressing 'ctrl+\'.
 
-To reattach after a disconnect, use `anysnake2 attach`.
+To reattach after a disconnect, use `anysnake2 attach` from your project folder.
+If there are multiple running containers, you will be asked which one you want to reattach. 
 
-You can disable dtach by setting `container.detach = false` in your projects anysnake2.toml
+You can disable dtach by setting `container.detach = false` in your projects anysnake2.toml.
+dtach is also disable if you're runnin in screen or tmux (if $STY or $TMUX are set).
 
-I have not found a way to get dtach not to clear your screen - we might need something else.
 
-
-# Why are path:/ urls on flakes not allowed
+# Why are path:/ urls on flakes not allowed?
 
 I've found nix flakes to mishandle 'path:/<absolute_path>?rev=xyz' style input urls.
 
@@ -344,5 +344,18 @@ To avoid you falling into this trap, anysnake2 requests path:// flake definition
 Anysnake2 strives to follow the ['sysexit' codes](https://www.freebsd.org/cgi/man.cgi?query=sysexits), 
 that means that the default 'an error occured' exit code is 70.
 65 means the configuration toml couldn't be understood, 66 it's missing.
+
+
+# Why singularity?
+
+We want a container engine that
+  
+ * runs from images in the file system 
+ * works without root
+ * doesn't containerize the network (at least optionally)
+
+Singularity fits the bill.
+
+
 
 
