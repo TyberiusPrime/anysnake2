@@ -339,3 +339,10 @@ is being handled correctly.
 To avoid you falling into this trap, anysnake2 requests path:// flake definitions.
 
 
+# Exit Codes
+
+Anysnake2 strives to follow the ['sysexit' codes](https://www.freebsd.org/cgi/man.cgi?query=sysexits), 
+that means that the default 'an error occured' exit code is 70.
+65 means the configuration toml couldn't be understood, 66 it's missing.
+
+

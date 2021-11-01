@@ -25,6 +25,9 @@ use std::sync::Arc;
  * establish a test matrix
  *
  * ensure that the singularity sif container  actually contains everything...
+ *
+ * investigate: no cloning, just editable, do we retrieve the dependencies correctly for pip
+ * install?
 */
 
 mod config;
@@ -54,12 +57,34 @@ impl CloneStringLossy for Path {
     }
 }
 
+#[derive(Debug)]
+pub struct ErrorWithExitCode {
+    msg: String,
+    exit_code: i32,
+}
+
+impl ErrorWithExitCode {
+    fn new(exit_code: i32, msg: String) -> Self {
+        ErrorWithExitCode { msg, exit_code }
+    }
+}
+
+impl std::fmt::Display for ErrorWithExitCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
+
 fn main() {
     let r = inner_main();
     match r {
         Err(e) => {
             error!("{:?}", e); //so the error messages are colorfull
-            std::process::exit(1);
+            let code = match e.downcast_ref::<ErrorWithExitCode>() {
+                Some(ewe) => ewe.exit_code,
+                None => 70,
+            };
+            std::process::exit(code);
         }
         Ok(_) => {
             std::process::exit(0);
@@ -166,7 +191,6 @@ fn handle_config_command(matches: &ArgMatches<'static>) -> Result<()> {
             std::process::exit(0);
         }
     }
-    println!("ok");
     Ok(())
 }
 
@@ -185,19 +209,27 @@ fn configure_logging(matches: &ArgMatches<'static>) {
 fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
     let abs_config_path = std::fs::canonicalize(config_file).with_context(|| {
-        format!(
-            "Could not find config file '{}'. Use --help for help",
-            config_file
+        ErrorWithExitCode::new(
+            66,
+            format!(
+                "Could not find config file '{}'. Use --help for help",
+                config_file
+            ),
         )
     })?;
     let raw_config = std::fs::read_to_string(&abs_config_path).with_context(|| {
-        format!(
-            "Could not find config file '{}'. Use --help for help",
-            config_file
+        ErrorWithExitCode::new(
+            66,
+            format!(
+                "Could not find config file '{}'. Use --help for help",
+                config_file
+            ),
         )
     })?;
     let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
-        .with_context(|| format!("Failure parsing {:?}", &abs_config_path))?;
+        .with_context(|| {
+            ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+        })?;
     parsed_config.anysnake2_toml_path = Some(abs_config_path);
     Ok(parsed_config)
 }
@@ -682,11 +714,12 @@ fn run_singularity(
             std::fs::write(lf, o)?;
         }
         info!("nix {}", pp.trim_start());
-        { // dtach eats the current screen
-          // so we want to push enough newlines to preserve our output
+        {
+            // dtach eats the current screen
+            // so we want to push enough newlines to preserve our output
             use terminal_size::{terminal_size, Height, Width};
             let empty_lines = match terminal_size() {
-                Some((Width(_w), Height(h))) => {h},
+                Some((Width(_w), Height(h))) => h,
                 None => 50,
             };
             for _ in 0..empty_lines {
