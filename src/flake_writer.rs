@@ -279,7 +279,11 @@ pub fn write_flake(
         &flake_dir,
     )?;
 
-    flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", &overlays.join("++"));
+    if ! overlays.is_empty() {
+        flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", &overlays.join("++"));
+    } else {
+        flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", "[]");
+        }
 
     //print!("{}", flake_contents);
     let mut git_path = flake_dir.as_ref().to_path_buf();
