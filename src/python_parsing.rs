@@ -15,39 +15,36 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
-pub fn find_python_requirements_for_clones(
-    clones: &HashMap<String, HashMap<String, String>>,
-) -> Result<Vec<(String, String)>> {
+pub fn find_python_requirements_for_editable(paths: &Vec<String>) -> Result<Vec<(String, String)>> {
     let mut res = HashSet::new();
-    for (target_dir, name_urls) in clones.iter() {
-        for (name, _url) in name_urls.iter() {
-            let requirement_file: PathBuf = [target_dir, name, "requirements.txt"].iter().collect();
-            if requirement_file.exists() {
-                for line in read_lines(requirement_file)?
-                    .map(|line| line.unwrap_or_else(|_| "".to_string()))
-                    .map(|line| line.trim().to_string())
-                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
-                {
-                    res.insert(line);
-                }
+    for target_dir in paths.iter() {
+        debug!("Looking for python dependencies for {}", target_dir);
+        let requirement_file: PathBuf = [target_dir, "requirements.txt"].iter().collect();
+        if requirement_file.exists() {
+            for line in read_lines(requirement_file)?
+                .map(|line| line.unwrap_or_else(|_| "".to_string()))
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            {
+                res.insert(line);
             }
+        }
 
-            let setup_cfg_file: PathBuf = [target_dir, name, "setup.cfg"].iter().collect();
-            debug!("looking for {:?}", &setup_cfg_file);
-            if setup_cfg_file.exists() {
-                let reqs = parse_python_config_file(&setup_cfg_file);
-                match reqs {
-                    Err(e) => {
-                        warn!("failed to parse {:?}: {}", setup_cfg_file, e)
+        let setup_cfg_file: PathBuf = [target_dir, "setup.cfg"].iter().collect();
+        debug!("looking for {:?}", &setup_cfg_file);
+        if setup_cfg_file.exists() {
+            let reqs = parse_python_config_file(&setup_cfg_file);
+            match reqs {
+                Err(e) => {
+                    warn!("failed to parse {:?}: {}", setup_cfg_file, e)
+                }
+                Ok(mut reqs) => {
+                    debug!("requirements {:?}", reqs);
+                    for k in reqs.drain(..) {
+                        res.insert(k); // identical lines!
                     }
-                    Ok(mut reqs) => {
-                        debug!("requirements {:?}", reqs);
-                        for k in reqs.drain(..) {
-                            res.insert(k); // identical lines!
-                        }
-                    }
-                };
-            }
+                }
+            };
         }
     }
     Ok(res.into_iter().map(parse_python_package_spec).collect())

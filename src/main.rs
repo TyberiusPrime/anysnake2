@@ -26,8 +26,8 @@ use std::sync::Arc;
  *
  * ensure that the singularity sif container  actually contains everything...
  *
- * investigate: no cloning, just editable, do we retrieve the dependencies correctly for pip
- * install?
+ * add the editable python packages (post install) to 'anysnake2 develop' somehow, perhaps as
+ * devShell envs?
 */
 
 mod config;
@@ -290,17 +290,19 @@ fn collect_python_packages(
                 //don't need pip if we ain't got no packages (and therefore no editable packages
                 res.push(("pip".into(), "".into())); // we use pip to build editable packages
                 res.push(("setuptools".into(), "".into())); // we use pip to build editable packages
-            }
-            match &parsed_config.clones {
-                Some(clones) => {
-                    let python_requirements_from_clones =
-                        python_parsing::find_python_requirements_for_clones(clones)?;
-                    for (pkg, version_spec) in python_requirements_from_clones.into_iter() {
-                        res.push((pkg, version_spec));
-                    }
+
+                let editable_paths: Vec<String> = res
+                    .iter()
+                    .filter_map(|(_, spec)| spec.strip_prefix("editable/"))
+                    .map(|x| x.to_string())
+                    .collect();
+
+                let python_requirements_from_editable =
+                    python_parsing::find_python_requirements_for_editable(&editable_paths)?;
+                for (pkg, version_spec) in python_requirements_from_editable.into_iter() {
+                    res.push((pkg, version_spec));
                 }
-                None => {}
-            };
+            }
             res
         }
         None => Vec::new(),
