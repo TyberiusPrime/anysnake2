@@ -26,8 +26,10 @@ use std::sync::Arc;
  *
  * ensure that the singularity sif container  actually contains everything...
  *
- * add the editable python packages (post install) to 'anysnake2 develop' somehow, perhaps as
- * devShell envs?
+ *
+ * when pip installing packages, the dependencies should be mach-nix supplied.
+ * That does involve writing a temporary flake though, and all we really want  is the egg-link,
+ * rigth?
 */
 
 mod config;
@@ -56,7 +58,15 @@ impl CloneStringLossy for Path {
             .to_string()
     }
 }
-
+/*
+impl CloneStringLossy for std::ffi::OsStr {
+    fn to_string_lossy(&self) -> String {
+        self.to_owned()
+            .to_string_lossy()
+            .to_string()
+    }
+}
+*/
 #[derive(Debug)]
 pub struct ErrorWithExitCode {
     msg: String,
@@ -286,6 +296,7 @@ fn collect_python_packages(
     Ok(match &mut parsed_config.python {
         Some(python) => {
             let mut res: Vec<(String, String)> = python.packages.drain().collect();
+            debug!("found python packages {:?}", &res);
             if !res.is_empty() {
                 //don't need pip if we ain't got no packages (and therefore no editable packages
                 res.push(("pip".into(), "".into())); // we use pip to build editable packages
@@ -296,6 +307,7 @@ fn collect_python_packages(
                     .filter_map(|(_, spec)| spec.strip_prefix("editable/"))
                     .map(|x| x.to_string())
                     .collect();
+                debug!("found editable_paths: {:?}", &editable_paths);
 
                 let python_requirements_from_editable =
                     python_parsing::find_python_requirements_for_editable(&editable_paths)?;
@@ -434,11 +446,29 @@ fn inner_main() -> Result<()> {
                 &flake_dir
             )?,
         );
+
+        let build_output: PathBuf = flake_dir.join("result/rootfs");
+        let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
+        if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
+            info!("Rebuilding flake");
+            rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
+        }
+
         if let Some(python) = &parsed_config.python {
             fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
         };
 
         if cmd == "develop" {
+            if let Some(python) = &parsed_config.python {
+                copy_and_patch_venv_dir(
+                    &flake_dir,
+                    &python.version,
+                    &python_packages
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                )?;
+            }
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
                 let full_args = vec!["develop", "-c", "bash", &s];
@@ -449,13 +479,6 @@ fn inner_main() -> Result<()> {
                     .status()?)
             })?;
         } else {
-            let build_output: PathBuf = flake_dir.join("result/rootfs");
-            let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
-            if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
-                info!("Rebuilding flake");
-                rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
-            }
-
             let home_dir = PathBuf::from(replace_env_vars(
                 parsed_config.container.home.as_deref().unwrap_or("$HOME"),
             ));
@@ -897,36 +920,7 @@ fn rebuild_flake(
     target: &str,
     flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
-    std::fs::write(
-        flake_dir.as_ref().join(".gitignore"),
-        "result
-run_scripts/
-.*.json
-.gc_roots
-",
-    )?;
     debug!("writing flake");
-    let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
-    if flake_dir.as_ref().join("flake.lock").exists() {
-        gitargs.push("flake.nix");
-    }
-
-    let output = run_without_ctrl_c(|| {
-        Command::new("git")
-            .args(&gitargs)
-            .current_dir(&flake_dir)
-            .output()
-            .context("Failed git add flake.nix")
-    })?;
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg = format!(
-            "Failed git add flake.nix. \n Stdout {:?}\nStderr: {:?}",
-            stdout, stderr
-        );
-        bail!(msg);
-    }
 
     if !use_generated_file_instead {
         run_without_ctrl_c(|| {
@@ -937,19 +931,11 @@ run_scripts/
                 .context("Failed git add flake.nix")
         })?;
     }
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg = format!(
-            "Failed git commit flake.nix. \n Stdout {:?}\nStderr: {:?}",
-            stdout, stderr
-        );
-        bail!(msg);
-    }
     let build_unfinished_file = flake_dir.as_ref().join(".build_unfinished");
     std::fs::write(&build_unfinished_file, "in_progress")?;
 
     if target != "flake" {
+        debug!("building container");
         let nix_build_result = run_without_ctrl_c(|| {
             Command::new("nix")
                 .args(&["build", &format!("./#{}", target), "-v",
@@ -1011,6 +997,7 @@ fn fill_venv(
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
     std::fs::create_dir_all(&venv_dir)?;
+    std::fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
     for (pkg, spec) in python
         .iter()
@@ -1282,4 +1269,62 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     } else {
         Err(anyhow!("dtach reattachment failed"))
     }
+}
+
+fn copy_and_patch_venv_dir(
+    flake_dir: impl AsRef<Path>,
+    python_major_minor: &str,
+    python_packages: &HashMap<String, String>,
+) -> Result<()> {
+    let source = flake_dir.as_ref().join("venv").join(python_major_minor);
+    let target = flake_dir.as_ref().join("venv_develop");
+    std::fs::remove_dir_all(target)?;
+    let target = flake_dir
+        .as_ref()
+        .join("venv_develop")
+        .join(python_major_minor);
+    std::fs::create_dir_all(&target)?;
+    let linked_in_repl: String = std::fs::canonicalize(flake_dir.as_ref())?
+        .parent()
+        .context("No parent on flake dir!?")?
+        .to_string_lossy()
+        .to_string();
+    for file in std::fs::read_dir(&source)
+        .with_context(|| format!("could not read source dir {:?}", source))?
+    {
+        let file = file?;
+        match file.path().file_name() {
+            Some(filename) => {
+                if filename.to_string_lossy().ends_with(".egg-link") {
+                    let pkg_name = file
+                        .path()
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
+                    match python_packages.get(&pkg_name) {
+                        Some(folder_name) => {
+                            let input = std::fs::read_to_string(file.path())?;
+                            let output = input.replace(
+                                "/anysnake2/venv/linked_in",
+                                &format!("{}/{}", linked_in_repl, 
+                                         folder_name.strip_prefix("editable/").
+                                         with_context(||format!(
+                                                 "pkg {} was editable, is in venv, but is no longer editable in anysnake2.toml (is '{}'). Not supposed to happen", pkg_name, folder_name
+                                                 ))?)
+                            );
+                            std::fs::write(
+                                target.join(filename.to_string_lossy().to_string()),
+                                output,
+                            )?;
+                        }
+                        None => bail!("Could not find editable folder for venv entry {}", pkg_name),
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+
+    Ok(())
 }

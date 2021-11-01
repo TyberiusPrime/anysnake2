@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::run_without_ctrl_c;
 
 struct InputFlake {
     name: String,
@@ -90,7 +91,6 @@ pub fn write_flake(
     let mut overlays = Vec::new();
     let mut rust_extensions = vec!["rustfmt", "clippy"];
 
-
     flake_contents = match &parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
@@ -128,6 +128,13 @@ pub fn write_flake(
             flake_contents
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
+                .replace(
+                    "%DEVELOP_PYTHON_PATH%",
+                    &std::fs::canonicalize(&flake_dir.as_ref())?
+                        .join("venv_develop")
+                        .join(&python.version)
+                        .to_string_lossy(),
+                )
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
@@ -145,7 +152,9 @@ pub fn write_flake(
                     ),
                 )
         }
-        None => flake_contents.replace("\"%MACHNIX%\"", "null"),
+        None => flake_contents
+            .replace("\"%MACHNIX%\"", "null")
+            .replace("%DEVELOP_PYTHON_PATH%", ""),
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -238,7 +247,6 @@ pub fn write_flake(
         .collect::<Vec<String>>()
         .join("");
 
-
     flake_contents = match &parsed_config.rust.version {
         Some(version) => {
             inputs.push(InputFlake::new(
@@ -261,8 +269,6 @@ pub fn write_flake(
     };
 
     flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
-    flake_contents = flake_contents.replace("%FLAKE_DIR%", &flake_dir.as_ref().to_string_lossy());
-
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");
 
@@ -281,11 +287,11 @@ pub fn write_flake(
         &flake_dir,
     )?;
 
-    if ! overlays.is_empty() {
+    if !overlays.is_empty() {
         flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", &overlays.join("++"));
     } else {
         flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", "[]");
-        }
+    }
 
     //print!("{}", flake_contents);
     let mut git_path = flake_dir.as_ref().to_path_buf();
@@ -312,7 +318,12 @@ pub fn write_flake(
         }
     }
 
-    if use_generated_file_instead {
+    let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
+    if flake_dir.as_ref().join("flake.lock").exists() {
+        gitargs.push("flake.lock");
+    }
+
+    let res = if use_generated_file_instead {
         if old_flake_contents != flake_contents {
             std::fs::write(flake_filename, flake_contents)?;
         }
@@ -325,7 +336,34 @@ pub fn write_flake(
     } else {
         debug!("flake unchanged");
         Ok(false)
+    };
+    std::fs::write(
+        flake_dir.as_ref().join(".gitignore"),
+        "result
+run_scripts/
+.*.json
+.gc_roots
+",
+    )?;
+
+    let output = run_without_ctrl_c(|| {
+        Command::new("git")
+            .args(&gitargs)
+            .current_dir(&flake_dir)
+            .output()
+            .context("Failed git add flake.nix")
+    })?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = format!(
+            "Failed git add flake.nix. \n Stdout {:?}\nStderr: {:?}",
+            stdout, stderr
+        );
+        bail!(msg);
     }
+
+    res
 }
 
 fn format_input_defs(inputs: &[InputFlake]) -> String {
