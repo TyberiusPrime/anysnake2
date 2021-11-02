@@ -1,4 +1,4 @@
-use crate::{config, safe_python_package_name};
+use crate::config;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use log::{debug, trace};
@@ -125,37 +125,9 @@ pub fn write_flake(
                 &flake_dir,
             )?);
 
-            let mut develop_python_paths = Vec::new();
-            {
-                let venv_dir: PathBuf = flake_dir.as_ref().join("venv").join(&python.version);
-                let parent_dir: PathBuf = std::fs::canonicalize(&flake_dir)?
-                    .parent()
-                    .context("No parent found for flake dir")?
-                    .to_path_buf();
-
-                for (pkg, spec) in python_packages
-                    .iter()
-                    .filter(|(_, spec)| spec.starts_with("editable/"))
-                {
-                    let safe_pkg = safe_python_package_name(pkg);
-                    let real_target = parent_dir.join(&spec.strip_prefix("editable/").unwrap());
-                    let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-                    let egg_target = std::fs::read_to_string(egg_link)?
-                        .split_once("\n")
-                        .context("No newline in egg-link?")?
-                        .0
-                        .to_string();
-                    let egg_target = egg_target
-                        .replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());
-
-                    develop_python_paths.push(egg_target)
-                }
-            }
-
             flake_contents
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
-                .replace("%DEVELOP_PYTHON_PATH%", &develop_python_paths.join(":"))
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
@@ -228,11 +200,10 @@ pub fn write_flake(
     };
 
     let mut jupyter_kernels = String::new();
+    let jupyter_included = python_packages.iter().any(|(k, _)| k == "jupyter");
     if let Some(r) = &parsed_config.r {
         // install R kernel
-        if r.packages.contains(&"IRkernel".to_string())
-            && python_packages.iter().any(|(k, _)| k == "jupyter")
-        {
+        if r.packages.contains(&"IRkernel".to_string()) && jupyter_included {
             jupyter_kernels.push_str(
                 "
             mkdir $out/rootfs/usr/share/jupyter/kernels/R
@@ -249,7 +220,7 @@ pub fn write_flake(
         );
         rust_extensions.push("rust-src");
     }
-    if !jupyter_kernels.is_empty() {
+    if !jupyter_kernels.is_empty() && jupyter_included {
         jupyter_kernels = "
             mv $out/rootfs/usr/share/jupyter/kernels $out/rootfs/usr/share/jupyter/kernels_
             mkdir $out/rootfs/usr/share/jupyter/kernels

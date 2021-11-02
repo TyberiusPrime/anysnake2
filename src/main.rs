@@ -18,19 +18,16 @@ use std::sync::Arc;
 
  * R/r_ecosystem_track
 
- * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12
+ * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12, is
+   it even worth it?
 
- * per command volumes? do we need these?
+ * Per command volumes? Do we need these?
 
- * establish a test matrix
- *
- * ensure that the singularity sif container  actually contains everything...
- *
- *
- * when pip installing packages, the dependencies should be mach-nix supplied.
- * That does involve writing a temporary flake though, and all we really want  is the egg-link,
- * rigth?
-*/
+ * Establish a test matrix
+
+ * Ensure that the singularity sif container  actually contains everything...
+
+ */
 
 mod config;
 mod flake_writer;
@@ -304,8 +301,11 @@ fn collect_python_packages(
 
                 let editable_paths: Vec<String> = res
                     .iter()
-                    .filter_map(|(_, spec)| spec.strip_prefix("editable/"))
-                    .map(|x| x.to_string())
+                    .filter_map(|(pkg, spec)| {
+                        match spec.strip_prefix("editable/") {
+                            Some(editable_path) => Some(editable_path.to_string()+ "/" +pkg),
+                            None => None,
+                        }})
                     .collect();
                 debug!("found editable_paths: {:?}", &editable_paths);
 
@@ -460,14 +460,7 @@ fn inner_main() -> Result<()> {
 
         if cmd == "develop" {
             if let Some(python) = &parsed_config.python {
-                copy_and_patch_venv_dir(
-                    &flake_dir,
-                    &python.version,
-                    &python_packages
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect(),
-                )?;
+                write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
             }
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
@@ -1271,60 +1264,38 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     }
 }
 
-fn copy_and_patch_venv_dir(
+fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
-    python_major_minor: &str,
-    python_packages: &HashMap<String, String>,
+    python_packages: &Vec<(String, String)>,
+    python_version: &str,
 ) -> Result<()> {
-    let source = flake_dir.as_ref().join("venv").join(python_major_minor);
-    let target = flake_dir.as_ref().join("venv_develop");
-    std::fs::remove_dir_all(target)?;
-    let target = flake_dir
-        .as_ref()
-        .join("venv_develop")
-        .join(python_major_minor);
-    std::fs::create_dir_all(&target)?;
-    let linked_in_repl: String = std::fs::canonicalize(flake_dir.as_ref())?
+    let mut develop_python_paths = Vec::new();
+    let venv_dir: PathBuf = flake_dir.as_ref().join("venv").join(python_version);
+    let parent_dir: PathBuf = std::fs::canonicalize(&flake_dir)?
         .parent()
-        .context("No parent on flake dir!?")?
-        .to_string_lossy()
-        .to_string();
-    for file in std::fs::read_dir(&source)
-        .with_context(|| format!("could not read source dir {:?}", source))?
-    {
-        let file = file?;
-        match file.path().file_name() {
-            Some(filename) => {
-                if filename.to_string_lossy().ends_with(".egg-link") {
-                    let pkg_name = file
-                        .path()
-                        .file_stem()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string();
-                    match python_packages.get(&pkg_name) {
-                        Some(folder_name) => {
-                            let input = std::fs::read_to_string(file.path())?;
-                            let output = input.replace(
-                                "/anysnake2/venv/linked_in",
-                                &format!("{}/{}", linked_in_repl, 
-                                         folder_name.strip_prefix("editable/").
-                                         with_context(||format!(
-                                                 "pkg {} was editable, is in venv, but is no longer editable in anysnake2.toml (is '{}'). Not supposed to happen", pkg_name, folder_name
-                                                 ))?)
-                            );
-                            std::fs::write(
-                                target.join(filename.to_string_lossy().to_string()),
-                                output,
-                            )?;
-                        }
-                        None => bail!("Could not find editable folder for venv entry {}", pkg_name),
-                    }
-                }
-            }
-            None => {}
-        }
-    }
+        .context("No parent found for flake dir")?
+        .to_path_buf();
 
+    for (pkg, spec) in python_packages
+        .iter()
+        .filter(|(_, spec)| spec.starts_with("editable/"))
+    {
+        let safe_pkg = safe_python_package_name(pkg);
+        let real_target = parent_dir.join(&spec.strip_prefix("editable/").unwrap());
+        let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+        let egg_target = std::fs::read_to_string(egg_link)?
+            .split_once("\n")
+            .context("No newline in egg-link?")?
+            .0
+            .to_string();
+        let egg_target =
+            egg_target.replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());
+
+        develop_python_paths.push(egg_target)
+    }
+    std::fs::write(
+        flake_dir.as_ref().join("develop_python_path.bash"),
+        format!("export PYTHONPATH=\"{}\"", &develop_python_paths.join(":")),
+    )?;
     Ok(())
 }

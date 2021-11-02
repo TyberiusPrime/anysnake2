@@ -170,8 +170,10 @@
           name = "anysnake2-devshell";
           shellHook = ''
             export PATH=${defaultPackage}/rootfs/bin:$PATH;
+            if test -f "develop_python_path.bash"; then
+              source "develop_python_path.bash"
+            fi 
           '';
-          PYTHONPATH="%DEVELOP_PYTHON_PATH%";
           nativeBuildInputs = with pkgs;
             [
               #%DEVSHELL_INPUTS%
