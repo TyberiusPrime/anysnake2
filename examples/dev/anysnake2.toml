@@ -29,6 +29,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"which",
 	"mercurial", # good test case for breaking site-packages
 	"evcxr",
+	"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts ]; }",
 	] # optional
 
 [outside_nixpkgs]
@@ -44,11 +45,12 @@ rev = "21.05"
 
 [python] # python section is optional
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+ecosystem_date="2021-10-19" # you get whatever packages the solver would have produced on that day
 # mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
 # mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
 [python.packages]
+mbf_bam=""
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 #scipy=""
 #pypipegraph2=">2.1"

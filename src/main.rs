@@ -120,6 +120,10 @@ fn parse_args() -> ArgMatches<'static> {
         .about("Sane version declaration and container generation using nix")
         .setting(AppSettings::AllowExternalSubcommands)
         .arg(
+            //Arg::with_name("no-version-switch")
+            Arg::from_usage("--no-version-switch 'do not change to toml file defined version'")
+            )
+        .arg(
             Arg::with_name("config_file")
                 .short("c")
                 .long("config")
@@ -248,7 +252,10 @@ fn switch_to_configured_version(
 ) -> Result<()> {
     if parsed_config.anysnake2.rev == "dev" {
         info!("Using development version of anysnake");
-    } else if parsed_config.anysnake2.rev
+    } else if matches.is_present("no-version-switch") {
+        info!("--no-version-switch was passed, not switching versions");
+    }
+    else if parsed_config.anysnake2.rev
         != matches
             .value_of("_running_version")
             .unwrap_or("noversionspecified")
@@ -599,7 +606,7 @@ fn inner_main() -> Result<()> {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
                         let from: PathBuf = std::fs::canonicalize(&from)
-                            .context(format!("abs_path on {}", &from))?;
+                            .context(format!("canonicalize path failed on {} (read only volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "ro".to_string()));
                     }
@@ -610,7 +617,7 @@ fn inner_main() -> Result<()> {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
                         let from: PathBuf = std::fs::canonicalize(&from)
-                            .context(format!("abs_path on {}", &from))?;
+                            .context(format!("canonicalize path failed on {} (read/write volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "rw".to_string()));
                     }
@@ -897,9 +904,9 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                     }
                 }
                 std::fs::write(
-                    clone_log,
+                    &clone_log,
                     serde_json::to_string_pretty(&json!(known_clones))?,
-                )?;
+                ).with_context(|| format!("Failed to write {:?}", &clone_log))?;
             }
         }
         None => {}
@@ -1014,11 +1021,16 @@ fn fill_venv(
         for (safe_pkg, target_dir) in to_build.iter() {
             info!("Pip install {:?}", &target_dir);
             let td = tempdir::TempDir::new("anysnake_venv")?;
+            let td_home = tempdir::TempDir::new("anysnake_venv")?;
+            let td_home_str = td_home.path().to_string_lossy().to_string();
             let mut singularity_args: Vec<String> = vec![
                 "exec".into(),
                 "--userns".into(),
                 "--cleanenv".into(),
-                "--no-home".into(),
+                //"--no-home".into(),
+                "--home".into(),
+                td_home_str,
+
                 "--bind".into(),
                 "/nix/store:/nix/store:ro".into(),
                 "--bind".into(),
