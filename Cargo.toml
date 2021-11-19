@@ -25,4 +25,5 @@ lazy_static = "1.4.0"
 sha256 = "1.0.2"
 whoami = "1.1.5"
 terminal_size = "0.1.17"
+ex = "0.1.3"
 

@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use ex::fs;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -219,24 +220,8 @@ fn configure_logging(matches: &ArgMatches<'static>) {
 
 fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
     let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
-    let abs_config_path = std::fs::canonicalize(config_file).with_context(|| {
-        ErrorWithExitCode::new(
-            66,
-            format!(
-                "Could not find config file '{}'. Use --help for help",
-                config_file
-            ),
-        )
-    })?;
-    let raw_config = std::fs::read_to_string(&abs_config_path).with_context(|| {
-        ErrorWithExitCode::new(
-            66,
-            format!(
-                "Could not find config file '{}'. Use --help for help",
-                config_file
-            ),
-        )
-    })?;
+    let abs_config_path = fs::canonicalize(config_file).context("Could not find config file")?;
+    let raw_config = fs::read_to_string(&abs_config_path).context("Could not read config file")?;
     let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
         .with_context(|| {
             ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
@@ -358,7 +343,7 @@ fn inner_main() -> Result<()> {
     let mut parsed_config: config::ConfigToml = read_config(&matches)?;
 
     let flake_dir: PathBuf = [".anysnake2_flake"].iter().collect();
-    std::fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
+    fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
     switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
     if cmd == "version" {
@@ -432,10 +417,10 @@ fn inner_main() -> Result<()> {
         }
     } else {
         let run_dir: PathBuf = flake_dir.join("run_scripts").join(cmd);
-        std::fs::create_dir_all(&run_dir)?;
+        fs::create_dir_all(&run_dir)?;
         let run_sh: PathBuf = run_dir.join("run.sh");
         let run_sh_str: String = run_sh.into_os_string().to_string_lossy().to_string();
-        std::fs::write(
+        fs::write(
             &run_sh_str,
             format!(
                 "#/bin/bash\ncd ..&& echo 'starting nix develop shell'\n {}\n",
@@ -488,11 +473,11 @@ fn inner_main() -> Result<()> {
                 .to_string_lossy()
                 .to_string();
             debug!("Using {:?} as home", home_dir);
-            std::fs::create_dir_all(home_dir).context("Failed to create home dir")?;
+            fs::create_dir_all(home_dir).context("Failed to create home dir")?;
 
             let outer_run_sh: PathBuf = run_dir.join("outer_run.sh");
             let run_sh: PathBuf = run_dir.join("run.sh");
-            std::fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
+            fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
             let post_run_sh: PathBuf = run_dir.join("post_run.sh");
             let mut post_run_outside: Option<String> = None;
 
@@ -508,9 +493,9 @@ fn inner_main() -> Result<()> {
                     bail!("no command passed after run");
                 }
                 info!("Running singularity with ad hoc - cmd {:?}", slop);
-                std::fs::write(&outer_run_sh, "#/bin/bash\nbash -i /anysnake2/run.sh\n")?; // the -i makes it read /etc/bashrc
-                std::fs::write(&run_sh, slop.join(" "))?;
-                std::fs::write(&post_run_sh, "")?;
+                fs::write(&outer_run_sh, "#/bin/bash\nbash -i /anysnake2/run.sh\n")?; // the -i makes it read /etc/bashrc
+                fs::write(&run_sh, slop.join(" "))?;
+                fs::write(&post_run_sh, "")?;
             } else {
                 let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
                 match &cmd_info.pre_run_outside {
@@ -525,12 +510,12 @@ fn inner_main() -> Result<()> {
                 let run_script = run_template.replace("%RUN%", &cmd_info.run);
                 let post_run_script = run_template
                     .replace("%RUN%", cmd_info.post_run_inside.as_deref().unwrap_or(""));
-                std::fs::write(
+                fs::write(
                 &outer_run_sh,
                 "#/bin/bash\nbash -i /anysnake2/run.sh $@\nexport ANYSNAKE_RUN_STATUS=$?\nbash /anysnake2/post_run.sh", //the -i makes it read /etc/bashrc
             )?;
-                std::fs::write(&run_sh, run_script)?;
-                std::fs::write(&post_run_sh, post_run_script)?;
+                fs::write(&run_sh, run_script)?;
+                fs::write(&post_run_sh, post_run_script)?;
                 post_run_outside = cmd_info.post_run_outside.clone();
             }
 
@@ -592,7 +577,7 @@ fn inner_main() -> Result<()> {
                         "ro".to_string(),
                     ));
                     let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-                    let egg_target = std::fs::read_to_string(egg_link)?
+                    let egg_target = fs::read_to_string(egg_link)?
                         .split_once("\n")
                         .context("No newline in egg-link?")?
                         .0
@@ -605,7 +590,7 @@ fn inner_main() -> Result<()> {
             match &parsed_config.container.volumes_ro {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
-                        let from: PathBuf = std::fs::canonicalize(&from)
+                        let from: PathBuf = fs::canonicalize(&from)
                             .context(format!("canonicalize path failed on {} (read only volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "ro".to_string()));
@@ -616,7 +601,7 @@ fn inner_main() -> Result<()> {
             match &parsed_config.container.volumes_rw {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
-                        let from: PathBuf = std::fs::canonicalize(&from)
+                        let from: PathBuf = fs::canonicalize(&from)
                             .context(format!("canonicalize path failed on {} (read/write volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "rw".to_string()));
@@ -628,7 +613,7 @@ fn inner_main() -> Result<()> {
                 singularity_args.push("--bind".into());
                 singularity_args.push(format!(
                     "{}:{}:{}",
-                    //std::fs::canonicalize(from)?
+                    //fs::canonicalize(from)?
                     //.into_os_string()
                     //.to_string_lossy(),
                     from,
@@ -714,7 +699,7 @@ fn run_singularity(
         let mut nix_full_args: Vec<String> = Vec::new();
         let using_dtach = if let Some(dtach_socket) = &dtach_socket {
             let dtach_dir = flake_dir.join("dtach");
-            std::fs::create_dir_all(dtach_dir)?;
+            fs::create_dir_all(dtach_dir)?;
             let dtach_url = singularity_url.replace("#singularity", "#dtach");
             register_nix_gc_root(&dtach_url, flake_dir)?;
             nix_full_args.extend(vec![
@@ -745,7 +730,7 @@ fn run_singularity(
         let pp = pretty_print_singularity_call(&nix_full_args);
         if let Some(lf) = log_file {
             let o = format!("nix {}", pp.trim_start());
-            std::fs::write(lf, o)?;
+            fs::write(lf, o)?;
         }
         info!("nix {}", pp.trim_start());
         if using_dtach {
@@ -849,11 +834,11 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
     match &parsed_config.clones {
         Some(clones) => {
             for (target_dir, name_urls) in clones.iter() {
-                std::fs::create_dir_all(target_dir)
+                fs::create_dir_all(target_dir)
                     .context(format!("Could not create {}", target_dir))?;
                 let clone_log: PathBuf = [target_dir, ".clone_info.json"].iter().collect();
                 let mut known_clones: HashMap<String, String> = match clone_log.exists() {
-                    true => serde_json::from_str(&std::fs::read_to_string(&clone_log)?)?,
+                    true => serde_json::from_str(&fs::read_to_string(&clone_log)?)?,
                     false => HashMap::new(),
                 };
                 for (name, url) in name_urls {
@@ -869,7 +854,7 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                 }
                 for (name, url) in name_urls {
                     let final_dir: PathBuf = [target_dir, name].iter().collect();
-                    std::fs::create_dir_all(&final_dir)?;
+                    fs::create_dir_all(&final_dir)?;
                     let is_empty = final_dir.read_dir()?.next().is_none();
                     if is_empty {
                         info!("cloning {}/{} from {}", target_dir, name, url);
@@ -903,7 +888,7 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                         }
                     }
                 }
-                std::fs::write(
+                fs::write(
                     &clone_log,
                     serde_json::to_string_pretty(&json!(known_clones))?,
                 ).with_context(|| format!("Failed to write {:?}", &clone_log))?;
@@ -932,7 +917,7 @@ fn rebuild_flake(
         })?;
     }
     let build_unfinished_file = flake_dir.as_ref().join(".build_unfinished");
-    std::fs::write(&build_unfinished_file, "in_progress")?;
+    fs::write(&build_unfinished_file, "in_progress")?;
 
     if target != "flake" {
         debug!("building container");
@@ -950,7 +935,7 @@ fn rebuild_flake(
                     target))
         })?;
         if nix_build_result.success() {
-            std::fs::remove_file(&build_unfinished_file)?;
+            fs::remove_file(&build_unfinished_file)?;
             Ok(())
         } else {
             Err(anyhow!("flake building failed"))
@@ -996,8 +981,8 @@ fn fill_venv(
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
-    std::fs::create_dir_all(&venv_dir)?;
-    std::fs::create_dir_all(flake_dir.join("venv_develop"))?;
+    fs::create_dir_all(&venv_dir)?;
+    fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
     for (pkg, spec) in python
         .iter()
@@ -1074,7 +1059,7 @@ fn fill_venv(
                 .join(format!("python{}", python_version))
                 .join("site-packages")
                 .join(format!("{}.egg-link", &safe_pkg));
-            std::fs::write(target_egg_link, std::fs::read_to_string(source_egg_link)?)?;
+            fs::write(target_egg_link, ex::fs::read_to_string(source_egg_link)?)?;
 
             /*keep it here in case we need it again...
              * for dir_entry in walkdir::WalkDir::new(td.path()) {
@@ -1082,9 +1067,9 @@ fn fill_venv(
                 if let Some(filename) = dir_entry.file_name().to_str() {
                     if filename.ends_with(".egg-link") {
                         trace!("found {:?} for {:?}", &safe_pkg, &dir_entry);
-                        std::fs::write(
+                        fs::write(
                             target_egg_link,
-                            std::fs::read_to_string(dir_entry.path())?,
+                            fs::read_to_string(dir_entry.path())?,
                         )?;
                         break;
                     }
@@ -1118,10 +1103,10 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
         &original.as_ref(),
         &link.as_ref()
     );
-    if std::fs::read_link(&link).is_ok() {
+    if fs::read_link(&link).is_ok() {
         // ie it existed...
         debug!("removing old symlink {:?}", &link.as_ref());
-        std::fs::remove_file(&link)?;
+        fs::remove_file(&link)?;
     }
     Ok(
         std::os::unix::fs::symlink(&original, &link).with_context(|| {
@@ -1138,7 +1123,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     debug!("registering gc root for {}", url);
     //where we store this stuff
     let gc_roots = flake_dir.as_ref().join(".gcroots");
-    std::fs::create_dir_all(&gc_roots)?;
+    fs::create_dir_all(&gc_roots)?;
 
     //where nix goes on the hunt
     //
@@ -1188,10 +1173,10 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 
     let out_dir = gc_roots.join(&url.replace("/", "_"));
     let rev_file = gc_roots.join(format!("{}.rev", url.replace("/", "_")));
-    let last = std::fs::read_to_string(&rev_file).unwrap_or_else(|_| "".to_string());
+    let last = fs::read_to_string(&rev_file).unwrap_or_else(|_| "".to_string());
     if last != url || !out_dir.exists() {
-        std::fs::remove_file(&out_dir).ok();
-        std::fs::write(&rev_file, &url).ok();
+        fs::remove_file(&out_dir).ok();
+        fs::write(&rev_file, &url).ok();
         debug!("nix building {}", &url);
 
         let store_path = run_without_ctrl_c(|| {
@@ -1231,7 +1216,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 }
 
 fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
-    let mut available: Vec<_> = std::fs::read_dir(flake_dir.as_ref().join("dtach"))
+    let mut available: Vec<_> = fs::read_dir(flake_dir.as_ref().join("dtach"))
         .context("Could not find dtach socket directory")?
         .filter_map(|x| x.ok())
         .collect();
@@ -1283,7 +1268,7 @@ fn write_develop_python_path(
 ) -> Result<()> {
     let mut develop_python_paths = Vec::new();
     let venv_dir: PathBuf = flake_dir.as_ref().join("venv").join(python_version);
-    let parent_dir: PathBuf = std::fs::canonicalize(&flake_dir)?
+    let parent_dir: PathBuf = fs::canonicalize(&flake_dir)?
         .parent()
         .context("No parent found for flake dir")?
         .to_path_buf();
@@ -1295,7 +1280,7 @@ fn write_develop_python_path(
         let safe_pkg = safe_python_package_name(pkg);
         let real_target = parent_dir.join(&spec.strip_prefix("editable/").unwrap());
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-        let egg_target = std::fs::read_to_string(egg_link)?
+        let egg_target = fs::read_to_string(egg_link)?
             .split_once("\n")
             .context("No newline in egg-link?")?
             .0
@@ -1305,7 +1290,7 @@ fn write_develop_python_path(
 
         develop_python_paths.push(egg_target)
     }
-    std::fs::write(
+    fs::write(
         flake_dir.as_ref().join("develop_python_path.bash"),
         format!("export PYTHONPATH=\"{}\"", &develop_python_paths.join(":")),
     )?;

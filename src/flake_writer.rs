@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use ex::fs;
 
 use crate::run_without_ctrl_c;
 
@@ -55,7 +56,7 @@ pub fn write_flake(
     };
     let old_flake_contents = {
         if flake_filename.exists() {
-            std::fs::read_to_string(&flake_filename)?
+            fs::read_to_string(&flake_filename)?
         } else {
             "".to_string()
         }
@@ -317,11 +318,11 @@ pub fn write_flake(
 
     let res = if use_generated_file_instead {
         if old_flake_contents != flake_contents {
-            std::fs::write(flake_filename, flake_contents)?;
+            fs::write(flake_filename, flake_contents)?;
         }
         Ok(true)
     } else if old_flake_contents != flake_contents {
-        std::fs::write(&flake_filename, flake_contents)
+        fs::write(&flake_filename, flake_contents)
             .with_context(|| format!("failed writing {:?}", &flake_filename))?;
 
         Ok(true)
@@ -329,7 +330,7 @@ pub fn write_flake(
         debug!("flake unchanged");
         Ok(false)
     };
-    std::fs::write(
+    fs::write(
         flake_dir.as_ref().join(".gitignore"),
         "result
 run_scripts/
@@ -572,7 +573,7 @@ fn fetch_cached(
     retriever: impl Retriever,
 ) -> Result<String> {
     let mut known: HashMap<String, String> = match cache_filename.as_ref().exists() {
-        true => serde_json::from_str(&std::fs::read_to_string(&cache_filename)?)?,
+        true => serde_json::from_str(&fs::read_to_string(&cache_filename)?)?,
         false => HashMap::new(),
     };
     if known.contains_key(query) {
@@ -582,7 +583,7 @@ fn fetch_cached(
         for (k, v) in new.drain() {
             known.insert(k, v);
         }
-        std::fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
+        fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
         return Ok(known
             .get(query)
             .context(format!("Could not find query value: {}", query))?
