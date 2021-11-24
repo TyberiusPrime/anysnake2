@@ -29,7 +29,6 @@ packages = [ # use https://search.nixos.org/packages to search
 	"which",
 	"mercurial", # good test case for breaking site-packages
 	"evcxr",
-	"rWrapper.override{ packages = with rPackages; [ ggplot2 dplyr xts ]; }",
 	] # optional
 
 [outside_nixpkgs]
@@ -72,11 +71,11 @@ mbf_r="@mbf"
 mbf_sampledata="@mbf/mbf_sampledata"
 
 [R]
-ecosystem_date="2021-10-11" # you get whatever packages were current that day.
+ecosystem_tag="2021-05-20_1" # you get whatever packages were current that day.
 packages = [
 	"ggplot2",
-	"affy",
-	"IRkernel",
+	"dplyr",
+	"xts",
 	]
 
 [flakes.hello]

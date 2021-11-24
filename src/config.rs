@@ -31,23 +31,19 @@ pub struct ConfigToml {
     pub flakes: Option<HashMap<String, Flake>>,
     #[serde(default)]
     pub dev_shell: DevShell,
-    #[serde(rename="R")]
+    #[serde(rename = "R")]
     pub r: Option<R>,
-
 }
 
 impl ConfigToml {
-
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
         let mut res: ConfigToml = toml::from_str(&raw_config)?;
         res.anysnake2.url = match res.anysnake2.url {
             Some(url) => Some(url),
-            None => {
-                match res.anysnake2.use_binary {
-                    true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
-                    false => Some("github:TyberiusPrime/anysnake2".to_string()),
-                }
-            }
+            None => match res.anysnake2.use_binary {
+                true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
+                false => Some("github:TyberiusPrime/anysnake2".to_string()),
+            },
         };
         Ok(res)
     }
@@ -65,7 +61,6 @@ pub struct Anysnake2 {
 }
 
 impl Anysnake2 {
-
     fn default_use_binary() -> bool {
         true
     }
@@ -239,8 +234,16 @@ impl Default for Container {
 
 #[derive(Deserialize, Debug)]
 pub struct R {
-    pub ecosystem_date: String,
+    pub ecosystem_tag: String,
     pub packages: Vec<String>,
+    #[serde(default = "R::default_url")]
+    pub r_ecosystem_track_url: String,
+}
+
+impl R {
+    fn default_url() -> String{
+        "github:TyberiusPrime/r_ecosystem_track".to_string()
+    }
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {

@@ -143,15 +143,13 @@ Just include this:
 ```toml
 [R]
 # you get whatever packages were current that day.
-r_ecosystem_track_rev="2021-10-11_v1"  # a tag or revision from the r_ecosystem_track repo
+ecosystem_tag="2021-10-28_v1"  # a tag or revision from the r_ecosystem_track repo
 packages = [
 	"ggplot2",
 ]
 ```
 
-(Note: r_ecosystem_track is not ready yet, and not integrated into anysnake2 as of 2021-19-10,
-but this is how it's going to work. For now ,the r packages come from nixpkgs).
-
+(Visit r_ecosystem_track and look at it's tags for available versions)
 
 
 # Using rust

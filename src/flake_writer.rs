@@ -187,10 +187,18 @@ pub fn write_flake(
 
     flake_contents = match &parsed_config.r {
         Some(r_config) => {
+            inputs.push(InputFlake::new(
+                "r_ecosystem_track",
+                &r_config.r_ecosystem_track_url,
+                &r_config.ecosystem_tag,
+                &["flake-utils"],
+                &flake_dir
+            )?);
+
             let r_packages = format!(
                 "
-                r_packages = with pkgs.rPackages; [ {} ];
-                rWrapper = pkgs.rWrapper.override{{ packages = r_packages; }};
+                r_packages = with r_ecosystem_track.rPackages.${{system}}; [ {} ];
+                rWrapper = r_ecosystem_track.rWrapper.${{system}}.override{{ packages = r_packages; }};
                 ",
                 r_config.packages.join(" ")
             );

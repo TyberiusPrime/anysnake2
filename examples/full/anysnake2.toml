@@ -72,8 +72,8 @@ mbf_sampledata="@mbf/mbf_sampledata"
 
 
 [R] # R section is optional
-r_ecosystem_track_rev="2021-10-11_v1" # you get whatever packages were current that day.
-# r_ecosystem_track_rev= "github:TyberiusPrime/r_ecosystem_track" # optional
+r_ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
+# r_ecosystem_track_url= "github:TyberiusPrime/r_ecosystem_track" # optional
 packages = [
 	"ggplot2",
 	"affy",
