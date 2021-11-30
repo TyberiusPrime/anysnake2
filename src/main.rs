@@ -34,6 +34,8 @@ mod config;
 mod flake_writer;
 mod maps_duplicate_key_is_error;
 mod python_parsing;
+#[cfg(test)]
+mod integration_tests;
 
 use flake_writer::lookup_github_tag;
 

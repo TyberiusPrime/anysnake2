@@ -56,9 +56,7 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 scipy=""
-pypipegraph=">2."
-mbf_r = "editable/code"  # see [clones.code] below
-mbf_sampledata = "editable/code"
+pypipegraph2=">2."
 dppd = "editable/code"
 dppd_plotnine = "editable/code"
 # pandas="<1.0"
@@ -67,12 +65,10 @@ dppd_plotnine = "editable/code"
 # seperate from python packages so you can clone other stuff as well
 dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
 dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
-mbf_r="@mbf"
-mbf_sampledata="@mbf/mbf_sampledata"
 
 
 [R] # R section is optional
-r_ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
+ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
 # r_ecosystem_track_url= "github:TyberiusPrime/r_ecosystem_track" # optional
 packages = [
 	"ggplot2",
@@ -80,9 +76,8 @@ packages = [
 	]
 
 [flakes.hello]
-    # note that this flake is locked to the newest version when installing
-	# pass ?rev=sha if you want to tie things down in your anysnake2.toml
 	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
 	# you can use an url like $ANYSNAKE2_ROOT/path/to/flake for local flakes
 	# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
@@ -158,8 +153,6 @@ jupyter
 
 
 [clone_regexps]
-"@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
-"@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
 "@gh/([^/]+)"="git+https://github.com/\\1/\\0"
 "@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
 
