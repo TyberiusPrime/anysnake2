@@ -1,6 +1,7 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
+use ex::fs;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
@@ -10,32 +11,31 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use ex::fs;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /* TODO
 
- * R/r_ecosystem_track
+* R/r_ecosystem_track
 
- * pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12, is
-   it even worth it?
+* pypyi-debs that were not flakes... when is the cut off , how do we get around it 2021-04-12, is
+  it even worth it?
 
- * Per command volumes? Do we need these?
+* Per command volumes? Do we need these?
 
- * Establish a test matrix
+* Establish a test matrix
 
- * Ensure that the singularity sif container  actually contains everything...
+* Ensure that the singularity sif container  actually contains everything...
 
- */
+*/
 
 mod config;
 mod flake_writer;
-mod maps_duplicate_key_is_error;
-mod python_parsing;
 #[cfg(test)]
 mod integration_tests;
+mod maps_duplicate_key_is_error;
+mod python_parsing;
 
 use flake_writer::lookup_github_tag;
 
@@ -241,8 +241,7 @@ fn switch_to_configured_version(
         info!("Using development version of anysnake");
     } else if matches.is_present("no-version-switch") {
         info!("--no-version-switch was passed, not switching versions");
-    }
-    else if parsed_config.anysnake2.rev
+    } else if parsed_config.anysnake2.rev
         != matches
             .value_of("_running_version")
             .unwrap_or("noversionspecified")
@@ -296,10 +295,9 @@ fn collect_python_packages(
                 let editable_paths: Vec<String> = res
                     .iter()
                     .filter_map(|(pkg, spec)| {
-                        match spec.strip_prefix("editable/") {
-                            Some(editable_path) => Some(editable_path.to_string()+ "/" +pkg),
-                            None => None,
-                        }})
+                        spec.strip_prefix("editable/")
+                            .map(|editable_path| editable_path.to_string() + "/" + pkg)
+                    })
                     .collect();
                 debug!("found editable_paths: {:?}", &editable_paths);
 
@@ -560,7 +558,7 @@ fn inner_main() -> Result<()> {
                 let venv_dir: PathBuf = flake_dir.join("venv").join(&python.version);
                 error!("{:?}", venv_dir);
                 binds.push((
-                    format!("{}", venv_dir.to_string_lossy()),
+                    venv_dir.to_string_lossy(),
                     "/anysnake2/venv".to_string(),
                     "ro".to_string(),
                 ));
@@ -744,7 +742,7 @@ fn run_singularity(
                 None => 50,
             };
             for _ in 0..empty_lines {
-                println!("");
+                println!();
             }
         }
         std::io::stdout().flush()?;
@@ -893,7 +891,8 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                 fs::write(
                     &clone_log,
                     serde_json::to_string_pretty(&json!(known_clones))?,
-                ).with_context(|| format!("Failed to write {:?}", &clone_log))?;
+                )
+                .with_context(|| format!("Failed to write {:?}", &clone_log))?;
             }
         }
         None => {}
@@ -1017,7 +1016,6 @@ fn fill_venv(
                 //"--no-home".into(),
                 "--home".into(),
                 td_home_str,
-
                 "--bind".into(),
                 "/nix/store:/nix/store:ro".into(),
                 "--bind".into(),
@@ -1110,15 +1108,13 @@ fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Res
         debug!("removing old symlink {:?}", &link.as_ref());
         fs::remove_file(&link)?;
     }
-    Ok(
-        std::os::unix::fs::symlink(&original, &link).with_context(|| {
-            format!(
-                "Failed to symlink {:?} to {:?}",
-                &original.as_ref(),
-                &link.as_ref()
-            )
-        })?,
-    )
+    std::os::unix::fs::symlink(&original, &link).with_context(|| {
+        format!(
+            "Failed to symlink {:?} to {:?}",
+            &original.as_ref(),
+            &link.as_ref()
+        )
+    })
 }
 
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
@@ -1265,7 +1261,7 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
 
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
-    python_packages: &Vec<(String, String)>,
+    python_packages: &[(String, String)],
     python_version: &str,
 ) -> Result<()> {
     let mut develop_python_paths = Vec::new();

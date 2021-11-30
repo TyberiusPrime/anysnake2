@@ -15,7 +15,7 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
-pub fn find_python_requirements_for_editable(paths: &Vec<String>) -> Result<Vec<(String, String)>> {
+pub fn find_python_requirements_for_editable(paths: &[String]) -> Result<Vec<(String, String)>> {
     let mut res = HashSet::new();
     for target_dir in paths.iter() {
         debug!("Looking for python dependencies for {}", target_dir);

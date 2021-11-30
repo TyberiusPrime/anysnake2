@@ -45,7 +45,7 @@ impl InputFlake {
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
-    python_packages: &Vec<(String, String)>,
+    python_packages: &[(String, String)],
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
