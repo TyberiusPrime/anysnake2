@@ -10,11 +10,11 @@
 
     flake-utils.lib.eachDefaultSystem (system:
       let
+        #%RPACKAGES%
         overlays = "%OVERLAY_AND_PACKAGES%";
         pkgs = import nixpkgs { inherit system overlays; };
         mach-nix_ = "%MACHNIX%";
         my_rust = "%RUST%";
-        #%RPACKAGES%
 
         _buildSymlinkImage =
           { name, script, python_requirements, additional_mkPythonArgs ? { } }:
@@ -22,6 +22,7 @@
             mypy = if mach-nix_ != null then
               (mach-nix_.mkPython ({
                 requirements = python_requirements;
+                #%MACHNIX_PKG_EXTRAS%
               } // additional_mkPythonArgs))
             else
               null;
@@ -161,6 +162,7 @@
               rm $out/lib/python*/site-packages/jupyter.py
               rm $out/lib/python*/site-packages/__pycache__/jupyter.cpython*.pyc
             '';
+#            _."rpy2".RPY2_CFFI_MODE = "API";
           };
         };
       in rec {

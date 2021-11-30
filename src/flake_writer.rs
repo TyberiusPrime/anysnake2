@@ -1,6 +1,7 @@
 use crate::config;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
+use ex::fs;
 use log::{debug, trace};
 use regex::Regex;
 use serde_json::json;
@@ -8,7 +9,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use ex::fs;
 
 use crate::run_without_ctrl_c;
 
@@ -192,20 +192,32 @@ pub fn write_flake(
                 &r_config.r_ecosystem_track_url,
                 &r_config.ecosystem_tag,
                 &["flake-utils"],
-                &flake_dir
+                &flake_dir,
             )?);
 
             let r_packages = format!(
                 "
+                R_tracked = if (builtins.hasAttr \"R\" r_ecosystem_track) then
+                      r_ecosystem_track.R.${{system}}
+                    else
+                      (builtins.elemAt r_ecosystem_track.rWrapper.${{system}}.buildInputs 0); # fall back for older r_ecosystem_tracks w/o R export
                 r_packages = with r_ecosystem_track.rPackages.${{system}}; [ {} ];
                 rWrapper = r_ecosystem_track.rWrapper.${{system}}.override{{ packages = r_packages; }};
+                #r_packages = with pkgs.rPackages; [ dplyr ];
+                #rWrapper = pkgs.rWrapper.override {{packages = r_packages;}};
                 ",
                 r_config.packages.join(" ")
             );
+            overlays.push("(final: prev: { R = R_tracked; }) ".to_string());
+
             nixpkgs_pkgs.push("rWrapper".to_string());
-            flake_contents.replace("#%RPACKAGES%", &r_packages)
+            flake_contents
+                .replace("#%RPACKAGES%", &r_packages)
+                .replace("#%MACHNIX_PKG_EXTRAS%", "packagesExtra = r_packages;")
         }
-        None => flake_contents.replace("#%RPACKAGES%", ""),
+        None => flake_contents
+            .replace("#%RPACKAGES%", "")
+            .replace("#%MACHNIX_PKG_EXTRAS%", ""),
     };
 
     let mut jupyter_kernels = String::new();
@@ -257,7 +269,7 @@ pub fn write_flake(
                 &["nixpkgs", "flake-utils"],
                 &flake_dir,
             )?);
-            overlays.push("[ (import rust-overlay) ]".to_string());
+            overlays.push("(import rust-overlay)".to_string());
             let str_rust_extensions: Vec<String> = rust_extensions
                 .into_iter()
                 .map(|x| format!("\"{}\"", x))
@@ -289,7 +301,10 @@ pub fn write_flake(
     )?;
 
     if !overlays.is_empty() {
-        flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", &overlays.join("++"));
+        flake_contents = flake_contents.replace(
+            "\"%OVERLAY_AND_PACKAGES%\"",
+            &("[".to_string() + &overlays.join(" ") + "]"),
+        );
     } else {
         flake_contents = flake_contents.replace("\"%OVERLAY_AND_PACKAGES%\"", "[]");
     }

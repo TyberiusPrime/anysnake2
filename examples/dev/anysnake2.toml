@@ -16,6 +16,7 @@ rev = "dev"
   shell = "fish"
 
 [nixpkgs]
+#rev = "20.09" # the nixpgks version or github hash
 rev = "21.05" # the nixpgks version or github hash
 # rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
 # url = "git+https://github.com/NixOS/nixpkgs" # optional
@@ -29,6 +30,8 @@ packages = [ # use https://search.nixos.org/packages to search
 	"which",
 	"mercurial", # good test case for breaking site-packages
 	"evcxr",
+	"gcc",
+	"gnumake",
 	] # optional
 
 [outside_nixpkgs]
@@ -45,6 +48,7 @@ rev = "21.05"
 [python] # python section is optional
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-11-21" # you get whatever packages the solver would have produced on that day
+#ecosystem_date="2021-05-20" # you get whatever packages the solver would have produced on that day
 # mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
 # mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
@@ -71,11 +75,11 @@ mbf_r="@mbf"
 mbf_sampledata="@mbf/mbf_sampledata"
 
 [R]
-ecosystem_tag="2021-05-20_1" # you get whatever packages were current that day.
+ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
 packages = [
-	"ggplot2",
+	#"ggplot2",
 	"dplyr",
-	"xts",
+	#"xts",
 	]
 
 [flakes.hello]
@@ -145,6 +149,7 @@ echo 'post run outside'
 
 [cmd.shell]
 run = """
+echo "Calling fish"
 fish
 """
 
@@ -159,6 +164,7 @@ jupyter notebook
 run = """
 echo "running hello"
 hello
+python -m rpy2
 """
 
 [clone_regexps]
