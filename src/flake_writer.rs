@@ -177,7 +177,7 @@ pub fn write_flake(
             }
             flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
         }
-        None => flake_contents,
+        None => flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", "")
     };
     let dev_shell_inputs = match &parsed_config.dev_shell.inputs {
         Some(dvi) => dvi.join(" "),
@@ -203,12 +203,16 @@ pub fn write_flake(
                       (builtins.elemAt r_ecosystem_track.rWrapper.${{system}}.buildInputs 0); # fall back for older r_ecosystem_tracks w/o R export
                 r_packages = with r_ecosystem_track.rPackages.${{system}}; [ {} ];
                 rWrapper = r_ecosystem_track.rWrapper.${{system}}.override{{ packages = r_packages; }};
-                #r_packages = with pkgs.rPackages; [ dplyr ];
-                #rWrapper = pkgs.rWrapper.override {{packages = r_packages;}};
                 ",
                 r_config.packages.join(" ")
             );
-            overlays.push("(final: prev: { R = R_tracked; }) ".to_string());
+            overlays.push(
+                "(final: prev: { 
+                R = R_tracked; 
+                rPackages = r_ecosystem_track.rPackages.${system};
+                }) "
+                .to_string(),
+            );
 
             nixpkgs_pkgs.push("rWrapper".to_string());
             flake_contents

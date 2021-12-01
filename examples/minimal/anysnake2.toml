@@ -1,6 +1,6 @@
 # the absolute minimal anysnake2.toml example
 [anysnake2]
-rev = "dev"
+rev = "dev" # replace with fixed version outside of tests/examples
 
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt

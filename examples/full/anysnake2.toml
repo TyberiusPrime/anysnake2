@@ -1,7 +1,7 @@
 # fully featured anysnake2.toml example
 [anysnake2]
 # We leverage nix flakes to run exactly that version.
-rev = "0.3.1"
+rev = "dev" # replace with fixed version outside of tests/examples
 # rev = "dev" = do not switch to fixed version, used in development.
 
 # use_binary = true; default, optional, switches the default url. Ignored if url = is set.

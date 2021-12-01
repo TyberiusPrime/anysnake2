@@ -7,13 +7,9 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     //let lock = NamedLock::create(&cwd.replace("/", "_")).unwrap();
     let lock = NamedLock::create("anysnaketest").unwrap();
     let _guad = lock.lock().unwrap();
-    let flake_lock = PathBuf::from(cwd).join(".anysnake2_flake/flake.lock");
-    if flake_lock.exists() {
-        std::fs::remove_file(flake_lock).unwrap();
-    }
-    let result_dir = PathBuf::from(cwd).join(".anysnake2_flake/result");
-    if result_dir.exists() {
-        std::fs::remove_file(result_dir).unwrap();
+    let flake_dir = PathBuf::from(cwd).join(".anysnake2_flake");
+    if flake_dir.exists() {
+        std::fs::remove_dir_all(flake_dir).unwrap();
     }
 
     let p = std::env::current_exe()
@@ -192,3 +188,43 @@ fn test_full_rpy2() {
     );
     assert!(stdout.contains("10"));
 }
+#[test]
+fn test_full_rpy2_sitepaths() {
+    let lock = NamedLock::create("anysnaketest_full").unwrap();
+    let _guad = lock.lock().unwrap();
+
+    rm_clones("examples/full");
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import rpy2.robjects as ro; print(ro.r(\".libPaths()\"));'",
+        ],
+    );
+    assert!(stdout.contains("Rcpp-1.0.7"));
+    assert!(!stdout.contains("Rcpp-1.0.5"));
+}
+
+
+/*
+#[test]
+fn test_just_r() {
+
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full",
+        &[
+            "run",
+            "--",
+            "R",
+            "-e",
+            "library(Rcpp); sessionInfo()"
+        ],
+    );
+    assert!(stdout.contains("10"));
+}
+
+*/
+

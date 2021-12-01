@@ -1,7 +1,7 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-rev = "0.5.2"
+rev = "dev" # replace with fixed version outside of tests/examples
 use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
 
 [outside_nixpkgs]

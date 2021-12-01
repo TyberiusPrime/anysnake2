@@ -1,5 +1,5 @@
 [anysnake2]
-rev = "dev"
+rev = "dev" # replace with fixed version outside of tests/examples
 # rev = "dev" = do not switch to fixed version, used in development.
 # Otherwise a tag or hash from the anysnake github repo at
 # (default https://github.com/TyberiusPrime/anysnake2).
