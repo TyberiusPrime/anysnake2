@@ -7,10 +7,17 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     //let lock = NamedLock::create(&cwd.replace("/", "_")).unwrap();
     let lock = NamedLock::create("anysnaketest").unwrap();
     let _guad = lock.lock().unwrap();
-    let flake_dir = PathBuf::from(cwd).join(".anysnake2_flake");
-    if flake_dir.exists() {
-        std::fs::remove_dir_all(flake_dir).unwrap();
+    //do not nuke flake dir, you'll overload the github rate limits quickly
+    let flake_lock = PathBuf::from(cwd).join(".anysnake2_flake/flake.lock");
+    if flake_lock.exists() {
+        std::fs::remove_file(flake_lock).unwrap();
     }
+    let result_dir = PathBuf::from(cwd).join(".anysnake2_flake/result");
+    if result_dir.exists() {
+        std::fs::remove_file(result_dir).unwrap();
+    }
+
+
 
     let p = std::env::current_exe()
         .expect("No current exe?")
@@ -209,22 +216,20 @@ fn test_full_rpy2_sitepaths() {
 }
 
 
-/*
 #[test]
 fn test_just_r() {
 
     let (_code, stdout, _stderr) = run_test(
-        "examples/full",
+        "examples/just_r",
         &[
             "run",
             "--",
             "R",
             "-e",
-            "library(Rcpp); sessionInfo()"
+            "'library(Rcpp); sessionInfo()'"
         ],
     );
-    assert!(stdout.contains("10"));
+    assert!(stdout.contains("Rcpp_1.0.7"));
 }
 
-*/
 

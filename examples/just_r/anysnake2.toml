@@ -1,0 +1,31 @@
+# fully featured anysnake2.toml example
+[anysnake2]
+# We leverage nix flakes to run exactly that version.
+rev = "dev" # replace with fixed version outside of tests/examples
+
+[outside_nixpkgs]
+rev = "21.05"
+
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+packages = ['strace', 'python38']
+
+[flake-util]
+# the revision used by flake-util
+# rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
+# url = "github:/oxalica/rust-overlay"
+
+[mach-nix]
+# the revision used by flake-util
+# rev = "dc94135e31d5c90c40a00a6cbdf9330526e8153b" # optional
+# url = "github:/DavHau/mach-nix"
+
+
+
+[R] # R section is optional
+ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
+# r_ecosystem_track_url= "github:TyberiusPrime/r_ecosystem_track" # optional
+packages = [
+	"Rcpp",
+]
+

@@ -51,7 +51,10 @@
               # the later entries shadow the earlier ones. and the python environment beats everything else
               set -x
               # python packages beat the others# python packages beat the others..
-              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
+              if [ -n "${mypy2}" ]; then
+                ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
+              fi
+
 
               # symlink the direct dependencies first...
               for path in $(tac ${script_file});
