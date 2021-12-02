@@ -102,6 +102,9 @@ pub fn write_flake(
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
             let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
+            if  parsed_config.r.is_some() {
+                out_python_packages.push("rpy2".to_string());
+            }
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
@@ -217,11 +220,9 @@ pub fn write_flake(
             nixpkgs_pkgs.push("rWrapper".to_string());
             flake_contents
                 .replace("#%RPACKAGES%", &r_packages)
-                .replace("#%MACHNIX_PKG_EXTRAS%", "packagesExtra = r_packages;")
         }
         None => flake_contents
-            .replace("#%RPACKAGES%", "")
-            .replace("#%MACHNIX_PKG_EXTRAS%", ""),
+            .replace("#%RPACKAGES%", "rWrapper = null;")
     };
 
     let mut jupyter_kernels = String::new();

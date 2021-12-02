@@ -71,8 +71,8 @@ dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
 ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
 # r_ecosystem_track_url= "github:TyberiusPrime/r_ecosystem_track" # optional
 packages = [
-	"ggplot2",
-	"affy",
+	"ACA",
+	"Rcpp"
 	]
 
 [flakes.hello]
@@ -151,6 +151,16 @@ jupyter
 """
 # ports are exposed by default (using host network!)
 
+[cmd.test_R]
+run = """
+R -e "library(ACA); library(Rcpp); print(sessionInfo())"
+"""
+
+
+[cmd.test_rpy2]
+run = """
+python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library(ACA);'); ro.r('library(Rcpp);'); print(ro.r('sessionInfo()'))"
+"""
 
 [clone_regexps]
 "@gh/([^/]+)"="git+https://github.com/\\1/\\0"

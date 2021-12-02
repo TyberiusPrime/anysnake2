@@ -163,8 +163,8 @@ fn test_full_r_packages() {
     let _guad = lock.lock().unwrap();
 
     rm_clones("examples/full");
-    let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "-e", "'library(ggplot2);sessionInfo();'"]);
-    assert!(stdout.contains("ggplot2_3.3.5"));
+    let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"]);
+    assert!(stdout.contains("ACA_1.1"));
 }
 
 
@@ -204,15 +204,12 @@ fn test_full_rpy2_sitepaths() {
     let (_code, stdout, _stderr) = run_test(
         "examples/full",
         &[
-            "run",
-            "--",
-            "python",
-            "-c",
-            "'import rpy2.robjects as ro; print(ro.r(\".libPaths()\"));'",
+            "test_rpy2"
         ],
     );
-    assert!(stdout.contains("Rcpp-1.0.7"));
-    assert!(!stdout.contains("Rcpp-1.0.5"));
+    assert!(stdout.contains("Rcpp_1.0.7"));
+    assert!(!stdout.contains("Rcpp_1.0.5"));
+    assert!(stdout.contains("ACA_1.1"));
 }
 
 

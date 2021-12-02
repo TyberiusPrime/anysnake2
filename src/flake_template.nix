@@ -22,13 +22,12 @@
             mypy = if mach-nix_ != null then
               (mach-nix_.mkPython ({
                 requirements = python_requirements;
-                #%MACHNIX_PKG_EXTRAS%
+                # no r packages here - we fix the rpy2 path below.
               } // additional_mkPythonArgs))
             else
               null;
             mypy2 = if mach-nix_ != null then (mypy.outPath) else "";
-            script_file = pkgs.writeScript "reqs.sh"
-              (mypy2 + "\n" + script);
+            script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + script);
           in {
             script_file = script_file;
 
@@ -165,7 +164,11 @@
               rm $out/lib/python*/site-packages/jupyter.py
               rm $out/lib/python*/site-packages/__pycache__/jupyter.cpython*.pyc
             '';
-#            _."rpy2".RPY2_CFFI_MODE = "API";
+            # which is only going to work inside our container
+            _."rpy2".postPatch = ''
+              substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace '@NIX_R_LIBS_SITE@' "/R_libs"
+              substituteInPlace 'requirements.txt' --replace 'pytest' ""
+            '';
           };
         };
       in rec {
@@ -178,7 +181,10 @@
             if test -f "develop_python_path.bash"; then
               source "develop_python_path.bash"
             fi 
-          '';
+          '' + (if rWrapper != null then ''
+            export R_LIBS_SITE=${rWrapper}/lib/R/library/
+          '' else
+            "");
           nativeBuildInputs = with pkgs;
             [
               #%DEVSHELL_INPUTS%
