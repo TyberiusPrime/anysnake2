@@ -1,0 +1,13 @@
+## auto-generated configuration file - DO NOT EDIT ##
+
+/LIBS/GUID = "6d4707cd-313b-4562-a80f-5335536e9396"
+/config/default = "false"
+/repository/remote/disabled = "false"
+/repository/user/ad/public/apps/file/volumes/flatAd = "."
+/repository/user/ad/public/apps/refseq/volumes/refseqAd = "."
+/repository/user/ad/public/apps/sra/volumes/sraAd = "."
+/repository/user/ad/public/apps/sraPileup/volumes/ad = "."
+/repository/user/ad/public/apps/sraRealign/volumes/ad = "."
+/repository/user/ad/public/apps/wgs/volumes/wgsAd = "."
+/repository/user/ad/public/root = "."
+/repository/user/default-path = "/home/finkernagel/upstream/anysnake2/examples/flake_in_non_root_github/no-home/ncbi"

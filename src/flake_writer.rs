@@ -102,7 +102,7 @@ pub fn write_flake(
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
             let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
-            if  parsed_config.r.is_some() {
+            if parsed_config.r.is_some() {
                 out_python_packages.push("rpy2".to_string());
             }
             out_python_packages.sort();
@@ -180,7 +180,7 @@ pub fn write_flake(
             }
             flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
         }
-        None => flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", "")
+        None => flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", ""),
     };
     let dev_shell_inputs = match &parsed_config.dev_shell.inputs {
         Some(dvi) => dvi.join(" "),
@@ -218,11 +218,9 @@ pub fn write_flake(
             );
 
             nixpkgs_pkgs.push("rWrapper".to_string());
-            flake_contents
-                .replace("#%RPACKAGES%", &r_packages)
+            flake_contents.replace("#%RPACKAGES%", &r_packages)
         }
-        None => flake_contents
-            .replace("#%RPACKAGES%", "rWrapper = null;")
+        None => flake_contents.replace("#%RPACKAGES%", "rWrapper = null;"),
     };
 
     let mut jupyter_kernels = String::new();
@@ -399,10 +397,14 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
         out.push_str(&format!(
             "
     {} = {{
-        url = \"{}?rev={}\";
+        url = \"{}{}rev={}\";
 {}
     }};",
-            fl.name, fl.url, fl.rev, &str_follows
+            fl.name,
+            fl.url,
+            if !fl.url.contains("?") { "?" } else { "&" },
+            fl.rev,
+            &str_follows
         ))
     }
     out

@@ -230,3 +230,19 @@ fn test_just_r() {
 }
 
 
+#[test]
+fn test_flake_with_dir() {
+
+    let (_code, stdout, _stderr) = run_test(
+        "examples/flake_in_non_root_github",
+        &[
+            "run",
+            "--",
+            "fastq-dump",
+            "--version",
+        ],
+    );
+    assert!(stdout.contains("\"fastq-dump\" version 2.11.2"));
+}
+
+

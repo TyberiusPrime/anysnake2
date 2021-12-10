@@ -467,8 +467,7 @@ fn inner_main() -> Result<()> {
             let home_dir = PathBuf::from(replace_env_vars(
                 parsed_config.container.home.as_deref().unwrap_or("$HOME"),
             ));
-            let home_dir_str: String = home_dir
-                .clone()
+            let home_dir_str: String = fs::canonicalize(&home_dir).context("home dir not found")?
                 .into_os_string()
                 .to_string_lossy()
                 .to_string();

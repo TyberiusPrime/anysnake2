@@ -1,0 +1,22 @@
+# the absolute minimal anysnake2.toml example
+[anysnake2]
+rev = "dev" # replace with fixed version outside of tests/examples
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
+
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+
+[flakes.sratoolkit]
+	url = "github:/IMTMarburg/flakes?dir=sratoolkit" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	rev = "bfdcb5282d6aae2ffb142689523060083eed50d3" # flakes.lock tends to update unexpectedly, so we tie it down here
+	#follows = ["nixpkgs"] # don't follow, we need the right so.s to wrap the stuff
+	packages = ["defaultPackage.x86_64-linux"]
+
+
+
+[container]
+home="./no-home"
