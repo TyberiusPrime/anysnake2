@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "anysnake2"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -66,6 +66,7 @@ dependencies = [
  "terminal_size",
  "toml",
  "ureq",
+ "url",
  "whoami",
 ]
 

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use url::Url;
 
 /* TODO
 
@@ -27,6 +28,11 @@ use std::sync::Arc;
 * Establish a test matrix
 
 * Ensure that the singularity sif container  actually contains everything...
+*
+*
+* * test hg?rev=xyz clone
+* * test wrong urls (no git+, etc)
+* unify tests on the same flake
 
 */
 
@@ -467,7 +473,8 @@ fn inner_main() -> Result<()> {
             let home_dir = PathBuf::from(replace_env_vars(
                 parsed_config.container.home.as_deref().unwrap_or("$HOME"),
             ));
-            let home_dir_str: String = fs::canonicalize(&home_dir).context("home dir not found")?
+            let home_dir_str: String = fs::canonicalize(&home_dir)
+                .context("home dir not found")?
                 .into_os_string()
                 .to_string_lossy()
                 .to_string();
@@ -813,11 +820,11 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
                                 }
                                 //println_f!("match {name}={url} {re} => {out}");
                             }
-                            if !(out.starts_with("git+") || out.starts_with("hg+")) {
-                                bail!("Url did not start with git+ or hg+ which are the only supported version control formats {}=>{}", proto_url, out);
-                            }
                             *proto_url = out; // know it's the real url
                         }
+                    }
+                    if !(proto_url.starts_with("git+") || proto_url.starts_with("hg+")) {
+                        bail!("Url did not start with git+ or hg+ which are the only supported version control formats {}. (Possibly rewritten using clone_regexps", proto_url);
                     }
                 }
             }
@@ -827,6 +834,14 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     //assert!(re.is_match("2014-01-01"));
 
     Ok(())
+}
+
+fn dir_empty(path: &PathBuf) -> Result<bool> {
+    Ok(path
+        .read_dir()
+        .context("Failed to read_dir")?
+        .next()
+        .is_none())
 }
 
 fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
@@ -843,7 +858,9 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                 for (name, url) in name_urls {
                     let known_url = known_clones.get(name).map(String::as_str).unwrap_or("");
                     let final_dir: PathBuf = [target_dir, name].iter().collect();
-                    if known_url != url && final_dir.exists() {
+                    if known_url != url && final_dir.exists() && !dir_empty(&final_dir)?
+                    //empty dir is ok.
+                    {
                         let msg = format!(
                             "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
                         Cowardly refusing to throw away old checkout."
@@ -854,20 +871,28 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                 for (name, url) in name_urls {
                     let final_dir: PathBuf = [target_dir, name].iter().collect();
                     fs::create_dir_all(&final_dir)?;
-                    let is_empty = final_dir.read_dir()?.next().is_none();
-                    if is_empty {
+                    if dir_empty(&final_dir)? {
                         info!("cloning {}/{} from {}", target_dir, name, url);
                         known_clones.insert(name.clone(), url.clone());
-                        let (cmd, furl) = if url.starts_with("git+") {
+                        let (cmd, trunc_url) = if url.starts_with("git+") {
                             ("git", url.strip_prefix("git+").unwrap())
                         } else if url.starts_with("hg+") {
                             ("hg", url.strip_prefix("hg+").unwrap())
                         } else {
-                            bail!("Unexpected url schema - should have been tested before");
+                            bail!("Unexpected url schema - should have been tested before (bug in anysnake. try git+https)");
                         };
+                        let parsed_url =
+                            Url::parse(trunc_url) //I can't change the scheme from git+https to https, with this libary
+                                .with_context(|| {
+                                    format!("Failed to parse {} as an url", &trunc_url)
+                                })?;
+
+                        let mut base_url = parsed_url.clone();
+                        base_url.set_query(None);
+                        let clone_url_for_cmd = base_url.as_str();
                         let output = run_without_ctrl_c(|| {
                             Command::new(cmd)
-                                .args(&["clone", furl, "."])
+                                .args(&["clone", clone_url_for_cmd, "."])
                                 .current_dir(&final_dir)
                                 .output()
                                 .context(format!(
@@ -884,6 +909,44 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                                 "Failed to clone {target_dir}/{name} from {url}. \n Stdout {stdout:?}\nStderr: {stderr:?}",
                             target_dir = target_dir, name = name, url = url, stdout=stdout, stderr=stderr);
                             bail!(msg);
+                        }
+
+                        for (k, v) in parsed_url.query_pairs() {
+                            let v = v.to_string();
+                            if k == "rev" {
+                                let args: Vec<&str> = if cmd == "git" {
+                                    ["checkout", &v].into()
+                                } else if cmd == "hg" {
+                                    ["checkout", "-r", &v].into()
+                                } else {
+                                    bail!("Should not be reached");
+                                };
+                                let output = run_without_ctrl_c(|| {
+                                    Command::new(cmd)
+                                        .args(&args)
+                                        .current_dir(&final_dir)
+                                        .output()
+                                        .context(format!(
+                                            "Failed to execute checkout revision {} in {}",
+                                            v,
+                                            target_dir = target_dir,
+                                        ))
+                                })?;
+                                if !output.status.success() {
+                                    let stdout = String::from_utf8_lossy(&output.stdout);
+                                    let stderr = String::from_utf8_lossy(&output.stderr);
+                                    let msg = format!(
+                                        "Failed to checkout {v} in {target_dir}. \n Stdout {stdout:?}\nStderr: {stderr:?}",
+                                        target_dir = target_dir, v = v, stdout=stdout, stderr=stderr);
+                                    bail!(msg);
+                                }
+                            } else {
+                                bail!(
+                                    "Could not understand url for {target_dir}: {url}",
+                                    target_dir = &target_dir,
+                                    url = &url
+                                );
+                            }
                         }
                     }
                 }

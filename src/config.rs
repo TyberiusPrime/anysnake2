@@ -213,6 +213,7 @@ pub struct Flake {
     pub follows: Option<Vec<String>>,
     pub packages: Vec<String>,
 }
+
 #[derive(Deserialize, Debug)]
 pub struct Container {
     pub home: Option<String>,

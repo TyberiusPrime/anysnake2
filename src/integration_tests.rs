@@ -17,8 +17,6 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
         std::fs::remove_file(result_dir).unwrap();
     }
 
-
-
     let p = std::env::current_exe()
         .expect("No current exe?")
         .parent()
@@ -155,6 +153,17 @@ fn test_full() {
     rm_clones("examples/full");
     let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "--version"]);
     assert!(stdout.contains("4.1.1"));
+    let out = Command::new("git")
+        .args(&["log"])
+        .current_dir("examples/full/code/dppd_plotnine")
+        .output()
+        .expect("git log failed");
+    assert!(std::str::from_utf8(&out.stdout)
+        .unwrap()
+        .split('\n')
+        .next()
+        .unwrap()
+        .contains("8ed7651af759f3f0b715a2fbda7bf5119f7145d7"))
 }
 
 #[test]
@@ -163,10 +172,12 @@ fn test_full_r_packages() {
     let _guad = lock.lock().unwrap();
 
     rm_clones("examples/full");
-    let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"]);
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full",
+        &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"],
+    );
     assert!(stdout.contains("ACA_1.1"));
 }
-
 
 #[test]
 fn test_full_hello() {
@@ -201,48 +212,26 @@ fn test_full_rpy2_sitepaths() {
     let _guad = lock.lock().unwrap();
 
     rm_clones("examples/full");
-    let (_code, stdout, _stderr) = run_test(
-        "examples/full",
-        &[
-            "test_rpy2"
-        ],
-    );
+    let (_code, stdout, _stderr) = run_test("examples/full", &["test_rpy2"]);
     assert!(stdout.contains("Rcpp_1.0.7"));
     assert!(!stdout.contains("Rcpp_1.0.5"));
     assert!(stdout.contains("ACA_1.1"));
 }
 
-
 #[test]
 fn test_just_r() {
-
     let (_code, stdout, _stderr) = run_test(
         "examples/just_r",
-        &[
-            "run",
-            "--",
-            "R",
-            "-e",
-            "'library(Rcpp); sessionInfo()'"
-        ],
+        &["run", "--", "R", "-e", "'library(Rcpp); sessionInfo()'"],
     );
     assert!(stdout.contains("Rcpp_1.0.7"));
 }
 
-
 #[test]
 fn test_flake_with_dir() {
-
     let (_code, stdout, _stderr) = run_test(
         "examples/flake_in_non_root_github",
-        &[
-            "run",
-            "--",
-            "fastq-dump",
-            "--version",
-        ],
+        &["run", "--", "fastq-dump", "--version"],
     );
     assert!(stdout.contains("\"fastq-dump\" version 2.11.2"));
 }
-
-
