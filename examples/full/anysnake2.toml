@@ -83,7 +83,9 @@ packages = [
 	# you can use an url like $ANYSNAKE2_ROOT/path/to/flake for local flakes
 	# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	packages = ["defaultPackage.x86_64-linux"]
+	# default packages is ["defaultPackage.x86_64-linux"],
+	# in which case you can ommit this entry
+	 #packages = ["defaultPackage.x86_64-linux"]
 
 [rust]
 # version/rust section is optional. leave of for no rust

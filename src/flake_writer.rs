@@ -157,7 +157,10 @@ pub fn write_flake(
     flake_contents = match &parsed_config.flakes {
         Some(flakes) => {
             let mut flake_packages = "".to_string();
-            for (name, flake) in flakes.iter() {
+            let mut names: Vec<&String> = flakes.keys().collect();
+            names.sort();
+            for name in names {
+                let flake = flakes.get(name).unwrap();
                 let rev_follows: Vec<&str> = match &flake.follows {
                     Some(f) => f.iter().map(|x| &x[..]).collect(),
                     None => Vec::new(),
@@ -400,11 +403,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
         url = \"{}{}rev={}\";
 {}
     }};",
-            fl.name,
-            fl.url,
-            if !fl.url.contains("?") { "?" } else { "&" },
-            fl.rev,
-            &str_follows
+            fl.name, fl.url,if !fl.url.contains("?") {"?"} else {"&"}, fl.rev, &str_follows
         ))
     }
     out

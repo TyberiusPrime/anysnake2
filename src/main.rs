@@ -32,14 +32,11 @@ use url::Url;
 *
 * * test hg?rev=xyz clone
 * * test wrong urls (no git+, etc)
-* unify tests on the same flake
 
 */
 
 mod config;
 mod flake_writer;
-#[cfg(test)]
-mod integration_tests;
 mod maps_duplicate_key_is_error;
 mod python_parsing;
 
