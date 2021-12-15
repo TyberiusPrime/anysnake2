@@ -542,6 +542,7 @@ fn inner_main() -> Result<()> {
                 "ro".to_string(),
             ));
             let mut envs = Vec::new();
+            let mut paths = vec!["/bin"];
             binds.push((
                 run_sh_str,
                 "/anysnake2/run.sh".to_string(),
@@ -588,6 +589,7 @@ fn inner_main() -> Result<()> {
                     python_paths.push(egg_target)
                 }
                 envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+                paths.push("/anysnake2/venv/bin");
             };
 
             match &parsed_config.container.volumes_ro {
@@ -630,6 +632,8 @@ fn inner_main() -> Result<()> {
                     envs.push(format!("{}={}", k, replace_env_vars(v)));
                 }
             }
+
+            envs.push(format!("PATH={}", paths.join(":")));
 
             for e in envs.into_iter() {
                 singularity_args.push("--env".into());
@@ -1041,7 +1045,7 @@ fn fill_venv(
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
-    fs::create_dir_all(&venv_dir)?;
+    fs::create_dir_all(&venv_dir.join("bin"))?;
     fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
     for (pkg, spec) in python
@@ -1090,12 +1094,17 @@ fn fill_venv(
                     target_dir.clone().into_os_string().to_string_lossy(),
                     &safe_pkg
                 ),
+                "--bind".into(),
+                format!(
+                    "{}:/anysnake2/venv/bin:rw",
+                    venv_dir.join("bin").into_os_string().to_string_lossy()
+                ),
             ];
             singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
             singularity_args.push("bash".into());
             singularity_args.push("-c".into());
             singularity_args.push(format!(
-                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv",
+                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv && cp /tmp/venv/bin/* /anysnake2/venv/bin",
                 &safe_pkg
             ));
             let singularity_result = run_singularity(

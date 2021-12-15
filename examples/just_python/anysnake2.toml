@@ -15,6 +15,10 @@ rev = "21.05" # the nixpgks version or github hash
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
 
+[clones.code]
+example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
+
 [python.packages]
 pandas="1.2"
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+example-cli-python="editable/code"

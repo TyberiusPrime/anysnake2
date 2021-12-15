@@ -84,6 +84,16 @@ fn test_just_python_pandas_version() {
 }
 
 #[test]
+fn test_just_python_venv_bin() {
+    let (_code, stdout, _stderr) = run_test(
+        "examples/just_python",
+        &["run", "--", "hello"],
+    );
+    assert!(stdout.contains("Argument strings:"));
+}
+
+
+#[test]
 fn test_no_anysnake_toml() {
     let (code, _stdout, stderr) = run_test(
         "examples/no_anysnake2_toml",
