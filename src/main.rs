@@ -1,11 +1,12 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
+use config::PythonPackageDefinition;
 use ex::fs;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::BufRead;
@@ -285,17 +286,28 @@ fn switch_to_configured_version(
 
 fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
-) -> Result<Vec<(String, String)>> {
+) -> Result<(Vec<(String, String)>, Vec<(String, HashMap<String, String>)>)> {
     Ok(match &mut parsed_config.python {
         Some(python) => {
-            let mut res: Vec<(String, String)> = python.packages.drain().collect();
-            debug!("found python packages {:?}", &res);
-            if !res.is_empty() {
+            let mut requirement_packages: Vec<(String, String)> = Vec::new();
+            let mut build_packages: Vec<(String, HashMap<String, String>)> = Vec::new();
+            for (name, pp) in python.packages.drain() {
+                match pp {
+                    PythonPackageDefinition::Requirement(str_package_definition) => {
+                        requirement_packages.push((name, str_package_definition));
+                    }
+                    PythonPackageDefinition::BuildPythonPackage(bp_definition) => {
+                        build_packages.push((name, bp_definition))
+                    }
+                }
+            }
+            debug!("found python packages {:?}", &requirement_packages);
+            if !requirement_packages.is_empty() {
                 //don't need pip if we ain't got no packages (and therefore no editable packages
-                res.push(("pip".into(), "".into())); // we use pip to build editable packages
-                res.push(("setuptools".into(), "".into())); // we use pip to build editable packages
+                requirement_packages.push(("pip".into(), "".into())); // we use pip to build editable packages
+                requirement_packages.push(("setuptools".into(), "".into())); // we use pip to build editable packages
 
-                let editable_paths: Vec<String> = res
+                let editable_paths: Vec<String> = requirement_packages
                     .iter()
                     .filter_map(|(pkg, spec)| {
                         spec.strip_prefix("editable/")
@@ -307,12 +319,12 @@ fn collect_python_packages(
                 let python_requirements_from_editable =
                     python_parsing::find_python_requirements_for_editable(&editable_paths)?;
                 for (pkg, version_spec) in python_requirements_from_editable.into_iter() {
-                    res.push((pkg, version_spec));
+                    requirement_packages.push((pkg, version_spec));
                 }
             }
-            res
+            (requirement_packages, build_packages)
         }
-        None => Vec::new(),
+        None => (Vec::new(), Vec::new()),
     })
 }
 
@@ -382,14 +394,15 @@ fn inner_main() -> Result<()> {
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
-    let python_packages = collect_python_packages(&mut parsed_config)?;
-    trace!("python packages: {:?}", python_packages);
+    let (python_packages, python_build_packages) = collect_python_packages(&mut parsed_config)?;
+    trace!("python packages: {:?} {:?}", python_packages, python_build_packages);
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
     let flake_changed = flake_writer::write_flake(
         &flake_dir,
         &mut parsed_config,
         &python_packages,
+        &python_build_packages,
         use_generated_file_instead,
     )?;
 

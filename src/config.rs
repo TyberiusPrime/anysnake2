@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use serde_derive::Deserialize;
+use serde::de::Deserializer;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -168,11 +169,73 @@ impl WithDefaultFlakeSource for Rust {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum PythonPackageDefinition {
+    Requirement(String),
+    BuildPythonPackage(HashMap<String, String>),
+}
+
+//todo: trust on first use, or at least complain if never seen before rev and 
+//mismatch on sha: 
+//nix-prefetch-url https://github.com/TyberiusPrime/dppd/archive/b55ac32ef322a8edfc7fa1b6e4553f66da26a156.tar.gz --type sha256 --unpack
+fn de_python_package_definition<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, PythonPackageDefinition>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let res: HashMap<String, PythonPackageDefinition> =
+        crate::maps_duplicate_key_is_error::deserialize(deserializer)?;
+    for (k, v) in res.iter() {
+        match v {
+            PythonPackageDefinition::Requirement(_) => {}
+            PythonPackageDefinition::BuildPythonPackage(def) => {
+                let mut errors: Vec<&str> = Vec::new();
+                match def.get("method") {
+                    Some(method) => match &method[..] {
+                        "fetchFromGitHub" => {
+                            if !def.contains_key("owner") {
+                                errors.push("Was missing 'owner' key.")
+                            }
+                            if !def.contains_key("repo") {
+                                errors.push("Was missing 'repo' key.")
+                            }
+                            if !def.contains_key("rev") {
+                                errors.push("Was missing 'rev' key.")
+                            }
+                        }
+                        "fetchGit" => {
+                            if !def.contains_key("url") {
+                                errors.push("Was missing 'url' key.")
+                            }
+
+                            if !def.contains_key("rev") {
+                                errors.push("Was missing 'rev' key.")
+                            }
+                        }
+                        _ => {}
+                    },
+                    None => errors.push("Was missing 'method' value, e.g. fetchFromGitHub"),
+                };
+                if !errors.is_empty() {
+                    return Err(serde::de::Error::custom(format!(
+                        "Python.packages.{}: {}",
+                        k,
+                        errors.join("\n")
+                    )));
+                }
+            }
+        }
+    }
+    Ok(res)
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Python {
     pub version: String,
     pub ecosystem_date: String,
-    #[serde(with = "crate::maps_duplicate_key_is_error")]
-    pub packages: HashMap<String, String>,
+    #[serde(deserialize_with = "de_python_package_definition")]
+    pub packages: HashMap<String, PythonPackageDefinition>,
 }
 
 impl Python {
@@ -199,7 +262,7 @@ impl Default for MachNix {
 
 impl WithDefaultFlakeSource for MachNix {
     fn default_rev() -> String {
-        "31b21203a1350bff7c541e9dfdd4e07f76d874be".to_string() // 3.3.0 does not support overwritting py-deps-db
+        "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
     }
     fn default_url() -> String {
         "github:DavHau/mach-nix".to_string()
@@ -219,7 +282,6 @@ impl Flake {
     fn default_packages() -> Vec<String> {
         vec!["defaultPackage.x86_64-linux".to_string()]
     }
-    
 }
 
 #[derive(Deserialize, Debug)]
@@ -250,7 +312,7 @@ pub struct R {
 }
 
 impl R {
-    fn default_url() -> String{
+    fn default_url() -> String {
         "github:TyberiusPrime/r_ecosystem_track".to_string()
     }
 }

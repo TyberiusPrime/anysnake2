@@ -145,9 +145,14 @@
             # chmod +w $out/rootfs -R # because we don't have write on the directories
             # rm -rf $out/rootfs
           '';
+        python_requirements = ''
+%PYTHON_PACKAGES%
+          '';
+
         _args = with pkgs; {
           #name = "first_container" + builtins.trace (pypi-deps-db.narHash) "";
           name = "anysnake2_container";
+          inherit python_requirements;
           #later entries beat earlier entries in terms of /bin symlinks
           script = ''
             ${coreutils}
@@ -156,10 +161,7 @@
             %NIXPKGS_PACKAGES%
             %FURTHER_FLAKE_PACKAGES%
           '';
-          python_requirements = ''
-            %PYTHON_PACKAGES%
-          '';
-          additional_mkPythonArgs = {
+                    additional_mkPythonArgs = {
             _."jupyter-core".postInstall = ''
               rm $out/lib/python*/site-packages/jupyter.py
               rm $out/lib/python*/site-packages/__pycache__/jupyter.cpython*.pyc
@@ -169,6 +171,7 @@
               substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace '@NIX_R_LIBS_SITE@' "/R_libs"
               substituteInPlace 'requirements.txt' --replace 'pytest' ""
             '';
+            %PYTHON_BUILD_PACKAGES%
           };
         };
       in rec {

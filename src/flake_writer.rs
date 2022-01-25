@@ -46,6 +46,7 @@ pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
     python_packages: &[(String, String)],
+    python_build_packages: &[(String, HashMap<String, String>)],
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
@@ -108,6 +109,8 @@ pub fn write_flake(
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
+            let out_python_build_packages = format_python_build_packages(python_build_packages)?;
+
             let ecosystem_date = python
                 .parsed_ecosystem_date()
                 .context("Failed to parse python.ecosystem-date")?;
@@ -132,6 +135,7 @@ pub fn write_flake(
             flake_contents
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
+                .replace("%PYTHON_BUILD_PACKAGES%", &out_python_build_packages)
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
@@ -151,7 +155,8 @@ pub fn write_flake(
         }
         None => flake_contents
             .replace("\"%MACHNIX%\"", "null")
-            .replace("%DEVELOP_PYTHON_PATH%", ""),
+            .replace("%DEVELOP_PYTHON_PATH%", "")
+            .replace("%%PYTHON_BUILD_PACKAGES%", ""),
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -403,7 +408,11 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
         url = \"{}{}rev={}\";
 {}
     }};",
-            fl.name, fl.url,if !fl.url.contains("?") {"?"} else {"&"}, fl.rev, &str_follows
+            fl.name,
+            fl.url,
+            if !fl.url.contains("?") { "?" } else { "&" },
+            fl.rev,
+            &str_follows
         ))
     }
     out
@@ -431,6 +440,37 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
             //bail!("invalid python version spec {}{}", name, version_constraint);
         }
     }
+    Ok(res)
+}
+
+fn src_to_nix(src: &HashMap<String, String>) -> String {
+    let mut res = Vec::new();
+    for (k, v) in src.iter() {
+        if k != "method" {
+            res.push(format!("\"{}\" = \"{}\";", k, v));
+        }
+    }
+    res.join("\n")
+}
+
+fn format_python_build_packages(input: &[(String, HashMap<String, String>)]) -> Result<String> {
+    let mut res: String = "packagesExtra = [".into();
+    for (key, spec) in input.iter() {
+        res.push_str(&format!(
+            "
+              (mach-nix_.buildPythonPackage {{
+                src = pkgs.{} {{ # {}
+                    {}
+                }};
+                requirementsExtra = python_requirements;
+              }})",
+            spec.get("method")
+                .expect("Missing 'method' on python build package definition"),
+            key,
+            src_to_nix(spec)
+        ));
+    }
+    res.push_str("];");
     Ok(res)
 }
 

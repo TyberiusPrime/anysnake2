@@ -55,10 +55,15 @@ ecosystem_date="2021-10-11" # you get whatever packages the solver would have pr
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-scipy=""
 pypipegraph2=">2."
+scipy=""
 dppd = "editable/code"
 dppd_plotnine = "editable/code"
+# there is also an escape hatch 
+# allowing you to specify arbitrary nix sources for a mach-nixbuildPython call.
+# for example from github 
+# (you can leave of the sha256, and copy paste it from the output on first build)
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", sha256="sha256-OllL3ecgs7xwpsglhGl4LzW3zWBXuLlDNn66xVooxvc="}
 # pandas="<1.0"
 
 [clones.code] # target directory

@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "anysnake2"
-version = "1.0.8"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -58,7 +58,6 @@ dependencies = [
  "named-lock",
  "regex",
  "serde",
- "serde_derive",
  "serde_json",
  "sha256",
  "stderrlog",
@@ -612,6 +611,9 @@ name = "serde"
 version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f12d06de37cf59146fbdecab66aa99f9fe4f78722e3607577a5375d66bd0c913"
+dependencies = [
+ "serde_derive",
+]
 
 [[package]]
 name = "serde_derive"
