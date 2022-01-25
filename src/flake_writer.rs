@@ -156,7 +156,7 @@ pub fn write_flake(
         None => flake_contents
             .replace("\"%MACHNIX%\"", "null")
             .replace("%DEVELOP_PYTHON_PATH%", "")
-            .replace("%%PYTHON_BUILD_PACKAGES%", ""),
+            .replace("%PYTHON_BUILD_PACKAGES%", ""),
     };
 
     flake_contents = match &parsed_config.flakes {

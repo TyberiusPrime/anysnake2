@@ -43,6 +43,17 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     (code, stdout.to_string(), stderr.to_string())
 }
 
+fn run_test_tempdir(cwd: &str, args: &[&str]) -> (i32, String, String) {
+    let td = TempDir::new("anysnake_test").expect("could not create tempdir");
+    std::fs::copy(
+        PathBuf::from(&cwd).join("anysnake2.toml"),
+        td.path().join("anysnake2.toml"),
+    )
+    .expect("Could not create anysnake2.toml in tempdir");
+
+    run_test(&td.path().to_string_lossy(), args)
+}
+
 #[test]
 fn test_minimal_no_python() {
     let (code, _stdout, stderr) =
@@ -61,13 +72,8 @@ fn test_minimal_bash_version() {
 #[test]
 fn test_just_python() {
     // needs to be copied to test the tofu functionality.
-    let td = TempDir::new("anysnake_test").expect("could not create tempdir");
-    std::fs::copy(
-        "examples/just_python/anysnake2.toml",
-        td.path().join("anysnake2.toml"),
-    ).expect("Could not create anysnake2.toml in tempdir");
-    let (_code, stdout, _stderr) = run_test(
-        &td.path().to_string_lossy(),
+    let (_code, stdout, _stderr) = run_test_tempdir(
+        "examples/just_python",
         &["run", "--", "python", "--version"],
     );
     assert!(stdout.contains("3.8.9"));
@@ -75,7 +81,7 @@ fn test_just_python() {
 
 #[test]
 fn test_just_python_pandas_version() {
-    let (_code, stdout, _stderr) = run_test(
+    let (_code, stdout, _stderr) = run_test_tempdir(
         "examples/just_python",
         &[
             "run",
@@ -90,7 +96,7 @@ fn test_just_python_pandas_version() {
 
 #[test]
 fn test_just_python_venv_bin() {
-    let (_code, stdout, _stderr) = run_test("examples/just_python", &["run", "--", "hello"]);
+    let (_code, stdout, _stderr) = run_test_tempdir("examples/just_python", &["run", "--", "hello"]);
     assert!(stdout.contains("Argument strings:"));
 }
 

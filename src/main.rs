@@ -1400,18 +1400,24 @@ fn apply_trust_on_first_use(
                 .get("method")
                 .expect("missing method - should have been caught earlier");
             if method == "fetchFromGitHub" {
-                write = true;
-                println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
+                let rev = spec.get("rev").expect("missing rev");
+                let hash_key = format!("hash_{}", rev);
+                if !spec.contains_key(&hash_key) {
+                    write = true;
+                    println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
 
-                let hash = prefetch_github_hash(
-                    spec.get("owner").expect("missing owner"),
-                    spec.get("repo").expect("missing repo"),
-                    spec.get("rev").expect("missing rev"),
-                )?;
-                println!("hash is {}", hash);
-                let key = k.to_owned();
-                doc["python"]["packages"][key]["hash"] = value(&hash);
-                spec.insert("hash".to_string(), hash.to_owned());
+                    let hash = prefetch_github_hash(
+                        spec.get("owner").expect("missing owner"),
+                        spec.get("repo").expect("missing repo"),
+                        rev,
+                    )?;
+                    println!("nix-prefetch-hash for {} is {}", k, hash);
+                    let key = k.to_owned();
+                    doc["python"]["packages"][key][&hash_key] = value(&hash);
+                    spec.insert(hash_key.to_string(), hash.to_owned());
+                }
+                spec.insert("hash".to_string(), spec.get(&hash_key).unwrap().to_string());
+                spec.retain(|key, _| !key.starts_with("hash_"));
             }
         }
         if write {

@@ -28,15 +28,14 @@ example-cli-python="editable/code"
 
 # and you can fetch from github, git and mercurial (any nix fetcher actually, see
 # https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
+# if using fetchFromGitHub, the necessary hash will be added to this file 
+# on a trust-on-first-use-basis
 
 #ugly syntax:
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
 # pretty syntax
 [python.packages.dppd] 
 	method = "fetchFromGitHub"
 	owner = "TyberiusPrime"
 	repo = "dppd"
 	rev = "b55ac32ef322a8edfc7fa1b6e4553f66da26a156"
-hash = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
-	#hash = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
-# pandas="<1.0"

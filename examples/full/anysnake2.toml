@@ -63,7 +63,7 @@ dppd_plotnine = "editable/code"
 # allowing you to specify arbitrary nix sources for a mach-nixbuildPython call.
 # for example from github 
 # (you can leave of the sha256, and copy paste it from the output on first build)
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", sha256="sha256-OllL3ecgs7xwpsglhGl4LzW3zWBXuLlDNn66xVooxvc="}
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", sha256="sha256-OllL3ecgs7xwpsglhGl4LzW3zWBXuLlDNn66xVooxvc=", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
 # pandas="<1.0"
 
 [clones.code] # target directory
