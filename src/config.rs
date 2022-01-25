@@ -34,6 +34,8 @@ pub struct ConfigToml {
     pub dev_shell: DevShell,
     #[serde(rename = "R")]
     pub r: Option<R>,
+    #[serde(skip)]
+    pub source: PathBuf,
 }
 
 impl ConfigToml {

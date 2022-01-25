@@ -233,6 +233,7 @@ fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
             ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
         })?;
     parsed_config.anysnake2_toml_path = Some(abs_config_path);
+    parsed_config.source = config_file.into();
     Ok(parsed_config)
 }
 
@@ -286,7 +287,10 @@ fn switch_to_configured_version(
 
 fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
-) -> Result<(Vec<(String, String)>, Vec<(String, HashMap<String, String>)>)> {
+) -> Result<(
+    Vec<(String, String)>,
+    Vec<(String, HashMap<String, String>)>,
+)> {
     Ok(match &mut parsed_config.python {
         Some(python) => {
             let mut requirement_packages: Vec<(String, String)> = Vec::new();
@@ -394,8 +398,13 @@ fn inner_main() -> Result<()> {
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
-    let (python_packages, python_build_packages) = collect_python_packages(&mut parsed_config)?;
-    trace!("python packages: {:?} {:?}", python_packages, python_build_packages);
+    let (python_packages, mut python_build_packages) = collect_python_packages(&mut parsed_config)?;
+    trace!(
+        "python packages: {:?} {:?}",
+        python_packages,
+        python_build_packages
+    );
+    apply_trust_on_first_use(&parsed_config, &mut python_build_packages)?;
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
     let flake_changed = flake_writer::write_flake(
@@ -1374,4 +1383,82 @@ fn write_develop_python_path(
         format!("export PYTHONPATH=\"{}\"", &develop_python_paths.join(":")),
     )?;
     Ok(())
+}
+
+fn apply_trust_on_first_use(
+    config: &config::ConfigToml,
+    python_build_packages: &mut Vec<(String, HashMap<String, String>)>,
+) -> Result<()> {
+    if !python_build_packages.is_empty() {
+        use toml_edit::{value, Document};
+        let toml = std::fs::read_to_string(&config.source).expect("Could not reread config file");
+        let mut doc = toml.parse::<Document>().expect("invalid doc");
+        let mut write = false;
+
+        for (k, spec) in python_build_packages.iter_mut() {
+            let method = spec
+                .get("method")
+                .expect("missing method - should have been caught earlier");
+            if method == "fetchFromGitHub" {
+                write = true;
+                println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
+
+                let hash = prefetch_github_hash(
+                    spec.get("owner").expect("missing owner"),
+                    spec.get("repo").expect("missing repo"),
+                    spec.get("rev").expect("missing rev"),
+                )?;
+                println!("hash is {}", hash);
+                let key = k.to_owned();
+                doc["python"]["packages"][key]["hash"] = value(&hash);
+                spec.insert("hash".to_string(), hash.to_owned());
+            }
+        }
+        if write {
+            let out_toml = doc.to_string();
+            std::fs::write("anysnake2.toml", out_toml).expect("failed to rewrite config file");
+        }
+    }
+    Ok(())
+}
+
+fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<String> {
+    let url = format!(
+        "https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",
+        owner = owner,
+        repo = repo,
+        git_hash = git_hash
+    );
+
+    let old_format = Command::new("nix-prefetch-url")
+        .args(&[&url, "--type", "sha256", "--unpack"])
+        .output()
+        .context(format!("Failed to nix-prefetch {url}", url = url))?
+        .stdout;
+    let old_format = std::str::from_utf8(&old_format)
+        .context("nix-prefetch result was no utf8")?
+        .trim();
+    let new_format = convert_hash_to_subresource_format(old_format)?;
+    println!("before convert: {}, after: {}", &old_format, &new_format);
+    Ok(new_format)
+}
+
+fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
+    let res = Command::new("nix")
+        .args(&["hash", "to-sri", "--type", "sha256", hash])
+        .output()
+        .context(format!(
+            "Failed to nix hash to-sri --type sha256 '{hash}'",
+            hash = hash
+        ))?
+        .stdout;
+    let res = std::str::from_utf8(&res)
+        .context("nix hash output was not utf8")?
+        .trim()
+        .to_owned();
+    if res.is_empty() {
+        Err(anyhow!("nix hash to-sri returned empty result"))
+    } else {
+        Ok(res)
+    }
 }

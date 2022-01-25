@@ -30,13 +30,17 @@ example-cli-python="editable/code"
 # https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
 
 #ugly syntax:
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash = """
+sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0=
+"""}
 # pretty syntax
 [python.packages.dppd] 
 	method = "fetchFromGitHub"
 	owner = "TyberiusPrime"
 	repo = "dppd"
 	rev = "b55ac32ef322a8edfc7fa1b6e4553f66da26a156"
-hash = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
+hash = """
+sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI=
+"""
 	#hash = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
 # pandas="<1.0"
