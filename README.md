@@ -355,5 +355,16 @@ We want a container engine that
 Singularity fits the bill.
 
 
+# GitHub API limits 
+
+Anysnake2 uses the github api, for example to  translate python-ecosystem-dates into the correct
+python-deps-db commit. Though these are cached, you may run into Github's ratelimit 
+on these requests (especially since the API can only retrieve a 100 commits at once, 
+and the limit is around 60 requests/hour).
+
+Anysnake2 can use a personal-access token for the GitHub API. Just create one in Github/Settings/develop settings,
+without any permissions, and supply it and your username via the env variables ANYSNAKE2_GITHUB_API_USERNAME and
+ANYSNAKE2_GITHUB_API_PASSWORD.
+
 
 

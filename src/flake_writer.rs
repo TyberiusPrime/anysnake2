@@ -510,13 +510,30 @@ struct PyPiDepsDBRetriever {
     query_date_str: String,
 }
 
+fn get_basic_auth_header(user: &str, pass: &str) -> String {
+    let usrpw = String::from(user) + ":" + pass;
+    String::from("Basic ") + &base64::encode(usrpw.as_bytes())
+}
+
+fn add_auth(mut request: ureq::Request) -> ureq::Request {
+    if let Ok(api_username) = std::env::var("ANYSNAKE2_GITHUB_API_USERNAME)") {
+        if let Ok(api_password) = std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD)") {
+            request = request.set(
+                "Authorization",
+                &get_basic_auth_header(&api_username, &api_password),
+            );
+        }
+    }
+    request
+}
+
 impl PyPiDepsDBRetriever {
     fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
         let url = format!(
             "https://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
             page
         );
-        let body: String = get_proxy_req()?.get(&url).call()?.into_string()?;
+        let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
         let json: serde_json::Value =
             serde_json::from_str(&body).context("Failed to parse github commits api")?;
         let json = json
@@ -672,7 +689,7 @@ impl Retriever for GitHubTagRetriever {
                 "https://api.github.com/repos/{}/tags?per_page=100&page={}",
                 &self.repo, page
             );
-            let body: String = get_proxy_req()?.get(&url).call()?.into_string()?;
+            let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
             let json: serde_json::Value =
                 serde_json::from_str(&body).context("Failed to parse github tags api")?;
             let json = json.as_array().context("No entries in github tags api?")?;
