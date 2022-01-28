@@ -1,4 +1,5 @@
 use crate::config;
+use itertools::Itertools;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
@@ -445,7 +446,7 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
 
 fn src_to_nix(src: &HashMap<String, String>) -> String {
     let mut res = Vec::new();
-    for (k, v) in src.iter() {
+    for (k,v) in src.iter().sorted_by_key(|x| x.0) {
         if k != "method" {
             res.push(format!("\"{}\" = \"{}\";", k, v));
         }
@@ -455,7 +456,7 @@ fn src_to_nix(src: &HashMap<String, String>) -> String {
 
 fn format_python_build_packages(input: &[(String, HashMap<String, String>)]) -> Result<String> {
     let mut res: String = "packagesExtra = [".into();
-    for (key, spec) in input.iter() {
+    for (key, spec) in input.iter().sorted_by_key(|x| &x.0) {
         res.push_str(&format!(
             "
               (mach-nix_.buildPythonPackage {{
@@ -516,8 +517,9 @@ fn get_basic_auth_header(user: &str, pass: &str) -> String {
 }
 
 fn add_auth(mut request: ureq::Request) -> ureq::Request {
-    if let Ok(api_username) = std::env::var("ANYSNAKE2_GITHUB_API_USERNAME)") {
-        if let Ok(api_password) = std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD)") {
+    if let Ok(api_username) = std::env::var("ANYSNAKE2_GITHUB_API_USERNAME") {
+        if let Ok(api_password) = std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD") {
+            debug!("Using github auth");
             request = request.set(
                 "Authorization",
                 &get_basic_auth_header(&api_username, &api_password),

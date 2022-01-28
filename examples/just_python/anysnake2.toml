@@ -32,10 +32,11 @@ example-cli-python="editable/code"
 # on a trust-on-first-use-basis
 
 #ugly syntax:
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
 # pretty syntax
 [python.packages.dppd] 
 	method = "fetchFromGitHub"
 	owner = "TyberiusPrime"
 	repo = "dppd"
 	rev = "b55ac32ef322a8edfc7fa1b6e4553f66da26a156"
+hash_b55ac32ef322a8edfc7fa1b6e4553f66da26a156 = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
