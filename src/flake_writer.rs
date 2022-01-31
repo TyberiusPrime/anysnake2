@@ -1,8 +1,8 @@
 use crate::config;
-use itertools::Itertools;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
+use itertools::Itertools;
 use log::{debug, trace};
 use regex::Regex;
 use serde_json::json;
@@ -446,7 +446,7 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
 
 fn src_to_nix(src: &HashMap<String, String>) -> String {
     let mut res = Vec::new();
-    for (k,v) in src.iter().sorted_by_key(|x| x.0) {
+    for (k, v) in src.iter().sorted_by_key(|x| x.0) {
         if k != "method" {
             res.push(format!("\"{}\" = \"{}\";", k, v));
         }
@@ -535,6 +535,7 @@ impl PyPiDepsDBRetriever {
             "https://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
             page
         );
+        debug!("Retrieving {}", &url);
         let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
         let json: serde_json::Value =
             serde_json::from_str(&body).context("Failed to parse github commits api")?;
@@ -553,6 +554,7 @@ impl PyPiDepsDBRetriever {
             //println!("{}, {}", &str_date, &sha);
             res.insert(str_date, sha.to_string());
         }
+        debug!("Retrieved {} entries", res.len());
         Ok(res)
     }
 }
@@ -583,11 +585,27 @@ impl Retriever for PyPiDepsDBRetriever {
                         bail!("Could not find entry in pypi-deps-db (arrived at latest entry)");
                     }
                 } else if oldest > self.query_date {
-                    trace!("{:?} too new", &self.query_date);
+                    trace!(
+                        "Could not find entry in pypi-deps-db ({:?} too new)",
+                        &self.query_date
+                    );
                     page += 1;
+                } else {
+                    bail!(
+                        "Could not find entry in pypi-deps-db (date not present. Closest: {} {}).",
+                        pretty_opt_date(&next_smaller_date(&known_mappings, &self.query_date)),
+                        pretty_opt_date(&next_larger_date(&known_mappings, &self.query_date)),
+                    );
                 }
             }
         }
+    }
+}
+
+fn pretty_opt_date(date: &Option<chrono::NaiveDateTime>) -> String {
+    match date {
+        Some(x) => x.format("%Y-%m-%d").to_string(),
+        None => "".to_string(),
     }
 }
 
@@ -605,6 +623,31 @@ fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDa
         &format!("{} 00:00", oldest),
         "%Y%m%d %H:%M",
     )?)
+}
+
+fn next_larger_date(
+    mappings: &HashMap<String, String>,
+    date: &NaiveDateTime,
+) -> Option<chrono::NaiveDateTime> {
+    let q = date.format("%Y%m%d").to_string();
+    let oldest = mappings.keys().filter(|x| *x > &q).min();
+    oldest
+        .map(|oldest| {
+            chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", oldest), "%Y%m%d %H:%M").ok()
+        })
+        .flatten()
+}
+fn next_smaller_date(
+    mappings: &HashMap<String, String>,
+    date: &NaiveDateTime,
+) -> Option<chrono::NaiveDateTime> {
+    let q = date.format("%Y%m%d").to_string();
+    let oldest = mappings.keys().filter(|x| *x < &q).max();
+    oldest
+        .map(|oldest| {
+            chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", oldest), "%Y%m%d %H:%M").ok()
+        })
+        .flatten()
 }
 
 fn get_proxy_req() -> Result<ureq::Agent> {
@@ -691,6 +734,7 @@ impl Retriever for GitHubTagRetriever {
                 "https://api.github.com/repos/{}/tags?per_page=100&page={}",
                 &self.repo, page
             );
+            debug!("Retrieving {}", &url);
             let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
             let json: serde_json::Value =
                 serde_json::from_str(&body).context("Failed to parse github tags api")?;
