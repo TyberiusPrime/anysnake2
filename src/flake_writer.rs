@@ -18,6 +18,7 @@ struct InputFlake {
     url: String,
     rev: String,
     follows: Vec<String>,
+    is_flake: bool,
 }
 
 impl InputFlake {
@@ -38,6 +39,28 @@ impl InputFlake {
             url: url.to_string(),
             rev: lookup_github_tag(url, rev, flake_dir)?,
             follows: follows.iter().map(|x| x.to_string()).collect(),
+            is_flake: true,
+        })
+    }
+    fn new_with_flake_option(
+        name: &str,
+        url: &str,
+        rev: &str,
+        follows: &[&str],
+        flake_dir: impl AsRef<Path>,
+        is_flake: bool,
+    ) -> Result<Self> {
+        let url = if url.ends_with('/') {
+            url.strip_suffix('/').unwrap()
+        } else {
+            url
+        };
+        Ok(InputFlake {
+            name: name.to_string(),
+            url: url.to_string(),
+            rev: lookup_github_tag(url, rev, flake_dir)?,
+            follows: follows.iter().map(|x| x.to_string()).collect(),
+            is_flake,
         })
     }
 }
@@ -125,12 +148,13 @@ pub fn write_flake(
                 &flake_dir,
             )?);
 
-            inputs.push(InputFlake::new(
+            inputs.push(InputFlake::new_with_flake_option(
                 "pypi-deps-db",
                 "github:DavHau/pypi-deps-db",
                 &pypi_debs_db_rev,
                 &["nixpkgs", "mach-nix"],
                 &flake_dir,
+                ecosystem_date > chrono::NaiveDate::from_ymd(2021, 04, 30),
             )?);
 
             flake_contents
@@ -408,12 +432,14 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
     {} = {{
         url = \"{}{}rev={}\";
 {}
+{}
     }};",
             fl.name,
             fl.url,
             if !fl.url.contains("?") { "?" } else { "&" },
             fl.rev,
-            &str_follows
+            &str_follows,
+            if fl.is_flake { "" } else { "flake = false;" }
         ))
     }
     out
