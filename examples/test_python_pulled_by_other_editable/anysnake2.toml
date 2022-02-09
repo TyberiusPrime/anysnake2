@@ -1,0 +1,33 @@
+# basic anysnake2.toml example
+[anysnake2]
+rev = "dev" # 1.3.0 is the last failing version
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
+[nixpkgs]
+# the nixpkgs used inside the container
+rev = "21.05" # the nixpgks version or github hash
+
+[python] # python section is optional
+version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
+ecosystem_date="2021-11-21" # you get whatever packages the solver would have produced on that day
+
+[clones.code]
+pypipegraph="@gh/TyberiusPrime/pypipegraph"
+pypipegraph2="@gh/TyberiusPrime/pypipegraph2"
+mdataframe="@gh/MarcoMernberger/mdataframe.git"
+
+[python.packages]
+pypipegraph="editable/code"
+pypipegraph2="editable/code"
+mdataframe="editable/code"
+
+[clone_regexps]
+"@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
+"@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
+"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
+"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
+
+

@@ -255,3 +255,13 @@ fn test_flake_with_dir() {
     );
     assert!(stdout.contains("\"fastq-dump\" version 2.11.2"));
 }
+
+#[test]
+fn test_python_package_already_pulled_by_other_editable_package() {
+    let (_code, stdout, _stderr) = run_test(
+        "examples/test_python_pulled_by_other_editable",
+        &["run", "--", "python", "-c",  "'import pypipegraph; print(\"imported ppg\")'"],
+    );
+    assert!(stdout.contains("imported ppg"));
+}
+

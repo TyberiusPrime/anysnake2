@@ -1091,8 +1091,8 @@ fn fill_venv(
     if !to_build.is_empty() {
         for (safe_pkg, target_dir) in to_build.iter() {
             info!("Pip install {:?}", &target_dir);
-            let td = tempdir::TempDir::new("anysnake_venv")?;
-            let td_home = tempdir::TempDir::new("anysnake_venv")?;
+            let td = tempdir::TempDir::new("anysnake_venv")?; // temp /tmp
+            let td_home = tempdir::TempDir::new("anysnake_venv")?; // temp home directory
             let td_home_str = td_home.path().to_string_lossy().to_string();
             let mut singularity_args: Vec<String> = vec![
                 "exec".into(),
@@ -1126,7 +1126,7 @@ fn fill_venv(
             singularity_args.push("bash".into());
             singularity_args.push("-c".into());
             singularity_args.push(format!(
-                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install -e . --prefix=/tmp/venv && (cp /tmp/venv/bin/* /anysnake2/venv/bin 2>/dev/null|| true)",
+                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install --ignore-installed -e . --prefix=/tmp/venv && (cp /tmp/venv/bin/* /anysnake2/venv/bin -I 2>/dev/null|| true)",
                 &safe_pkg
             ));
             let singularity_result = run_singularity(
