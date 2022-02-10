@@ -20,7 +20,7 @@
 
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        rust = pkgs.rust-bin.stable."1.55.0".default.override {
+        rust = pkgs.rust-bin.stable."1.56.0".default.override {
           targets = [ "x86_64-unknown-linux-musl" ];
         };
 
