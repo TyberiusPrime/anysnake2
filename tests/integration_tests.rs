@@ -1,7 +1,7 @@
 use named_lock::NamedLock;
 use std::path::PathBuf;
 use std::process::Command;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     //can't have more than one running from a given folder at a time
@@ -44,7 +44,7 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir) {
-    let td = TempDir::new("anysnake_test").expect("could not create tempdir");
+    let td = tempfile::Builder::new().prefix("anysnake_test").tempdir().expect("could not create tempdir");
     /* std::fs::copy(
         PathBuf::from(&cwd).join("anysnake2.toml"),
         td.path().join("anysnake2.toml"),

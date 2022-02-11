@@ -1133,8 +1133,8 @@ fn fill_venv(
     if !to_build.is_empty() {
         for (safe_pkg, target_dir) in to_build.iter() {
             info!("Pip install {:?}", &target_dir);
-            let td = tempdir::TempDir::new("anysnake_venv")?; // temp /tmp
-            let td_home = tempdir::TempDir::new("anysnake_venv")?; // temp home directory
+            let td = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
+            let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
             let td_home_str = td_home.path().to_string_lossy().to_string();
 
             let target_python: PathBuf =
