@@ -3,18 +3,19 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 use config::PythonPackageDefinition;
 use ex::fs;
+use indoc::indoc;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::{collections::HashMap, str::FromStr};
 use url::Url;
 
 /* TODO
@@ -846,8 +847,11 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
                             *proto_url = out; // know it's the real url
                         }
                     }
-                    if !(proto_url.starts_with("git+") || proto_url.starts_with("hg+")) {
-                        bail!("Url did not start with git+ or hg+ which are the only supported version control formats {}. (Possibly rewritten using clone_regexps", proto_url);
+                    if !(proto_url.starts_with("git+")
+                        || proto_url.starts_with("hg+")
+                        || proto_url.starts_with("file://"))
+                    {
+                        bail!("Url did not start with git+, hg+ or file:// which are the only supported version control formats {}. (Possibly rewritten using clone_regexps", proto_url);
                     }
                 }
             }
@@ -901,6 +905,8 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                             ("git", url.strip_prefix("git+").unwrap())
                         } else if url.starts_with("hg+") {
                             ("hg", url.strip_prefix("hg+").unwrap())
+                        } else if url.starts_with("file://") {
+                            ("cp", &url[..])
                         } else {
                             bail!("Unexpected url schema - should have been tested before (bug in anysnake. try git+https)");
                         };
@@ -913,17 +919,53 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                         let mut base_url = parsed_url.clone();
                         base_url.set_query(None);
                         let clone_url_for_cmd = base_url.as_str();
-                        let output = run_without_ctrl_c(|| {
-                            Command::new(cmd)
-                                .args(&["clone", clone_url_for_cmd, "."])
+                        let clone_url_for_cmd = match clone_url_for_cmd.strip_prefix("file://") {
+                            Some(path) => {
+                                if path.starts_with("/") {
+                                    path.to_string()
+                                } else {
+                                    // we are in target/package, so we need to go up to to make it
+                                    // relative again
+                                    "../../".to_string() + (path.strip_prefix("./").unwrap_or(path))
+                                }
+                            }
+                            None => clone_url_for_cmd.to_string(),
+                        };
+                        let output = run_without_ctrl_c(|| match cmd {
+                            "hg" | "git" => Command::new(cmd)
+                                .args(&["clone", &clone_url_for_cmd, "."])
                                 .current_dir(&final_dir)
                                 .output()
                                 .context(format!(
-                                    "Failed to execute clone {target_dir}/{name} from {url}.",
+                                    "Failed to execute clone {target_dir}/{name} from {url} .",
                                     target_dir = target_dir,
                                     name = name,
                                     url = url
-                                ))
+                                )),
+                            "cp" => {
+                                let args = [
+                                    "-c",
+                                    &format!(
+                                        "cp {}/* . -a",
+                                        &clone_url_for_cmd
+                                            .strip_suffix("/")
+                                            .unwrap_or(&clone_url_for_cmd)
+                                    )[..],
+                                ];
+                                dbg!(&args);
+                                Command::new("bash")
+                                    .args(&args)
+                                    .current_dir(&final_dir)
+                                    .output()
+                                    .context(format!(
+                                        "Failed to execute copy {target_dir}/{name} from {url} .",
+                                        target_dir = target_dir,
+                                        name = name,
+                                        url = url
+                                    ))
+                            }
+
+                            _ => Err(anyhow!("Unsupported clone cmd?!")),
                         })?;
                         if !output.status.success() {
                             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1094,6 +1136,44 @@ fn fill_venv(
             let td = tempdir::TempDir::new("anysnake_venv")?; // temp /tmp
             let td_home = tempdir::TempDir::new("anysnake_venv")?; // temp home directory
             let td_home_str = td_home.path().to_string_lossy().to_string();
+
+            let target_python: PathBuf =
+                PathBuf::from_str(".anysnake2_flake/result/rootfs/bin/python")
+                    .unwrap()
+                    .canonicalize()
+                    .context("failed to find python binary in container")?;
+            let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
+            println!("target_python {:?}", target_python);
+            println!("search_python {:?}", search_python);
+
+            let mut cmd_file = tempfile::NamedTempFile::new()?;
+            writeln!(
+                cmd_file,
+                indoc!(
+                    "
+                set -eux pipefail
+                cat /anysnake2/install.sh
+                mkdir /tmp/venv
+                cd /anysnake2/venv/linked_in/{safe_pkg} && \
+                    pip --disable-pip-version-check install --no-deps -e . --prefix=/tmp/venv
+                $(python <<EOT
+                from pathlib import Path
+                for fn in Path('/tmp/venv/bin').glob('*'):
+                    input = fn.read_text()
+                    if '{search_python}' in input:
+                        output = input.replace('{search_python}', '{target_python}')
+                        fn.write_text(output)
+                EOT
+                )
+                cp /tmp/venv/bin/* /anysnake2/venv/bin 2>/dev/null|| true
+               "
+                ),
+                safe_pkg = &safe_pkg,
+                search_python = search_python,
+                target_python = target_python.to_string_lossy(),
+            )
+            .context("failed to write tmp file with cmd")?;
+
             let mut singularity_args: Vec<String> = vec![
                 "exec".into(),
                 "--userns".into(),
@@ -1121,14 +1201,15 @@ fn fill_venv(
                     "{}:/anysnake2/venv/bin:rw",
                     venv_dir.join("bin").into_os_string().to_string_lossy()
                 ),
+                "--bind".into(),
+                format!(
+                    "{}:/anysnake2/install.sh",
+                    cmd_file.path().to_string_lossy()
+                ),
             ];
             singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
             singularity_args.push("bash".into());
-            singularity_args.push("-c".into());
-            singularity_args.push(format!(
-                "mkdir /tmp/venv && cd /anysnake2/venv/linked_in/{} && pip --disable-pip-version-check install --ignore-installed -e . --prefix=/tmp/venv && (cp /tmp/venv/bin/* /anysnake2/venv/bin -I 2>/dev/null|| true)",
-                &safe_pkg
-            ));
+            singularity_args.push("/anysnake2/install.sh".into());
             let singularity_result = run_singularity(
                 &singularity_args[..],
                 outside_nixpkgs_url,
@@ -1142,6 +1223,7 @@ fn fill_venv(
                     singularity_result.code().unwrap()
                 );
             }
+            // now patch those bin scripts
             let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
             let source_egg_link = td
                 .path()
@@ -1169,6 +1251,34 @@ fn fill_venv(
         }
     }
     Ok(())
+}
+
+/* fn extract_shebang(path: &PathBuf) -> Result<String> {
+    let mut buffer = std::io::BufReader::new(fs::File::open(&path)?);
+    let mut first_line = String::new();
+    let _ = buffer.read_line(&mut first_line);
+    match first_line.strip_prefix("#!") {
+        Some(wobang) => {
+            let wobang_strip = wobang.trim();
+            let cmd = wobang_strip
+                .split(' ')
+                .next()
+                .expect("String splitting should not fail");
+            Ok(cmd.to_string())
+        }
+        None => Err(anyhow!("{:?} did not contain a shebang", &path)),
+    }
+} */
+
+fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
+    let text = std::fs::read_to_string(path)?;
+    let re = Regex::new("exec \"([^\"]+)\"").unwrap();
+    let out: String = re
+        .captures_iter(&text)
+        .next()
+        .context(format!("Could not find exec in {:?}", &path))?[1]
+        .to_string();
+    Ok(out)
 }
 
 #[allow(non_snake_case)]

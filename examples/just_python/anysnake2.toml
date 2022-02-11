@@ -9,6 +9,7 @@ rev = "21.05" # the nixpgks version or github hash
 [nixpkgs]
 # the nixpkgs used inside the container
 rev = "21.05" # the nixpgks version or github hash
+packages = ["which"]
 
 
 [python] # python section is optional
@@ -16,7 +17,8 @@ version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for n
 ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
 
 [clones.code]
-example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
+# example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
+example-cli-python="file://./example-cli-python/"
 
 [python.packages]
 # you can use standard python requirements.txt version specification syntax
@@ -33,6 +35,7 @@ example-cli-python="editable/code"
 
 #ugly syntax:
 plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
+#pypipegraph2 = {method = "fetchFromGitHub", owner = "TyberiusPrime", repo = "pypipegraph2", rev = "16f5d3a471b3dae71fafca98f63c4c80882dc20a" , hash_16f5d3a471b3dae71fafca98f63c4c80882dc20a = "sha256-qW4+d0DyaNfPugN876KllX9CEkAqYbZ+JqrhLDSFSOw="}
 # pretty syntax
 [python.packages.dppd] 
 	method = "fetchFromGitHub"
@@ -40,3 +43,4 @@ plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev
 	repo = "dppd"
 	rev = "b55ac32ef322a8edfc7fa1b6e4553f66da26a156"
 hash_b55ac32ef322a8edfc7fa1b6e4553f66da26a156 = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
+

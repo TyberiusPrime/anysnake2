@@ -43,15 +43,26 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     (code, stdout.to_string(), stderr.to_string())
 }
 
-fn run_test_tempdir(cwd: &str, args: &[&str]) -> (i32, String, String) {
+fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir) {
     let td = TempDir::new("anysnake_test").expect("could not create tempdir");
-    std::fs::copy(
+    /* std::fs::copy(
         PathBuf::from(&cwd).join("anysnake2.toml"),
         td.path().join("anysnake2.toml"),
-    )
     .expect("Could not create anysnake2.toml in tempdir");
+    );
+    ) */
+    let status = Command::new("bash")
+        .args(&[
+            "-c",
+            &format!("cp {}/* {} -a", cwd, &td.path().to_string_lossy()[..]),
+        ])
+        .status()
+        .expect("bash cp failed");
+    if !status.success() {
+        panic!("Failed to copy to temp dir");
+    }
 
-    run_test(&td.path().to_string_lossy(), args)
+    (run_test(&td.path().to_string_lossy(), args), td)
 }
 
 #[test]
@@ -72,17 +83,16 @@ fn test_minimal_bash_version() {
 #[test]
 fn test_just_python() {
     // needs to be copied to test the tofu functionality.
-    let (_code, stdout, _stderr) = run_test_tempdir(
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/just_python",
         &["run", "--", "python", "--version"],
     );
     assert!(stdout.contains("3.8.9"));
-}
 
-#[test]
-fn test_just_python_pandas_version() {
-    let (_code, stdout, _stderr) = run_test_tempdir(
-        "examples/just_python",
+    let td_path = td.path().to_string_lossy();
+
+    let (_code, stdout, stderr) = run_test(
+        &td_path,
         &[
             "run",
             "--",
@@ -91,13 +101,14 @@ fn test_just_python_pandas_version() {
             "'import pandas; print(pandas.__version__)'",
         ],
     );
-    assert!(stdout.contains("1.2.0"));
-}
 
-#[test]
-fn test_just_python_venv_bin() {
-    let (_code, stdout, _stderr) = run_test_tempdir("examples/just_python", &["run", "--", "hello"]);
+    assert!(stdout.contains("1.2.0"));
+
+    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
+    dbg!(&stdout);
     assert!(stdout.contains("Argument strings:"));
+    assert!(stdout.contains("loguru version "));
+    assert!(!stderr.contains("ImportError"));
 }
 
 #[test]
@@ -260,8 +271,13 @@ fn test_flake_with_dir() {
 fn test_python_package_already_pulled_by_other_editable_package() {
     let (_code, stdout, _stderr) = run_test(
         "examples/test_python_pulled_by_other_editable",
-        &["run", "--", "python", "-c",  "'import pypipegraph; print(\"imported ppg\")'"],
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import pypipegraph; print(\"imported ppg\")'",
+        ],
     );
     assert!(stdout.contains("imported ppg"));
 }
-
