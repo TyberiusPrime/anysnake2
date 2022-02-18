@@ -242,10 +242,10 @@ Rebuilding happens automatically whenever
 
 Anysnake2 uses [singularity](https://singularity.hpcng.org/) as a container runtime,
 since it offers rootless containers that can run from locally
-unpacked images (running from an image file unfortunately requires root and 
-the +s binary singularity uses for that is not available using nix).
+unpacked images (running from an image file unfortunately requires root and
+the +s binary singularity uses for that is not available using nix (on non NixOS systems).
 
-The actual run command is printed out on every run, and also stored in 'flake/run_scripts/<cmd>/singularity.bash' (dtach seems to eat the output at the moment though).
+The actual run command is printed out on every run, and also stored in 'flake/run_scripts/<cmd>/singularity.bash'.
 
 You can influence the mounted volumes using `[container.volumes_ro]` for read only and `[container.volumes_rw`] for read/write
 volumes. Environment variables can be set using the `[container.env]` section.
@@ -267,6 +267,12 @@ Build in commands (which you can not replace by config) are
  * `version` - output anysnake2 version
  * `run --` - run arbitrary commands (without pre/post wrappers). Everything after -- is passed on to the container
 
+# Why containers?
+
+Because our use case profits from the mount namespace isolation, and we want
+to create images to run on HPC (high performance computing) clusters.
+
+You can always use `anysnake2 develop` to run outside of a container.
 
 # Singularity won't run
 
