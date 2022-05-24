@@ -59,16 +59,25 @@ pypipegraph2=">2."
 scipy=""
 dppd = "editable/code"
 dppd_plotnine = "editable/code"
+# so we have something that has an 'entrypoint'
+pypipegraph = "editable/code"
 # there is also an escape hatch 
 # allowing you to specify arbitrary nix sources for a mach-nixbuildPython call.
 # for example from github 
 # (you can leave of the sha256, and copy paste it from the output on first build)
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", sha256="sha256-OllL3ecgs7xwpsglhGl4LzW3zWBXuLlDNn66xVooxvc=", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
+# note that there is a problem with fetchFromGitHub
+# if the repo in question is using .gitattributes to have git stamp the tarballs
+# and it stamps them with a timestamp of the archive-building
+# then the github tar ball's are actually not reproducable,
+# and once the github cache forgets the file 
+# you will be with a sha256-changed error.
+plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef",  hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-97zmeoI8Hsti1Qozl8K72GIy2qhtAyA3TqSvu1R2YoE="}
 # pandas="<1.0"
 
 [clones.code] # target directory
 # seperate from python packages so you can clone other stuff as well
 dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
+pypipegraph="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
 # you can specify an explicit revision for (initial) checkout
 # two // -> github.com/TyberiusPrime/2nd_part
 dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine?rev=8ed7651af759f3f0b715a2fbda7bf5119f7145d7"
@@ -101,7 +110,7 @@ version = "1.55.0" # =stable.
 
 
 [container]
-home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
 dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
 
 [container.volumes_ro]
