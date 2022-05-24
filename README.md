@@ -340,7 +340,7 @@ store. Then if you changed the repo in any way, it would fail with a narHash mis
 The workaround is to use just an /absolute_path instead, for "/absolut_path?rev=xyz" 
 is being handled correctly.
 
-To avoid you falling into this trap, anysnake2 requests path:// flake definitions.
+To avoid you falling into this trap, anysnake2 rejects path:// flake definitions.
 
 
 # Exit Codes
