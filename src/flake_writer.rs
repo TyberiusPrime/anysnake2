@@ -203,7 +203,7 @@ pub fn write_flake(
                     &flake
                         .url
                         .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
-                    &flake.rev,
+                    flake.rev.as_ref().unwrap(), // at this point we must have a rev,
                     &rev_follows[..],
                     &flake_dir,
                 )?);
@@ -542,7 +542,7 @@ fn get_basic_auth_header(user: &str, pass: &str) -> String {
     String::from("Basic ") + &base64::encode(usrpw.as_bytes())
 }
 
-fn add_auth(mut request: ureq::Request) -> ureq::Request {
+pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
     if let Ok(api_username) = std::env::var("ANYSNAKE2_GITHUB_API_USERNAME") {
         if let Ok(api_password) = std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD") {
             debug!("Using github auth");
@@ -676,7 +676,7 @@ fn next_smaller_date(
         .flatten()
 }
 
-fn get_proxy_req() -> Result<ureq::Agent> {
+pub fn get_proxy_req() -> Result<ureq::Agent> {
     let mut agent = ureq::AgentBuilder::new();
     let proxy_url = if let Ok(proxy_url) = std::env::var("https_proxy") {
         debug!("found https proxy env var");

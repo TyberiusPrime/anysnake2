@@ -234,7 +234,6 @@ fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
             ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
         })?;
     parsed_config.anysnake2_toml_path = Some(abs_config_path);
-    parsed_config.source = config_file.into();
     Ok(parsed_config)
 }
 
@@ -396,6 +395,8 @@ fn inner_main() -> Result<()> {
         );
     }
 
+    lookup_missing_flake_revs(&mut parsed_config)?;
+
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
@@ -405,7 +406,17 @@ fn inner_main() -> Result<()> {
         python_packages,
         python_build_packages
     );
-    apply_trust_on_first_use(&parsed_config, &mut python_build_packages)?;
+
+    let nixpkgs_url = format!(
+        "{}?rev={}",
+        &parsed_config.outside_nixpkgs.url,
+        lookup_github_tag(
+            &parsed_config.outside_nixpkgs.url,
+            &parsed_config.outside_nixpkgs.rev,
+            &flake_dir
+        )?,
+    );
+    apply_trust_on_first_use(&parsed_config, &mut python_build_packages, &nixpkgs_url)?;
     let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
     let flake_changed = flake_writer::write_flake(
@@ -454,16 +465,6 @@ fn inner_main() -> Result<()> {
             ),
         )
         .context("Failed to write run.sh")?; // the -i makes it read /etc/bashrc
-
-        let nixpkgs_url = format!(
-            "{}?rev={}",
-            &parsed_config.outside_nixpkgs.url,
-            lookup_github_tag(
-                &parsed_config.outside_nixpkgs.url,
-                &parsed_config.outside_nixpkgs.rev,
-                &flake_dir
-            )?,
-        );
 
         let build_output: PathBuf = flake_dir.join("result/rootfs");
         let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
@@ -814,7 +815,7 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-/// expand clones by clone_regeps, verify url schema
+/// expand clones by clone_regular_expressions, verify url schema
 
 fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     let clone_regexps: Vec<(Regex, &String)> = match &parsed_config.clone_regexps {
@@ -1272,23 +1273,6 @@ fn fill_venv(
     Ok(())
 }
 
-/* fn extract_shebang(path: &PathBuf) -> Result<String> {
-    let mut buffer = std::io::BufReader::new(fs::File::open(&path)?);
-    let mut first_line = String::new();
-    let _ = buffer.read_line(&mut first_line);
-    match first_line.strip_prefix("#!") {
-        Some(wobang) => {
-            let wobang_strip = wobang.trim();
-            let cmd = wobang_strip
-                .split(' ')
-                .next()
-                .expect("String splitting should not fail");
-            Ok(cmd.to_string())
-        }
-        None => Err(anyhow!("{:?} did not contain a shebang", &path)),
-    }
-} */
-
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
     let text = std::fs::read_to_string(path)?;
     let re = Regex::new("exec \"([^\"]+)\"").unwrap();
@@ -1514,13 +1498,20 @@ fn write_develop_python_path(
     Ok(())
 }
 
+enum PrefetchHashResult {
+    Hash(String),
+    HaveToUseFetchGit,
+}
+
 fn apply_trust_on_first_use(
     config: &config::ConfigToml,
     python_build_packages: &mut Vec<(String, HashMap<String, String>)>,
+    outside_nixpkgs_url: &str,
 ) -> Result<()> {
     if !python_build_packages.is_empty() {
-        use toml_edit::{value, Document};
-        let toml = std::fs::read_to_string(&config.source).expect("Could not reread config file");
+        use toml_edit::{value, Document, Table};
+        let toml = std::fs::read_to_string(config.anysnake2_toml_path.as_ref().unwrap())
+            .expect("Could not reread config file");
         let mut doc = toml.parse::<Document>().expect("invalid doc");
         let mut write = false;
 
@@ -1528,36 +1519,134 @@ fn apply_trust_on_first_use(
             let method = spec
                 .get("method")
                 .expect("missing method - should have been caught earlier");
-            if method == "fetchFromGitHub" {
-                let rev = spec.get("rev").expect("missing rev");
-                let hash_key = format!("hash_{}", rev);
-                if !spec.contains_key(&hash_key) {
-                    write = true;
-                    println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
+            let mut hash_key = "".to_string();
+            match &method[..] {
+                "fetchFromGitHub" => {
+                    let rev = spec.get("rev").expect("missing rev").to_string();
+                    hash_key = format!("hash_{}", rev);
+                    if !spec.contains_key(&hash_key) {
+                        write = true;
+                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
 
-                    let hash = prefetch_github_hash(
-                        spec.get("owner").expect("missing owner"),
-                        spec.get("repo").expect("missing repo"),
-                        rev,
-                    )?;
-                    println!("nix-prefetch-hash for {} is {}", k, hash);
-                    let key = k.to_owned();
-                    doc["python"]["packages"][key][&hash_key] = value(&hash);
-                    spec.insert(hash_key.to_string(), hash.to_owned());
+                        let owner = spec.get("owner").expect("missing owner").to_string();
+                        let repo = spec.get("repo").expect("missing repo").to_string();
+                        let hash = prefetch_github_hash(&owner, &repo, &rev)?;
+                        match hash {
+                            PrefetchHashResult::Hash(hash) => {
+                                println!("nix-prefetch-hash for {} is {}", k, hash);
+                                store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
+                            }
+                            PrefetchHashResult::HaveToUseFetchGit => {
+                                let fetchgit_url = format!("https://github.com/{}/{}", owner, repo);
+                                let hash =
+                                    prefetch_git_hash(&fetchgit_url, &rev, outside_nixpkgs_url)
+                                        .context("prefetch-git-hash failed")?;
+
+                                let mut out = Table::default();
+                                out["method"] = value("fetchgit");
+                                out["url"] =
+                                    value(format!("https://github.com/{}/{}", owner, repo));
+                                out["rev"] = value(&rev);
+                                out[&hash_key] = value(&hash);
+                                doc["python"]["packages"][k.to_owned()] = toml_edit::Item::Value(
+                                    toml_edit::Value::InlineTable(out.into_inline_table()),
+                                );
+
+                                spec.retain(|_, _| false);
+                                spec.insert("method".to_string(), "fetchgit".into());
+                                spec.insert(hash_key.clone(), hash);
+                                spec.insert("url".to_string(), fetchgit_url);
+                                spec.insert("rev".to_string(), rev.clone());
+
+                                println!("The github repo {}/{}/?rev={} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use fetchgit instead, which is immune to that.", owner, repo, rev);
+                            }
+                        };
+                    }
                 }
-                spec.insert("hash".to_string(), spec.get(&hash_key).unwrap().to_string());
+                "fetchgit" => {
+                    let url = spec
+                        .get("url")
+                        .expect("missing url on fetchgit")
+                        .to_string();
+                    let rev = spec
+                        .get("rev")
+                        .expect("missing rev on fetchgit")
+                        .to_string();
+                    hash_key = format!("hash_{}", rev);
+                    if !spec.contains_key(&hash_key) {
+                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
+                        write = true;
+                        let hash = prefetch_git_hash(&url, &rev, outside_nixpkgs_url)
+                            .context("prefetch_git-hash failed")?;
+                        store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
+                        //bail!("bail1")
+                    }
+                }
+                _ => {
+                    println!("No trust-on-first-use for method {}", &method);
+                }
+            };
+            if hash_key != "" {
+                spec.insert(
+                    "sha256".to_string(),
+                    spec.get(&hash_key.to_string()).unwrap().to_string(),
+                );
                 spec.retain(|key, _| !key.starts_with("hash_"));
             }
         }
         if write {
             let out_toml = doc.to_string();
-            std::fs::write("anysnake2.toml", out_toml).expect("failed to rewrite config file");
+            std::fs::write(config.anysnake2_toml_path.as_ref().unwrap(), out_toml)
+                .expect("failed to rewrite config file");
         }
     }
     Ok(())
 }
 
-fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<String> {
+/// helper for apply_trust_on_first_use
+fn store_hash(
+    spec: &mut HashMap<String, String>,
+    doc: &mut toml_edit::Document,
+    key: String,
+    hash_key: &str,
+    hash: String,
+) -> () {
+    use toml_edit::value;
+    doc["python"]["packages"][key][&hash_key] = value(&hash);
+    spec.insert(hash_key.to_string(), hash.to_owned());
+}
+
+fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
+    let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
+    let nix_prefetch_git_url_args = &[
+        "shell",
+        &nix_prefetch_git_url,
+        "-c",
+        "nix-prefetch-git",
+        "--url",
+        &url,
+        "--rev",
+        rev,
+        "--quiet",
+    ];
+    let stdout = Command::new("nix")
+        .args(nix_prefetch_git_url_args)
+        .output()
+        .context("failed on nix-prefetch-git")?
+        .stdout;
+    let stdout = std::str::from_utf8(&stdout)?;
+    let structured: HashMap<String, serde_json::Value> =
+        serde_json::from_str(stdout).context("nix-prefetch-git output failed json parsing")?;
+    let old_format = structured
+        .get("sha256")
+        .context("No sha256 in nix-prefetch-git json output")?;
+    let old_format: &str = old_format.as_str().context("sha256 was no string")?;
+    let new_format = convert_hash_to_subresource_format(&old_format)?;
+
+    Ok(new_format)
+}
+
+fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!(
         "https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",
         owner = owner,
@@ -1565,17 +1654,39 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Strin
         git_hash = git_hash
     );
 
-    let old_format = Command::new("nix-prefetch-url")
-        .args(&[&url, "--type", "sha256", "--unpack"])
+    let stdout = Command::new("nix-prefetch-url")
+        .args(&[&url, "--type", "sha256", "--unpack", "--print-path"])
         .output()
         .context(format!("Failed to nix-prefetch {url}", url = url))?
         .stdout;
-    let old_format = std::str::from_utf8(&old_format)
-        .context("nix-prefetch result was no utf8")?
-        .trim();
+    let stdout = std::str::from_utf8(&stdout)?;
+    let mut stdout_split = stdout.split('\n');
+    let old_format = stdout_split
+        .next()
+        .context("unexpected output from nix-prefetch-url (line 0  - should have been hash)")?;
+    let path = stdout_split
+        .next()
+        .context("unexpected output from nix-prefetch-url (line 1 should path been path")?;
+
+    /* if the git repo is using .gitattributes and 'export-subst'
+     * then github tarballs are actually not stable - if the drop out of the caching
+     * expotr-subst might stamp a different timestamp into the substituted values
+     * We detectd that and redirect to use fetchgit then
+     */
+    let gitattributes_path = PathBuf::from(path).join(".gitattributes");
+    if gitattributes_path.exists() {
+        let text = ex::fs::read_to_string(&gitattributes_path).context(format!(
+            "failed to read .gitattributes from {:?}",
+            &gitattributes_path
+        ))?;
+        if text.contains("export-subst") {
+            return Ok(PrefetchHashResult::HaveToUseFetchGit);
+        }
+    }
+
     let new_format = convert_hash_to_subresource_format(old_format)?;
     println!("before convert: {}, after: {}", &old_format, &new_format);
-    Ok(new_format)
+    Ok(PrefetchHashResult::Hash(new_format))
 }
 
 fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
@@ -1597,3 +1708,72 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         Ok(res)
     }
 }
+
+fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<()> {
+    if let Some(flakes) = &mut parsed_config.flakes {
+        use toml_edit::{value, Document};
+        let toml = std::fs::read_to_string(parsed_config.anysnake2_toml_path.as_ref().unwrap())
+            .expect("Could not reread config file");
+        let mut doc = toml.parse::<Document>().expect("invalid doc");
+
+        let mut write = false;
+        for (flake_name, flake) in flakes.iter_mut() {
+            if flake.rev.is_none() {
+                if flake.url.starts_with("github:/") {
+                    use flake_writer::{add_auth, get_proxy_req};
+                    let re = Regex::new("github:/([^/]+)/([^/]+)/?").unwrap();
+                    let out = re
+                        .captures_iter(&flake.url)
+                        .next()
+                        .context(format!("Could not parse github url {:?}", flake.url))?;
+                    let owner = &out[1];
+                    let repo = &out[2];
+                    let url = format!("https://api.github.com/repos/{}/{}", &owner, repo);
+                    let body: String =
+                        add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
+                    let json: serde_json::Value =
+                        serde_json::from_str(&body).context("Failed to parse github repo api")?;
+                    let default_branch = json
+                        .get("default_branch")
+                        .context("no default branch in github repos api?!")?
+                        .as_str()
+                        .context("default branch not a string?")?;
+
+                    let branch_url = format!(
+                        "https://api.github.com/repos/{}/{}/branches/{}",
+                        &owner, &repo, &default_branch
+                    );
+                    let body: String = add_auth(get_proxy_req()?.get(&branch_url))
+                        .call()?
+                        .into_string()?;
+                    let json: serde_json::Value = serde_json::from_str(&body)
+                        .context("Failed to parse github repo/branches api")?;
+                    let commit = json
+                        .get("commit")
+                        .context("no commit in github repo/branches?)")?
+                        .get("sha")
+                        .context("No sha on github repo/branches/commit?")?
+                        .as_str()
+                        .context("sha not a string?")?;
+                    doc["flakes"][flake_name]["rev"] = value(commit);
+                    write = true;
+                    println!("auto detected head revision for {}", &flake_name);
+                    flake.rev = Some(commit.to_string());
+                } else {
+                    bail!(format!("Flake {} must have a rev (auto lookup of newest rev only supported for github:/ hosted flakes", flake_name));
+                }
+            }
+        }
+        if write {
+            let out_toml = doc.to_string();
+            std::fs::write(
+                parsed_config.anysnake2_toml_path.as_ref().unwrap(),
+                out_toml,
+            )
+            .expect("failed to rewrite config file");
+            println!("rewriten anysnake2.toml");
+        }
+    };
+    Ok(())
+}
+

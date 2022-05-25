@@ -34,8 +34,6 @@ pub struct ConfigToml {
     pub dev_shell: DevShell,
     #[serde(rename = "R")]
     pub r: Option<R>,
-    #[serde(skip)]
-    pub source: PathBuf,
 }
 
 impl ConfigToml {
@@ -274,7 +272,7 @@ impl WithDefaultFlakeSource for MachNix {
 #[derive(Deserialize, Debug)]
 pub struct Flake {
     pub url: String,
-    pub rev: String,
+    pub rev: Option<String>,
     pub follows: Option<Vec<String>>,
     #[serde(default = "Flake::default_packages")]
     pub packages: Vec<String>,

@@ -288,12 +288,11 @@ fn test_python_package_already_pulled_by_other_editable_package() {
 #[test]
 fn test_python_pip_reinstall_if_venv_changes() {
     // needs to be copied to test the tofu functionality.
-    let ((_code, stdout, _stderr), td) = run_test_tempdir(
-        "examples/just_python",
-        &["run", "--", "cat"],
-    );
+    let ((_code, stdout, _stderr), td) =
+        run_test_tempdir("examples/just_python", &["run", "--", "cat"]);
     println!("first: {}", stdout);
-    let first = ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+    let first =
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
 
     let toml_path = td.path().join("anysnake2.toml");
     let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
@@ -302,10 +301,10 @@ fn test_python_pip_reinstall_if_venv_changes() {
     ex::fs::write(toml_path, toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
-    let (_code, stdout, _stderr) =
-        run_test(&td_path, &["run", "--", "which", "hello"]);
+    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"]);
     println!("second: {}", stdout);
-    let second = ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+    let second =
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
 
     let lines_first: Vec<_> = first.split("\n").collect();
     let lines_second: Vec<_> = second.split("\n").collect();
@@ -313,4 +312,20 @@ fn test_python_pip_reinstall_if_venv_changes() {
     assert!(lines_first[1..] == lines_second[1..]);
 }
 
-
+#[test]
+fn test_fetch_from_github_to_fetchgit_transition() {
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
+        "examples/github_tarballs_can_be_unstable",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import plotnine; print(plotnine.__version__)'",
+        ],
+    );
+    assert!(stdout.contains("6c82cdc"));
+    let toml_path = td.path().join("anysnake2.toml");
+    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+    assert!(toml.contains("plotnine = { method = \"fetchgit\", url = \"https://github.com/has2k1/plotnine\", rev = \"6c82cdc20d6f81c96772da73fc07a672a0a0a6ef\", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
+}
