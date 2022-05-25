@@ -1,0 +1,19 @@
+[anysnake2]
+rev = "dev" # replace with fixed version outside of tests/examples
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
+[nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+
+[python] # python section is optional
+version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+
+[python.packages]
+plotnine = { method = "fetchgit", url = "https://github.com/has2k1/plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=" }
+solidpython=""
+
+#plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+
