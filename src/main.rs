@@ -1165,7 +1165,13 @@ fn fill_venv(
                 cat /anysnake2/install.sh
                 mkdir /tmp/venv
                 cd /anysnake2/venv/linked_in/{safe_pkg} && \
-                    pip --disable-pip-version-check install --no-deps -e . --prefix=/tmp/venv
+                    pip \
+                    --disable-pip-version-check \
+                    install \
+                    --no-deps \
+                    -e . \
+                    --prefix=/tmp/venv \
+                    --ignore-installed
                 $(python <<EOT
                 from pathlib import Path
                 for fn in Path('/tmp/venv/bin').glob('*'):
