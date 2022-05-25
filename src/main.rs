@@ -1112,6 +1112,13 @@ fn fill_venv(
     fs::create_dir_all(&venv_dir.join("bin"))?;
     fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
+
+    let target_python: PathBuf = PathBuf::from_str(".anysnake2_flake/result/rootfs/bin/python")
+        .unwrap()
+        .canonicalize()
+        .context("failed to find python binary in container")?;
+    let target_python_str = target_python.to_string_lossy();
+
     for (pkg, spec) in python
         .iter()
         .filter(|(_, spec)| spec.starts_with("editable/"))
@@ -1125,7 +1132,15 @@ fn fill_venv(
                                pkg, target_dir);
         }
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-        if !egg_link.exists() {
+        let venv_used = {
+            let anysnake_link = venv_dir.join(format!("{}.anysnake-link", safe_pkg));
+            if !anysnake_link.exists() {
+                "".to_string()
+            } else {
+                ex::fs::read_to_string(anysnake_link)?
+            }
+        };
+        if !egg_link.exists() || &venv_used != &target_python_str {
             // so that changing python versions triggers a rebuild.
             to_build.push((safe_pkg, target_dir));
         }
@@ -1137,11 +1152,6 @@ fn fill_venv(
             let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
             let td_home_str = td_home.path().to_string_lossy().to_string();
 
-            let target_python: PathBuf =
-                PathBuf::from_str(".anysnake2_flake/result/rootfs/bin/python")
-                    .unwrap()
-                    .canonicalize()
-                    .context("failed to find python binary in container")?;
             let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
             println!("target_python {:?}", target_python);
             println!("search_python {:?}", search_python);
@@ -1170,7 +1180,7 @@ fn fill_venv(
                 ),
                 safe_pkg = &safe_pkg,
                 search_python = search_python,
-                target_python = target_python.to_string_lossy(),
+                target_python = &target_python_str,
             )
             .context("failed to write tmp file with cmd")?;
 
@@ -1232,6 +1242,9 @@ fn fill_venv(
                 .join("site-packages")
                 .join(format!("{}.egg-link", &safe_pkg));
             fs::write(target_egg_link, ex::fs::read_to_string(source_egg_link)?)?;
+
+            let target_anysnake_link = venv_dir.join(format!("{}.anysnake-link", safe_pkg));
+            fs::write(target_anysnake_link, &target_python_str)?;
 
             /*keep it here in case we need it again...
              * for dir_entry in walkdir::WalkDir::new(td.path()) {

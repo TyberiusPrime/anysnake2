@@ -44,7 +44,10 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir) {
-    let td = tempfile::Builder::new().prefix("anysnake_test").tempdir().expect("could not create tempdir");
+    let td = tempfile::Builder::new()
+        .prefix("anysnake_test")
+        .tempdir()
+        .expect("could not create tempdir");
     /* std::fs::copy(
         PathBuf::from(&cwd).join("anysnake2.toml"),
         td.path().join("anysnake2.toml"),
@@ -281,3 +284,33 @@ fn test_python_package_already_pulled_by_other_editable_package() {
     );
     assert!(stdout.contains("imported ppg"));
 }
+
+#[test]
+fn test_python_pip_reinstall_if_venv_changes() {
+    // needs to be copied to test the tofu functionality.
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
+        "examples/just_python",
+        &["run", "--", "cat"],
+    );
+    println!("first: {}", stdout);
+    let first = ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+
+    let toml_path = td.path().join("anysnake2.toml");
+    let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
+    println!("{}", toml);
+    toml = toml.replace("pandas", "solidpython=\"\"\npandas");
+    ex::fs::write(toml_path, toml).unwrap();
+
+    let td_path = td.path().to_string_lossy();
+    let (_code, stdout, _stderr) =
+        run_test(&td_path, &["run", "--", "which", "hello"]);
+    println!("second: {}", stdout);
+    let second = ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+
+    let lines_first: Vec<_> = first.split("\n").collect();
+    let lines_second: Vec<_> = second.split("\n").collect();
+    assert!(lines_first[0] != lines_second[0]);
+    assert!(lines_first[1..] == lines_second[1..]);
+}
+
+

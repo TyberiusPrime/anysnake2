@@ -14,7 +14,7 @@ packages = ["which"]
 
 [python] # python section is optional
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
+ecosystem_date="2022-02-16" # you get whatever packages the solver would have produced on that day
 
 [clones.code]
 # example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
@@ -25,7 +25,6 @@ example-cli-python="file://./example-cli-python/"
 # i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 pandas="1.2"
 # you can refer to the repos you cloned
-
 example-cli-python="editable/code"
 
 # and you can fetch from github, git and mercurial (any nix fetcher actually, see
@@ -33,14 +32,4 @@ example-cli-python="editable/code"
 # if using fetchFromGitHub, the necessary hash will be added to this file 
 # on a trust-on-first-use-basis
 
-#ugly syntax:
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0="}
-#pypipegraph2 = {method = "fetchFromGitHub", owner = "TyberiusPrime", repo = "pypipegraph2", rev = "16f5d3a471b3dae71fafca98f63c4c80882dc20a" , hash_16f5d3a471b3dae71fafca98f63c4c80882dc20a = "sha256-qW4+d0DyaNfPugN876KllX9CEkAqYbZ+JqrhLDSFSOw="}
-# pretty syntax
-[python.packages.dppd] 
-	method = "fetchFromGitHub"
-	owner = "TyberiusPrime"
-	repo = "dppd"
-	rev = "b55ac32ef322a8edfc7fa1b6e4553f66da26a156"
-hash_b55ac32ef322a8edfc7fa1b6e4553f66da26a156 = "sha256-fyDDeJRbm9hMkefqiyxHazZut38rxgZVcyp+YpUglGI="
 

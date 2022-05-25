@@ -115,10 +115,6 @@ dtach = true # whether to run your container wrapped in dtach https://github.com
 
 [container.volumes_ro]
 "/opt" = "/opt"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
-
 
 [container.volumes_rw]
 # home get's special treatment, see first line
