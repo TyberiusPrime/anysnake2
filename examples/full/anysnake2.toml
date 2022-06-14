@@ -35,7 +35,10 @@ rev = "21.05" # the nixpgks version or github hash
 # url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
 packages = [ # use https://search.nixos.org/packages to search
 	"fish",
-	"netcat"] # optional
+	"netcat",
+	"varscan", # unfree example
+	] # optional
+allow_unfree = true # set to true to allow unfree packages from nixpkgs
 
 [flake-util]
 # the revision used by flake-util

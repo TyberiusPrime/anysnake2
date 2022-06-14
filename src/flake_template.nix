@@ -12,7 +12,12 @@
       let
         #%RPACKAGES%
         overlays = "%OVERLAY_AND_PACKAGES%";
-        pkgs = import nixpkgs { inherit system overlays; };
+        pkgs = import nixpkgs {
+          inherit system overlays;
+          config={
+            allowUnfree = "%ALLOW_UNFREE%";
+          };
+        };
         mach-nix_ = "%MACHNIX%";
         my_rust = "%RUST%";
 

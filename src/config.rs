@@ -98,10 +98,16 @@ pub struct NixPkgs {
     #[serde(default = "NixPkgs::default_url")]
     pub url: String,
     pub packages: Option<Vec<String>>,
+    #[serde(default = "NixPkgs::default_allow_unfree")]
+    pub allow_unfree: bool,
 }
+
 impl NixPkgs {
     fn default_url() -> String {
         "github:NixOS/nixpkgs".to_string()
+    }
+    fn default_allow_unfree() -> bool {
+        false
     }
 }
 
@@ -175,8 +181,8 @@ pub enum PythonPackageDefinition {
     BuildPythonPackage(HashMap<String, String>),
 }
 
-//todo: trust on first use, or at least complain if never seen before rev and 
-//mismatch on sha: 
+//todo: trust on first use, or at least complain if never seen before rev and
+//mismatch on sha:
 //nix-prefetch-url https://github.com/TyberiusPrime/dppd/archive/b55ac32ef322a8edfc7fa1b6e4553f66da26a156.tar.gz --type sha256 --unpack
 fn de_python_package_definition<'de, D>(
     deserializer: D,

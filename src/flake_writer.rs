@@ -318,6 +318,9 @@ pub fn write_flake(
     };
 
     flake_contents = flake_contents.replace("%NIXPKGS_PACKAGES%", &nixpkgs_pkgs);
+    flake_contents =
+        flake_contents.replace("\"%ALLOW_UNFREE%\"",  if parsed_config.nixpkgs.allow_unfree {"true"} else {"false"});
+
     let input_list: Vec<&str> = inputs.iter().map(|i| &i.name[..]).collect();
     let input_list = input_list.join(", ");
 
