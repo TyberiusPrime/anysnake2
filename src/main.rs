@@ -1582,8 +1582,28 @@ fn apply_trust_on_first_use(
                         //bail!("bail1")
                     }
                 }
+                "fetchhg" => {
+                    let url = spec
+                        .get("url")
+                        .expect("missing url on fetchhg")
+                        .to_string();
+                    let rev = spec
+                        .get("rev")
+                        .expect("missing rev on fetchhg")
+                        .to_string();
+                    hash_key = format!("hash_{}", rev);
+                    if !spec.contains_key(&hash_key) {
+                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
+                        write = true;
+                        let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url)
+                            .context("prefetch_hg-hash failed")?;
+                        store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
+                        //bail!("bail1")
+                    }
+                }
+
                 _ => {
-                    println!("No trust-on-first-use for method {}", &method);
+                    println!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
                 }
             };
             if hash_key != "" {
@@ -1645,6 +1665,31 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
 
     Ok(new_format)
 }
+
+fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
+    let nix_prefetch_hg_url = format!("{}#nix-prefetch-hg", outside_nixpkgs_url);
+    let nix_prefetch_hg_url_args = &[
+        "shell",
+        &nix_prefetch_hg_url,
+        "-c",
+        "nix-prefetch-hg",
+        &url,
+        rev,
+    ];
+    let stdout = Command::new("nix")
+        .args(nix_prefetch_hg_url_args)
+        .output()
+        .context("failed on nix-prefetch-hg")?
+        .stdout;
+    let stdout = std::str::from_utf8(&stdout)?.trim();
+    let lines = stdout.split("\n");
+    let old_format = lines.last().expect("Could not parse nix-prefetch-hg output");
+    let new_format = convert_hash_to_subresource_format(&old_format)?;
+
+    Ok(new_format)
+}
+
+
 
 fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!(
@@ -1709,6 +1754,7 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
     }
 }
 
+/// auto discover newest flake rev if you leave it off.
 fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<()> {
     if let Some(flakes) = &mut parsed_config.flakes {
         use toml_edit::{value, Document};
@@ -1776,4 +1822,3 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
     };
     Ok(())
 }
-

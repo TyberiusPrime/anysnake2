@@ -492,7 +492,8 @@ fn format_python_build_packages(input: &[(String, HashMap<String, String>)]) -> 
                 src = pkgs.{} {{ # {}
                     {}
                 }};
-                requirementsExtra = python_requirements;
+                # requirementsExtra = python_requirements; what happens if this one is dependend on
+                # one of the other ones, that we also need to supply ... uargh.
               }})",
             spec.get("method")
                 .expect("Missing 'method' on python build package definition"),

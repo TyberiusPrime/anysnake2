@@ -314,6 +314,12 @@ fn test_python_pip_reinstall_if_venv_changes() {
 
 #[test]
 fn test_fetch_from_github_to_fetchgit_transition() {
+    {
+        let toml_path = "examples/github_tarballs_can_be_unstable/anysnake2.toml";
+        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+        assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"));
+    }
+
     let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/github_tarballs_can_be_unstable",
         &[
@@ -328,4 +334,27 @@ fn test_fetch_from_github_to_fetchgit_transition() {
     let toml_path = td.path().join("anysnake2.toml");
     let toml = ex::fs::read_to_string(&toml_path).unwrap();
     assert!(toml.contains("plotnine = { method = \"fetchgit\", url = \"https://github.com/has2k1/plotnine\", rev = \"6c82cdc20d6f81c96772da73fc07a672a0a0a6ef\", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
+}
+
+#[test]
+fn test_fetch_trust_on_first_use() {
+    {
+        let toml_path = "examples/just_python_trust_on_first_use/anysnake2.toml";
+        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+
+        assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
+        assert!(!toml.contains("hash_f42bc1481ed2275427342309d6e876e2d01c3a1a = \"sha256-+TTjvSyR719HQFHU8PNMjWmevDAE5gDKPOeTgcNQ3Bo=\" }"));
+    }
+    {
+        let ((_code, _stdout, _stderr), td) = run_test_tempdir(
+            "examples/just_python_trust_on_first_use",
+            &["build", "flake"],
+        );
+        let toml_path = td.path().join("anysnake2.toml");
+        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+        dbg!(&toml);
+
+        assert!(toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
+        assert!(toml.contains("hash_9cabfaa1c96f0d8d362613c99f562796b8a5c1c1 = \"sha256-vN6k5qREGG/06Ak2SRtE7Ocf9qGMdHo3NqFlzmJVCT0=\" }"));
+    }
 }

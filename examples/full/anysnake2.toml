@@ -37,6 +37,7 @@ packages = [ # use https://search.nixos.org/packages to search
 	"fish",
 	"netcat",
 	"varscan", # unfree example
+	#"docker-client"
 	] # optional
 allow_unfree = true # set to true to allow unfree packages from nixpkgs
 
@@ -72,9 +73,12 @@ pypipegraph = "editable/code"
 # if the repo in question is using .gitattributes to have git stamp the tarballs
 # and it stamps them with a timestamp of the archive-building
 # then the github tar ball's are actually not reproducable,
-# and once the github cache forgets the file 
+# and once the github cache forgets the file
 # you will be with a sha256-changed error.
+# which is why we *rewrite* them to fetchgit if we detect that situation
 plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef",  hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = "sha256-97zmeoI8Hsti1Qozl8K72GIy2qhtAyA3TqSvu1R2YoE="}
+# mercurial example
+lvr = {method = "fetchhg", url="https://hg.sr.ht/~bwe/lvr", rev="db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", hash_db6f0a3254fbd3939d6b6b8c6d1711e7129faba1 = "sha256-r2yDQ4JuOAZ7oWfjat2R/5OcMi0q7BY1QCK/Z9hyeyY=" }
 # pandas="<1.0"
 
 [clones.code] # target directory

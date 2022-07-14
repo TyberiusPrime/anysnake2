@@ -268,6 +268,7 @@ impl Default for MachNix {
 
 impl WithDefaultFlakeSource for MachNix {
     fn default_rev() -> String {
+        //"7e14360bde07dcae32e5e24f366c83272f52923f".to_string() // updated 2022-07-11
         "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
     }
     fn default_url() -> String {
