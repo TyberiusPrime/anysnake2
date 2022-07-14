@@ -1,0 +1,48 @@
+# An example how you can use docker from within the singularity container
+# torpedos all 'don't run as root' protection though.
+# package settings
+[anysnake2]
+rev = "dev" # replace with fixed version outside of tests/examples
+use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
+[nixpkgs]
+# the nixpkgs used inside the container
+rev = "21.11" # the nixpgks version or github hash
+packages = [ # use https://search.nixos.org/packages to search
+	"fish",
+	"docker-client",
+]
+
+[python] # python section is optional
+version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
+
+[python.packages]
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+#jupyter=""
+#pandas="1.2.0"
+
+[rust]
+version="1.55.0"
+
+# container settings
+[container.volumes_rw]
+"." = "/project" # map the current folder to /project
+"/var/run/docker.sock" = "/var/run/docker.sock"
+
+[container.env]
+ANYSNAKE2="1"
+
+[cmd.default]
+run = """
+cd /project
+jupyter notebook
+"""
+
+[cmd.shell]
+run = """fish
+"""
