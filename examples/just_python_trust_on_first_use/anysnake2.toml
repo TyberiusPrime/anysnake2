@@ -1,0 +1,35 @@
+# Here we have github/mercurial python packages
+# that get a hash auto-added on first use
+# (example used for testing)
+# package settings
+[anysnake2]
+rev = "dev"
+
+[outside_nixpkgs]
+rev = "21.05" # the nixpgks version or github hash
+
+[nixpkgs]
+# the nixpkgs used inside the container
+rev = "21.05" # the nixpgks version or github hash
+packages = ["which"]
+
+
+[python] # python section is optional
+version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2022-02-16" # you get whatever packages the solver would have produced on that day
+
+
+[python.packages]
+# see other examples for the regular syntax, this
+# is just 'how to wrap nix-source-fetchers'
+# for github
+plotnine = { method = "fetchFromGitHub", owner = "has2k1", repo="plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+# for mercurial
+lvr = {method = "fetchhg", url="https://hg.sr.ht/~bwe/lvr", rev="db6f0a3254fbd3939d6b6b8c6d1711e7129faba1"}
+##
+# you can fetch from github, git and mercurial (any nix fetcher actually, see
+# https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
+# if using fetchFromGitHub or fetchhg, the necessary hash will be added to this file
+# on a trust-on-first-use-basis
+
+

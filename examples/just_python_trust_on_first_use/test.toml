@@ -33,6 +33,10 @@ example-cli-python="editable/code"
 plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef", hash = """
 sha256-E5nR5xK+sqV3tlxnPDNE0TdTtYtPK47zgwzTG/KmXF0=
 """}
+# and for mercurial
+# mercurial example
+ahvne = {method = "fetchhg", url="https://hg.sr.ht/~tkoskine/ahven", rev="f42bc1481ed2275427342309d6e876e2d01c3a1a"}
+#
 # pretty syntax
 [python.packages.dppd] 
 	method = "fetchFromGitHub"
