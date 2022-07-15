@@ -12,8 +12,19 @@ rev = "21.05" # the nixpgks version or github hash
 
 
 [flakes.hello]
-	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema 
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b"
 	# rev get's auto detected
+
+[flakes.hello3]
+	url = "github:/TyberiusPrime/hello_flake/master" #https://nixos.wiki/wiki/Flakes#Input_schema 
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	# rev get's auto detected
+
+
+[flakes.hello2]
+	url = "git+https://github.com/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema 
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	# rev get's auto detected
+
 

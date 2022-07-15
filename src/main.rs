@@ -1631,8 +1631,9 @@ fn apply_trust_on_first_use(
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
                         write = true;
-                        let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url)
-                            .with_context(|| format!("prefetch_hg-hash failed for {} {}", url, rev))?;
+                        let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url).with_context(
+                            || format!("prefetch_hg-hash failed for {} {}", url, rev),
+                        )?;
                         store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
@@ -1784,7 +1785,9 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
 
 fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
     if hash.is_empty() {
-        return Err(anyhow!("convert_hash_to_subresource_format called with empty hash"));
+        return Err(anyhow!(
+            "convert_hash_to_subresource_format called with empty hash"
+        ));
     }
     let res = Command::new("nix")
         .args(&["hash", "to-sri", "--type", "sha256", hash])
@@ -1799,7 +1802,10 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         .trim()
         .to_owned();
     if res.is_empty() {
-        Err(anyhow!("nix hash to-sri returned empty result. Hash was {}", hash))
+        Err(anyhow!(
+            "nix hash to-sri returned empty result. Hash was {}",
+            hash
+        ))
     } else {
         Ok(res)
     }
@@ -1818,30 +1824,30 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
             if flake.rev.is_none() {
                 if flake.url.starts_with("github:") {
                     use flake_writer::{add_auth, get_proxy_req};
-                    let re = Regex::new("github:/?([^/]+)/([^/?]+)/?").unwrap();
+                    let re = Regex::new("github:/?([^/]+)/([^/?]+)/?([^/?]+)?").unwrap();
                     let out = re
                         .captures_iter(&flake.url)
                         .next()
                         .with_context(|| format!("Could not parse github url {:?}", flake.url))?;
                     let owner = &out[1];
                     let repo = &out[2];
-                    let url = format!("https://api.github.com/repos/{}/{}", &owner, repo);
-                    let body: String =
-                        add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-                    let json: serde_json::Value =
-                        serde_json::from_str(&body).context("Failed to parse github repo api")?;
-                    let branch = match json.get("branchName") {
-                        Some(x) => x.to_string(),
-                        None => {
-                            let default_branch = json
-                                .get("default_branch")
-                                .with_context(|| {
-                                    format!("no default branch in github repos api?! {}", url)
-                                })?
-                                .as_str()
-                                .with_context(|| format!("default branch not a string? {}", url))?;
-                            default_branch.to_string()
-                        }
+                    let branch = out.get(3).map_or("", |m| m.as_str());
+                    let branch = if !branch.is_empty() {
+                        Cow::from(branch)
+                    } else {
+                        let url = format!("https://api.github.com/repos/{}/{}", &owner, repo);
+                        let body: String =
+                            add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
+                        let json: serde_json::Value = serde_json::from_str(&body)
+                            .context("Failed to parse github repo api")?;
+                        let default_branch = json
+                            .get("default_branch")
+                            .with_context(|| {
+                                format!("no default branch in github repos api?! {}", url)
+                            })?
+                            .as_str()
+                            .with_context(|| format!("default branch not a string? {}", url))?;
+                        Cow::from(default_branch.to_string())
                     };
 
                     let branch_url = format!(
@@ -1870,8 +1876,34 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
                     write = true;
                     println!("auto detected head revision for {}", &flake_name);
                     flake.rev = Some(commit.to_string());
+                } else if flake.url.starts_with("hg+https:") {
+                    let url = if flake.url.contains("?") {
+                        flake.url.split_once("?").unwrap().0
+                    } else {
+                        &flake.url[..]
+                    }
+                    .strip_prefix("hg+")
+                    .unwrap();
+                    let rev = discover_newest_rev_hg(url)?;
+                    doc["flakes"][flake_name]["rev"] = value(&rev);
+                    write = true;
+                    println!("auto detected head revision for {}", &flake_name);
+                    flake.rev = Some(rev);
+                } else if flake.url.starts_with("git+https:") {
+                    let url = if flake.url.contains("?") {
+                        flake.url.split_once("?").unwrap().0
+                    } else {
+                        &flake.url[..]
+                    }
+                    .strip_prefix("git+")
+                    .unwrap();
+                    let rev = discover_newest_rev_git(url, None)?;
+                    doc["flakes"][flake_name]["rev"] = value(&rev);
+                    write = true;
+                    println!("auto detected head revision for {}", &flake_name);
+                    flake.rev = Some(rev);
                 } else {
-                    bail!(format!("Flake {} must have a rev (auto lookup of newest rev only supported for github:/ hosted flakes", flake_name));
+                    bail!(format!("Flake {} must have a rev (auto lookup of newest rev only supported for 'github:' or 'hg+https://' hosted flakes", flake_name));
                 }
             }
         }
@@ -1888,7 +1920,7 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
     Ok(())
 }
 
-fn discover_newest_rev_git(url: &String, branch: Option<&String>) -> Result<String> {
+fn discover_newest_rev_git(url: &str, branch: Option<&String>) -> Result<String> {
     let refs = match branch {
         Some(x) => Cow::from(format!("refs/heads/{}", x)),
         None => Cow::from("HEAD"),
@@ -1917,7 +1949,8 @@ fn discover_newest_rev_git(url: &String, branch: Option<&String>) -> Result<Stri
         }
     ))
 }
-fn discover_newest_rev_hg(url: &String) -> Result<String> {
+
+fn discover_newest_rev_hg(url: &str) -> Result<String> {
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
         Ok(std::process::Command::new("hg")
