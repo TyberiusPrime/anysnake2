@@ -1573,7 +1573,7 @@ fn apply_trust_on_first_use(
                                     toml_edit::Value::InlineTable(out.into_inline_table()),
                                 );
 
-                                spec.retain(|k, _| {k == "branchName"});
+                                spec.retain(|k, _| k == "branchName");
                                 spec.insert("method".to_string(), "fetchgit".into());
                                 spec.insert(hash_key.clone(), hash);
                                 spec.insert("url".to_string(), fetchgit_url);
@@ -1632,7 +1632,7 @@ fn apply_trust_on_first_use(
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
                         write = true;
                         let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url)
-                            .context("prefetch_hg-hash failed")?;
+                            .with_context(|| format!("prefetch_hg-hash failed for {} {}", url, rev))?;
                         store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
@@ -1783,6 +1783,9 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
 }
 
 fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
+    if hash.is_empty() {
+        return Err(anyhow!("convert_hash_to_subresource_format called with empty hash"));
+    }
     let res = Command::new("nix")
         .args(&["hash", "to-sri", "--type", "sha256", hash])
         .output()
@@ -1796,7 +1799,7 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         .trim()
         .to_owned();
     if res.is_empty() {
-        Err(anyhow!("nix hash to-sri returned empty result"))
+        Err(anyhow!("nix hash to-sri returned empty result. Hash was {}", hash))
     } else {
         Ok(res)
     }
@@ -1815,11 +1818,11 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
             if flake.rev.is_none() {
                 if flake.url.starts_with("github:") {
                     use flake_writer::{add_auth, get_proxy_req};
-                    let re = Regex::new("github:/?([^/]+)/([^/]+)/?").unwrap();
+                    let re = Regex::new("github:/?([^/]+)/([^/?]+)/?").unwrap();
                     let out = re
                         .captures_iter(&flake.url)
                         .next()
-                        .context(format!("Could not parse github url {:?}", flake.url))?;
+                        .with_context(|| format!("Could not parse github url {:?}", flake.url))?;
                     let owner = &out[1];
                     let repo = &out[2];
                     let url = format!("https://api.github.com/repos/{}/{}", &owner, repo);
@@ -1827,26 +1830,40 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
                         add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
                     let json: serde_json::Value =
                         serde_json::from_str(&body).context("Failed to parse github repo api")?;
-                    let default_branch = json
-                        .get("default_branch")
-                        .context("no default branch in github repos api?!")?
-                        .as_str()
-                        .context("default branch not a string?")?;
+                    let branch = match json.get("branchName") {
+                        Some(x) => x.to_string(),
+                        None => {
+                            let default_branch = json
+                                .get("default_branch")
+                                .with_context(|| {
+                                    format!("no default branch in github repos api?! {}", url)
+                                })?
+                                .as_str()
+                                .with_context(|| format!("default branch not a string? {}", url))?;
+                            default_branch.to_string()
+                        }
+                    };
 
                     let branch_url = format!(
                         "https://api.github.com/repos/{}/{}/branches/{}",
-                        &owner, &repo, &default_branch
+                        &owner, &repo, &branch
                     );
                     let body: String = add_auth(get_proxy_req()?.get(&branch_url))
                         .call()?
                         .into_string()?;
-                    let json: serde_json::Value = serde_json::from_str(&body)
-                        .context("Failed to parse github repo/branches api")?;
+                    let json: serde_json::Value =
+                        serde_json::from_str(&body).with_context(|| {
+                            format!("Failed to parse github repo/branches api {}", branch_url)
+                        })?;
                     let commit = json
                         .get("commit")
-                        .context("no commit in github repo/branches?)")?
+                        .with_context(|| {
+                            format!("no commit in github repo/branches? {}", branch_url)
+                        })?
                         .get("sha")
-                        .context("No sha on github repo/branches/commit?")?
+                        .with_context(|| {
+                            format!("No sha on github repo/branches/commit? {}", branch_url)
+                        })?
                         .as_str()
                         .context("sha not a string?")?;
                     doc["flakes"][flake_name]["rev"] = value(commit);
@@ -1907,7 +1924,7 @@ fn discover_newest_rev_hg(url: &String) -> Result<String> {
             .args(&["id", "--debug", url, "--id"])
             .output()?)
     })
-    .with_context(||format!("hg id --debug {} failed", url))?;
+    .with_context(|| format!("hg id --debug {} failed", url))?;
     let stdout =
         std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
     let hash_re = Regex::new("(?m)^([0-9a-z]{40})$").unwrap(); //hash is on it's own line.
