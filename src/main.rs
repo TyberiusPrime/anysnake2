@@ -9,6 +9,7 @@ use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
+use std::borrow::Cow;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1503,6 +1504,8 @@ enum PrefetchHashResult {
     HaveToUseFetchGit,
 }
 
+/// if no hash_{rev} is set, discover it and update anysnake2.toml
+/// if no rev is set, discover it as well
 fn apply_trust_on_first_use(
     config: &config::ConfigToml,
     python_build_packages: &mut Vec<(String, HashMap<String, String>)>,
@@ -1522,7 +1525,22 @@ fn apply_trust_on_first_use(
             let mut hash_key = "".to_string();
             match &method[..] {
                 "fetchFromGitHub" => {
-                    let rev = spec.get("rev").expect("missing rev").to_string();
+                    let rev = {
+                        match spec.get("rev") {
+                            Some(x) => x.to_string(),
+                            None => {
+                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", k);
+                                let owner = spec.get("owner").expect("missing owner").to_string();
+                                let repo = spec.get("repo").expect("missing repo").to_string();
+                                let url = format!("https://github.com/{}/{}", owner, repo);
+                                let rev = discover_newest_rev_git(&url, spec.get("branchName"))?;
+                                store_rev(spec, &mut doc, k.to_owned(), &rev);
+                                write = true;
+                                rev
+                            }
+                        }
+                    };
+
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
                         write = true;
@@ -1548,11 +1566,14 @@ fn apply_trust_on_first_use(
                                     value(format!("https://github.com/{}/{}", owner, repo));
                                 out["rev"] = value(&rev);
                                 out[&hash_key] = value(&hash);
+                                if spec.contains_key("branchName") {
+                                    out["branchName"] = value(spec.get("branchName").unwrap());
+                                }
                                 doc["python"]["packages"][k.to_owned()] = toml_edit::Item::Value(
                                     toml_edit::Value::InlineTable(out.into_inline_table()),
                                 );
 
-                                spec.retain(|_, _| false);
+                                spec.retain(|k, _| {k == "branchName"});
                                 spec.insert("method".to_string(), "fetchgit".into());
                                 spec.insert(hash_key.clone(), hash);
                                 spec.insert("url".to_string(), fetchgit_url);
@@ -1568,10 +1589,20 @@ fn apply_trust_on_first_use(
                         .get("url")
                         .expect("missing url on fetchgit")
                         .to_string();
-                    let rev = spec
-                        .get("rev")
-                        .expect("missing rev on fetchgit")
-                        .to_string();
+                    let rev = {
+                        match spec.get("rev") {
+                            Some(x) => x.to_string(),
+                            None => {
+                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", k);
+                                let rev = discover_newest_rev_git(&url, spec.get("branchName"))?;
+                                println!("\tDiscovered revision {}", &rev);
+                                store_rev(spec, &mut doc, k.to_owned(), &rev);
+                                write = true;
+                                rev
+                            }
+                        }
+                    };
+
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
@@ -1583,14 +1614,19 @@ fn apply_trust_on_first_use(
                     }
                 }
                 "fetchhg" => {
-                    let url = spec
-                        .get("url")
-                        .expect("missing url on fetchhg")
-                        .to_string();
-                    let rev = spec
-                        .get("rev")
-                        .expect("missing rev on fetchhg")
-                        .to_string();
+                    let url = spec.get("url").expect("missing url on fetchhg").to_string();
+                    let rev = {
+                        match spec.get("rev") {
+                            Some(x) => x.to_string(),
+                            None => {
+                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", k);
+                                let rev = discover_newest_rev_hg(&url)?;
+                                println!("\tDiscovered revision {}", &rev);
+                                store_rev(spec, &mut doc, k.to_owned(), &rev);
+                                rev
+                            }
+                        }
+                    };
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", k);
@@ -1634,6 +1670,18 @@ fn store_hash(
     use toml_edit::value;
     doc["python"]["packages"][key][&hash_key] = value(&hash);
     spec.insert(hash_key.to_string(), hash.to_owned());
+}
+
+/// helper for discover_rev_on_first_use
+fn store_rev(
+    spec: &mut HashMap<String, String>,
+    doc: &mut toml_edit::Document,
+    key: String, // teh package
+    rev: &String,
+) -> () {
+    use toml_edit::value;
+    doc["python"]["packages"][key]["rev"] = value(rev);
+    spec.insert("rev".to_string(), rev.to_owned());
 }
 
 fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
@@ -1683,13 +1731,13 @@ fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<S
         .stdout;
     let stdout = std::str::from_utf8(&stdout)?.trim();
     let lines = stdout.split("\n");
-    let old_format = lines.last().expect("Could not parse nix-prefetch-hg output");
+    let old_format = lines
+        .last()
+        .expect("Could not parse nix-prefetch-hg output");
     let new_format = convert_hash_to_subresource_format(&old_format)?;
 
     Ok(new_format)
 }
-
-
 
 fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!(
@@ -1708,10 +1756,10 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
     let mut stdout_split = stdout.split('\n');
     let old_format = stdout_split
         .next()
-        .context("unexpected output from nix-prefetch-url (line 0  - should have been hash)")?;
+        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 0  - should have been hash)", url))?;
     let path = stdout_split
         .next()
-        .context("unexpected output from nix-prefetch-url (line 1 should path been path")?;
+        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 1  - should have been hash)", url))?;
 
     /* if the git repo is using .gitattributes and 'export-subst'
      * then github tarballs are actually not stable - if the drop out of the caching
@@ -1821,4 +1869,53 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
         }
     };
     Ok(())
+}
+
+fn discover_newest_rev_git(url: &String, branch: Option<&String>) -> Result<String> {
+    let refs = match branch {
+        Some(x) => Cow::from(format!("refs/heads/{}", x)),
+        None => Cow::from("HEAD"),
+    };
+    let output = run_without_ctrl_c(|| {
+        //todo: run this is in the provided nixpkgs!
+        Ok(std::process::Command::new("git")
+            .args(&["ls-remote", url, &refs])
+            .output()?)
+    })
+    .expect("git ls-remote failed");
+    let stdout =
+        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
+    let hash_re = Regex::new(&format!("^([0-9a-z]{{40}})\\s+{}", &refs)).unwrap(); //hash is on a line together with the ref...
+    for group in hash_re.captures_iter(stdout) {
+        return Ok(group[1].to_string());
+    }
+    Err(anyhow!(
+        "Could not find revision hash in 'git ls-remote {} {}' output.{}",
+        url,
+        refs,
+        if branch.is_some() {
+            " Is your branchName correct?"
+        } else {
+            ""
+        }
+    ))
+}
+fn discover_newest_rev_hg(url: &String) -> Result<String> {
+    let output = run_without_ctrl_c(|| {
+        //todo: run this is in the provided nixpkgs!
+        Ok(std::process::Command::new("hg")
+            .args(&["id", "--debug", url, "--id"])
+            .output()?)
+    })
+    .with_context(||format!("hg id --debug {} failed", url))?;
+    let stdout =
+        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
+    let hash_re = Regex::new("(?m)^([0-9a-z]{40})$").unwrap(); //hash is on it's own line.
+    for group in hash_re.captures_iter(stdout) {
+        return Ok(group[0].to_string());
+    }
+    Err(anyhow!(
+        "Could not find revision hash in 'hg id --debug {}' output",
+        url
+    ))
 }

@@ -206,17 +206,10 @@ where
                             if !def.contains_key("repo") {
                                 errors.push("Was missing 'repo' key.")
                             }
-                            if !def.contains_key("rev") {
-                                errors.push("Was missing 'rev' key.")
-                            }
                         }
-                        "fetchGit" => {
+                        "fetchGit" | "fetchhg" => {
                             if !def.contains_key("url") {
                                 errors.push("Was missing 'url' key.")
-                            }
-
-                            if !def.contains_key("rev") {
-                                errors.push("Was missing 'rev' key.")
                             }
                         }
                         _ => {}
