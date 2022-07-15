@@ -495,11 +495,15 @@ fn format_python_build_packages(input: &[(String, HashMap<String, String>)]) -> 
         res.push_str(&format!(
             "
               (mach-nix_.buildPythonPackage {{
+                version=\"0+{}\";
                 src = pkgs.{} {{ # {}
                     {}
                 }};
-                requirementsExtra = python_requirements;
+                # requirementsExtra = python_requirements; what happens if this one is dependend on
+                # one of the other ones, that we also need to supply ... not clear yet
               }})",
+            spec.get("version")
+                .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string())),
             spec.get("method")
                 .expect("Missing 'method' on python build package definition"),
             key,
