@@ -1813,9 +1813,9 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
         let mut write = false;
         for (flake_name, flake) in flakes.iter_mut() {
             if flake.rev.is_none() {
-                if flake.url.starts_with("github:/") {
+                if flake.url.starts_with("github:") {
                     use flake_writer::{add_auth, get_proxy_req};
-                    let re = Regex::new("github:/([^/]+)/([^/]+)/?").unwrap();
+                    let re = Regex::new("github:/?([^/]+)/([^/]+)/?").unwrap();
                     let out = re
                         .captures_iter(&flake.url)
                         .next()
