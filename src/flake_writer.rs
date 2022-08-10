@@ -70,7 +70,7 @@ pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
     python_packages: &[(String, String)],
-    python_build_packages: &[(String, HashMap<String, String>)],
+    python_build_packages: &HashMap<String, HashMap<String, String>>, // those end up as buildPythonPackages
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
@@ -126,14 +126,15 @@ pub fn write_flake(
             let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
-            let mut out_python_packages = extract_non_editable_python_packages(python_packages)?;
+            let mut out_python_packages =
+                extract_non_editable_python_packages(python_packages, python_build_packages)?;
             if parsed_config.r.is_some() {
                 out_python_packages.push("rpy2".to_string());
             }
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
-            let out_python_build_packages = format_python_build_packages(python_build_packages)?;
+            let out_python_build_packages = format_python_build_packages(&python_build_packages)?;
 
             let ecosystem_date = python
                 .parsed_ecosystem_date()
@@ -454,14 +455,18 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
     out
 }
 
-fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Vec<String>> {
+fn extract_non_editable_python_packages(
+    input: &[(String, String)],
+    build_packages: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<String>> {
     let mut res = Vec::new();
     for (name, version_constraint) in input.iter() {
         if version_constraint.starts_with("editable") {
             continue;
         }
-
-        if version_constraint.contains("==")
+        if build_packages.contains_key(name) {
+            continue; // added below
+        } else if version_constraint.contains("==")
             || version_constraint.contains('>')
             || version_constraint.contains('<')
             || version_constraint.contains('!')
@@ -476,6 +481,9 @@ fn extract_non_editable_python_packages(input: &[(String, String)]) -> Result<Ve
             //bail!("invalid python version spec {}{}", name, version_constraint);
         }
     }
+    for (name, spec) in build_packages.iter() {
+        res.push(format!("{}=={}", name, python_version_from_spec(spec)));
+    }
     Ok(res)
 }
 
@@ -489,28 +497,39 @@ fn src_to_nix(src: &HashMap<String, String>) -> String {
     res.join("\n")
 }
 
-fn format_python_build_packages(input: &[(String, HashMap<String, String>)]) -> Result<String> {
+fn python_version_from_spec(spec: &HashMap<String, String>) -> String {
+    format!(
+        "999+{}",
+        spec.get("version")
+            .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string()))
+    )
+}
+
+fn format_python_build_packages(
+    input: &HashMap<String, HashMap<String, String>>,
+) -> Result<String> {
     let mut res: String = "packagesExtra = [".into();
-    for (key, spec) in input.iter().sorted_by_key(|x| &x.0) {
+    let mut providers: String = "".into();
+    for (key, spec) in input.iter().sorted_by_key(|x| x.0) {
         res.push_str(&format!(
             "
               (mach-nix_.buildPythonPackage {{
-                version=\"0+{}\";
+                version=\"{}\";
                 src = pkgs.{} {{ # {}
                     {}
                 }};
-                # requirementsExtra = python_requirements; what happens if this one is dependend on
-                # one of the other ones, that we also need to supply ... not clear yet
               }})",
-            spec.get("version")
-                .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string())),
+            python_version_from_spec(&spec),
             spec.get("method")
                 .expect("Missing 'method' on python build package definition"),
             key,
             src_to_nix(spec)
         ));
+        providers.push_str(&format!("providers.{} = \"nixpkgs\";\n", key));
     }
     res.push_str("];");
+    res.push_str("\n");
+    res.push_str(&providers);
     Ok(res)
 }
 

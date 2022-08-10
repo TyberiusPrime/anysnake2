@@ -290,19 +290,19 @@ fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
 ) -> Result<(
     Vec<(String, String)>,
-    Vec<(String, HashMap<String, String>)>,
+    HashMap<String, HashMap<String, String>>,
 )> {
     Ok(match &mut parsed_config.python {
         Some(python) => {
             let mut requirement_packages: Vec<(String, String)> = Vec::new();
-            let mut build_packages: Vec<(String, HashMap<String, String>)> = Vec::new();
+            let mut build_packages: HashMap<String, HashMap<String, String>> = HashMap::new();
             for (name, pp) in python.packages.drain() {
                 match pp {
                     PythonPackageDefinition::Requirement(str_package_definition) => {
                         requirement_packages.push((name, str_package_definition));
                     }
                     PythonPackageDefinition::BuildPythonPackage(bp_definition) => {
-                        build_packages.push((name, bp_definition))
+                        build_packages.insert(name, bp_definition);
                     }
                 }
             }
@@ -329,7 +329,7 @@ fn collect_python_packages(
             }
             (requirement_packages, build_packages)
         }
-        None => (Vec::new(), Vec::new()),
+        None => (Vec::new(), HashMap::new()),
     })
 }
 
@@ -1520,7 +1520,7 @@ enum PrefetchHashResult {
 /// if no rev is set, discover it as well
 fn apply_trust_on_first_use(
     config: &config::ConfigToml,
-    python_build_packages: &mut Vec<(String, HashMap<String, String>)>,
+    python_build_packages: &mut HashMap<String, HashMap<String, String>>,
     outside_nixpkgs_url: &str,
 ) -> Result<()> {
     if !python_build_packages.is_empty() {
