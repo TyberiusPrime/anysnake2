@@ -240,6 +240,7 @@ fn test_full_rpy2() {
     );
     assert!(stdout.contains("10"));
 }
+
 #[test]
 fn test_full_rpy2_sitepaths() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
@@ -364,4 +365,22 @@ fn test_fetch_trust_on_first_use() {
         assert!(toml.contains("hash_db6f0a3254fbd3939d6b6b8c6d1711e7129faba1 = \"sha256-r2yDQ4JuOAZ7oWfjat2R/5OcMi0q7BY1QCK/Z9hyeyY=\""));
         assert!(stdout.contains("6c82cdc"));
     }
+}
+
+#[test]
+fn test_python_package_from_flake() {
+    // needs to be copied to test the tofu functionality.
+    let (code, stdout, _stderr) = run_test(
+        "examples/just_python_package_from_flake",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import mbf_bam; print(mbf_bam.__version__); print(dir(mbf_bam.mbf_bam))'",
+        ],
+    );
+    assert!(code == 0);
+    assert!(stdout.contains("0.2.0"));
+    assert!(stdout.contains("count_reads_unstranded"));
 }

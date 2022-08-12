@@ -1280,17 +1280,21 @@ fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
     let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
     let hits = binary_re.captures(&text);
     let out = match hits {
-        Some(x) => {std::str::from_utf8(&x[1])?.to_string()}
+        Some(x) => std::str::from_utf8(&x[1])?.to_string(),
         None => {
-        let text = std::str::from_utf8(&text)
-            .with_context(|| format!("failed utf-8 converting {:?}, but also had no NIX_PYTHONEXECUTABLE", path))?;
-        let re = Regex::new("exec \"([^\"]+)\"").unwrap();
-        let out: String = re
-            .captures_iter(&text)
-            .next()
-            .context(format!("Could not find exec in {:?}", &path))?[1]
-            .to_string();
-        out
+            let text = std::str::from_utf8(&text).with_context(|| {
+                format!(
+                    "failed utf-8 converting {:?}, but also had no NIX_PYTHONEXECUTABLE",
+                    path
+                )
+            })?;
+            let re = Regex::new("exec \"([^\"]+)\"").unwrap();
+            let out: String = re
+                .captures_iter(&text)
+                .next()
+                .context(format!("Could not find exec in {:?}", &path))?[1]
+                .to_string();
+            out
         }
     };
 
@@ -1649,7 +1653,8 @@ fn apply_trust_on_first_use(
                         store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
-                }
+                },
+                "useFlake" => {},
 
                 _ => {
                     println!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);

@@ -126,15 +126,19 @@ pub fn write_flake(
             let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
-            let mut out_python_packages =
-                extract_non_editable_python_packages(python_packages, python_build_packages)?;
+            let mut out_python_packages = extract_non_editable_python_packages(
+                python_packages,
+                python_build_packages,
+                &parsed_config.flakes,
+            )?;
             if parsed_config.r.is_some() {
                 out_python_packages.push("rpy2".to_string());
             }
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
-            let out_python_build_packages = format_python_build_packages(&python_build_packages)?;
+            let out_python_build_packages =
+                format_python_build_packages(&python_build_packages, &parsed_config.flakes)?;
 
             let ecosystem_date = python
                 .parsed_ecosystem_date()
@@ -458,6 +462,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
 fn extract_non_editable_python_packages(
     input: &[(String, String)],
     build_packages: &HashMap<String, HashMap<String, String>>,
+    flakes_config: &Option<HashMap<String, config::Flake>>,
 ) -> Result<Vec<String>> {
     let mut res = Vec::new();
     for (name, version_constraint) in input.iter() {
@@ -482,7 +487,24 @@ fn extract_non_editable_python_packages(
         }
     }
     for (name, spec) in build_packages.iter() {
-        res.push(format!("{}=={}", name, python_version_from_spec(spec)));
+        let rev_override = match spec.get("method") {
+            Some(method) => {
+                if method == "useFlake" {
+                    let flake_name = spec.get("flake_name").unwrap_or(name);
+                    Some(get_flake_rev(flake_name, flakes_config).with_context(|| {
+                        format!("no flake revision in flake {} used by {}", flake_name, name)
+                    })?)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        res.push(format!(
+            "{}=={}",
+            name,
+            python_version_from_spec(spec, rev_override.as_deref())
+        ));
     }
     Ok(res)
 }
@@ -490,41 +512,80 @@ fn extract_non_editable_python_packages(
 fn src_to_nix(src: &HashMap<String, String>) -> String {
     let mut res = Vec::new();
     for (k, v) in src.iter().sorted_by_key(|x| x.0) {
-        if k != "method" {
+        if k != "method" && k != "buildInputs" {
             res.push(format!("\"{}\" = \"{}\";", k, v));
         }
     }
     res.join("\n")
 }
 
-fn python_version_from_spec(spec: &HashMap<String, String>) -> String {
+fn python_version_from_spec(
+    spec: &HashMap<String, String>,
+    override_version: Option<&str>,
+) -> String {
     format!(
         "999+{}",
-        spec.get("version")
-            .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string()))
+        override_version.unwrap_or(
+            spec.get("version")
+                .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string()))
+        )
     )
+}
+
+fn get_flake_rev(
+    flake_name: &str,
+    flakes_config: &Option<HashMap<String, config::Flake>>,
+) -> Result<String> {
+    Ok(flakes_config
+        .as_ref()
+        .context("no flakes defined")?
+        .get(flake_name)
+        .with_context(|| format!("No flake {} in flake definitions", flake_name))?
+        .rev
+        .as_ref()
+        .with_context(|| format!("No rev for flake {} in flake definitions", flake_name))?
+        .to_string())
 }
 
 fn format_python_build_packages(
     input: &HashMap<String, HashMap<String, String>>,
+    flakes_config: &Option<HashMap<String, config::Flake>>,
 ) -> Result<String> {
     let mut res: String = "packagesExtra = [".into();
     let mut providers: String = "".into();
     for (key, spec) in input.iter().sorted_by_key(|x| x.0) {
-        res.push_str(&format!(
-            "
+        match spec
+            .get("method")
+            .expect("no method in package definition")
+            .as_str()
+        {
+            "useFlake" => {
+                let flake_name = spec.get("flake_name").unwrap_or(key);
+                let flake_rev = get_flake_rev(flake_name, flakes_config)
+                    .with_context(|| format!("python.packages.{}", key))?;
+                res.push_str(&format!(
+                    "({}.mach-nix-build-python-package pkgs mach-nix_ \"{}\")\n",
+                    flake_name,
+                    python_version_from_spec(spec, Some(&flake_rev))
+                ));
+            }
+            _ => {
+                res.push_str(&format!(
+                    "
               (mach-nix_.buildPythonPackage {{
                 version=\"{}\";
                 src = pkgs.{} {{ # {}
                     {}
                 }};
               }})",
-            python_version_from_spec(&spec),
-            spec.get("method")
-                .expect("Missing 'method' on python build package definition"),
-            key,
-            src_to_nix(spec)
-        ));
+                    python_version_from_spec(&spec, None),
+                    spec.get("method")
+                        .expect("Missing 'method' on python build package definition"),
+                    key,
+                    src_to_nix(spec),
+                ));
+            }
+        }
         providers.push_str(&format!("providers.{} = \"nixpkgs\";\n", key));
     }
     res.push_str("];");
