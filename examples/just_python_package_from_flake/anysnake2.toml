@@ -29,6 +29,5 @@ mbf_bam = {method="useFlake"}#, flake_name="mbf_bam" is optional, defaults to pa
 
 [flakes.mbf_bam]
 	url = "git+https://github.com/IMTMarburg/mbf_bam" #https://nixos.wiki/wiki/Flakes#Input_schema 
-	packages = [] # do not install any packages - import is in python.packages above!
 	rev = "c8745535b8c383457c789f8fc15f0b11d55502e6"
 
