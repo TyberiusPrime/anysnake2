@@ -17,6 +17,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
+use toml_edit::{value, Document, Table};
 use url::Url;
 
 /* TODO
@@ -178,6 +179,13 @@ fn parse_args() -> ArgMatches<'static> {
         .subcommand(SubCommand::with_name("develop").about("run nix develop, and go back to this dir with your favourite shell"))
         .subcommand(SubCommand::with_name("version").about("the version actually used by the config file. Error if no config file is present (use --version for the version of this binary"))
         .subcommand(SubCommand::with_name("attach").about("attach to previously running session"))
+
+        .subcommand(
+            SubCommand::with_name("upgrade")
+            .arg(
+                Arg::with_name("what").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+                ).about("query remotes and upgrade anysnake2.toml accordingly")
+        )
         .subcommand(
             SubCommand::with_name("run")
                 .about("run arbitray commands in container (w/o any pre/post bash scripts)")
@@ -191,27 +199,26 @@ fn parse_args() -> ArgMatches<'static> {
         .get_matches()
 }
 
-fn handle_config_command(matches: &ArgMatches<'static>) -> Result<()> {
+fn handle_config_command(matches: &ArgMatches<'static>) -> Result<bool> {
     if let ("config", Some(sc)) = matches.subcommand() {
-        {
-            match sc.subcommand().0 {
-                "minimal" => println!(
-                    "{}",
-                    std::include_str!("../examples/minimal/anysnake2.toml")
-                ),
-                "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
-                "basic" => {
-                    // includes basic
-                    println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
-                }
-                _ => {
-                    bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
-                }
+        match sc.subcommand().0 {
+            "minimal" => println!(
+                "{}",
+                std::include_str!("../examples/minimal/anysnake2.toml")
+            ),
+            "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
+            "basic" => {
+                // includes basic
+                println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
             }
-            std::process::exit(0);
+            _ => {
+                bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
+            }
         }
+        Ok(true)
+    } else {
+        Ok(false)
     }
-    Ok(())
 }
 
 fn configure_logging(matches: &ArgMatches<'static>) {
@@ -226,8 +233,7 @@ fn configure_logging(matches: &ArgMatches<'static>) {
         .unwrap();
 }
 
-fn read_config(matches: &ArgMatches<'static>) -> Result<config::ConfigToml> {
-    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
+fn read_config(config_file: &str) -> Result<config::ConfigToml> {
     let abs_config_path = fs::canonicalize(config_file).context("Could not find config file")?;
     let raw_config = fs::read_to_string(&abs_config_path).context("Could not read config file")?;
     let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
@@ -339,7 +345,10 @@ fn inner_main() -> Result<()> {
     let matches = parse_args();
     configure_logging(&matches);
 
-    handle_config_command(&matches)?;
+    if handle_config_command(&matches)? {
+        return Ok(())
+    };
+
     let top_level_slop: Vec<&str> = match matches.values_of("slop") {
         Some(slop) => slop.collect(),
         None => Vec::new(),
@@ -360,13 +369,24 @@ fn inner_main() -> Result<()> {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
-    let mut parsed_config: config::ConfigToml = read_config(&matches)?;
+    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
+    if cmd == "version" && !Path::new(config_file).exists() {
+        //output the version of binary
+        print_version_and_exit();
+    }
+
+    let mut parsed_config: config::ConfigToml = read_config(config_file)?;
 
     let flake_dir: PathBuf = [".anysnake2_flake"].iter().collect();
     fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
-    switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
+    if cmd != "upgrade" {
+        //otherwise you could never upgrade < 1.10 versions
+        switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
+    }
+
     if cmd == "version" {
+        //output the version you'd actually be using!
         print_version_and_exit();
     }
 
@@ -382,6 +402,21 @@ fn inner_main() -> Result<()> {
         );
 
         return attach_to_previous_container(&flake_dir, &outside_nixpkgs_url);
+    }
+
+    let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
+
+    if cmd == "upgrade" {
+        return upgrade(
+            matches
+                .subcommand()
+                .1
+                .unwrap()
+                .values_of("what")
+                .map(|x| x.collect()),
+            &parsed_config,
+            use_generated_file_instead,
+        );
     }
 
     if !(parsed_config.cmd.contains_key(cmd) || cmd == "build" || cmd == "run" || cmd == "develop")
@@ -418,7 +453,6 @@ fn inner_main() -> Result<()> {
         )?,
     );
     apply_trust_on_first_use(&parsed_config, &mut python_build_packages, &nixpkgs_url)?;
-    let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
 
     let flake_changed = flake_writer::write_flake(
         &flake_dir,
@@ -1461,6 +1495,92 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
     }
 }
 
+fn upgrade(
+    what: Option<Vec<&str>>,
+    parsed_config: &config::ConfigToml,
+    use_generated_file_instead: bool,
+) -> Result<()> {
+    match what {
+        None => {
+            println!("no upgrade specified");
+            println!("Available for upgrade");
+            println!("\tanysnake2");
+            return Ok(());
+        }
+        Some(what_) => {
+            for w in what_ {
+                if w == "anysnake2" {
+                    println!("querying github for newest anysnake2 version");
+                    let repo = parsed_config
+                        .anysnake2
+                        .url
+                        .as_ref()
+                        .context("no anysnake2 url???")?
+                        .strip_prefix("github:");
+                    match repo {
+                        Some(repo) => {
+                            let gh_tags = flake_writer::get_github_tags(repo, 1)?;
+                            if !gh_tags.is_empty() {
+                                let newest = gh_tags
+                                    .iter()
+                                    .next()
+                                    .expect("No tags though vec was not empty!?");
+                                let newest_tag = newest["name"]
+                                    .as_str()
+                                    .context("Could not find name for tag in github api output")?
+                                    .to_string();
+                                println!("found newest tag: {}", newest_tag);
+                                println!("current tag: {}", parsed_config.anysnake2.rev);
+                                if newest_tag != parsed_config.anysnake2.rev {
+                                    if use_generated_file_instead {
+                                        return Err(anyhow!(
+                                            "do_not_modify_flake is set. Not upgrading anything"
+                                        ));
+                                    }
+                                    if parsed_config.anysnake2.rev == "dev" {
+                                        return Err(anyhow!("Currently the 'dev' version is specified. Not overwriting that."));
+                                    }
+                                    //todo: refactor into 'modify-toml-closure-taking-func'?
+                                    let toml = std::fs::read_to_string(
+                                        parsed_config.anysnake2_toml_path.as_ref().unwrap(),
+                                    )
+                                    .expect("Could not reread config file");
+                                    let mut doc = toml.parse::<Document>().expect("invalid doc");
+                                    doc["anysnake2"]["rev"] = value(newest_tag);
+                                    let out_toml = doc.to_string();
+                                    std::fs::write(
+                                        parsed_config.anysnake2_toml_path.as_ref().unwrap(),
+                                        out_toml,
+                                    )
+                                    .expect("failed to rewrite config file");
+                                    println!("Upgraded anysnake2.toml");
+                                } else {
+                                    println!(
+                                        "not upgrading anysnake2 entry - already at newest version",
+                                    );
+                                }
+                            } else {
+                                return Err(anyhow!("Could not find any version in {}", &repo));
+                            }
+                        }
+                        None => {
+                            return Err(anyhow!(
+                                "Can only upgrade anysnake2 if it's being sourced from github"
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(anyhow!(
+                        "Could not handle upgrade for {}, don't know what to do",
+                        w
+                    ));
+                }
+            }
+        }
+    };
+    Ok(())
+}
+
 fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     let dtach_url = format!("{}#dtach", outside_nix_repo);
     let nix_full_args = vec![
@@ -1528,7 +1648,6 @@ fn apply_trust_on_first_use(
     outside_nixpkgs_url: &str,
 ) -> Result<()> {
     if !python_build_packages.is_empty() {
-        use toml_edit::{value, Document, Table};
         let toml = std::fs::read_to_string(config.anysnake2_toml_path.as_ref().unwrap())
             .expect("Could not reread config file");
         let mut doc = toml.parse::<Document>().expect("invalid doc");
@@ -1653,9 +1772,10 @@ fn apply_trust_on_first_use(
                         store_hash(spec, &mut doc, k.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
-                },
-                "useFlake" => {},
-
+                }
+                "useFlake" => {
+                    // we use the flake rev, so no-op
+                }
                 _ => {
                     println!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
                 }
@@ -1685,7 +1805,6 @@ fn store_hash(
     hash_key: &str,
     hash: String,
 ) -> () {
-    use toml_edit::value;
     doc["python"]["packages"][key][&hash_key] = value(&hash);
     spec.insert(hash_key.to_string(), hash.to_owned());
 }
@@ -1697,7 +1816,6 @@ fn store_rev(
     key: String, // teh package
     rev: &String,
 ) -> () {
-    use toml_edit::value;
     doc["python"]["packages"][key]["rev"] = value(rev);
     spec.insert("rev".to_string(), rev.to_owned());
 }
@@ -1831,7 +1949,6 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
 /// auto discover newest flake rev if you leave it off.
 fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<()> {
     if let Some(flakes) = &mut parsed_config.flakes {
-        use toml_edit::{value, Document};
         let toml = std::fs::read_to_string(parsed_config.anysnake2_toml_path.as_ref().unwrap())
             .expect("Could not reread config file");
         let mut doc = toml.parse::<Document>().expect("invalid doc");
