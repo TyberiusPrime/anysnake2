@@ -6,7 +6,7 @@ use itertools::Itertools;
 use log::{debug, trace};
 use regex::Regex;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -116,6 +116,7 @@ pub fn write_flake(
 
     let mut overlays = Vec::new();
     let mut rust_extensions = vec!["rustfmt", "clippy"];
+    let mut flakes_used_for_python_packages = HashSet::new();
 
     flake_contents = match &parsed_config.python {
         Some(python) => {
@@ -137,8 +138,11 @@ pub fn write_flake(
             out_python_packages.sort();
             let out_python_packages = out_python_packages.join("\n");
 
-            let out_python_build_packages =
-                format_python_build_packages(&python_build_packages, &parsed_config.flakes)?;
+            let out_python_build_packages = format_python_build_packages(
+                &python_build_packages,
+                &parsed_config.flakes,
+                &mut flakes_used_for_python_packages,
+            )?;
 
             let ecosystem_date = python
                 .parsed_ecosystem_date()
@@ -212,8 +216,18 @@ pub fn write_flake(
                     &rev_follows[..],
                     &flake_dir,
                 )?);
-                for pkg in &flake.packages {
-                    flake_packages += &format!("${{{}.{}}}", name, pkg);
+                match &flake.packages {
+                    Some(pkgs) => {
+                        for pkg in pkgs {
+                            flake_packages += &format!("${{{}.{}}}", name, pkg);
+                        }
+                    }
+                    None => {
+                        if !flakes_used_for_python_packages.contains(name) {
+                            flake_packages +=
+                                &format!("${{{}.{}}}", name, "defaultPackage.x86_64-linux");
+                        } //else $default to no packages for a python package flake
+                    }
                 }
             }
             flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
@@ -559,6 +573,7 @@ fn get_flake_rev(
 fn format_python_build_packages(
     input: &HashMap<String, HashMap<String, String>>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
+    flakes_used_for_python_packages: &mut HashSet<String>,
 ) -> Result<String> {
     let mut res: String = "packagesExtra = [".into();
     let mut providers: String = "".into();
@@ -577,6 +592,7 @@ fn format_python_build_packages(
                     flake_name,
                     python_version_from_spec(spec, Some(&flake_rev))
                 ));
+                flakes_used_for_python_packages.insert(flake_name.to_string());
             }
             _ => {
                 res.push_str(&format!(
@@ -854,19 +870,26 @@ struct GitHubTagRetriever {
     repo: String,
 }
 
+pub(crate) fn get_github_tags(repo: &str, page: i32) -> Result<Vec<serde_json::Value>> {
+    let url = format!(
+        "https://api.github.com/repos/{}/tags?per_page=100&page={}",
+        repo, page
+    );
+    debug!("Retrieving {}", &url);
+    let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).context("Failed to parse github tags api")?;
+    Ok(json
+        .as_array()
+        .context("No entries in github tags api?")?
+        .to_owned())
+}
+
 impl Retriever for GitHubTagRetriever {
     fn retrieve(&self) -> Result<HashMap<String, String>> {
         let mut res = HashMap::new();
         for page in 0..30 {
-            let url = format!(
-                "https://api.github.com/repos/{}/tags?per_page=100&page={}",
-                &self.repo, page
-            );
-            debug!("Retrieving {}", &url);
-            let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-            let json: serde_json::Value =
-                serde_json::from_str(&body).context("Failed to parse github tags api")?;
-            let json = json.as_array().context("No entries in github tags api?")?;
+            let json = get_github_tags(&self.repo, page)?;
             if json.is_empty() {
                 break;
             }

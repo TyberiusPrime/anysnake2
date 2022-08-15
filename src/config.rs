@@ -274,15 +274,9 @@ pub struct Flake {
     pub url: String,
     pub rev: Option<String>,
     pub follows: Option<Vec<String>>,
-    #[serde(default = "Flake::default_packages")]
-    pub packages: Vec<String>,
+    pub packages: Option<Vec<String>>,
 }
 
-impl Flake {
-    fn default_packages() -> Vec<String> {
-        vec!["defaultPackage.x86_64-linux".to_string()]
-    }
-}
 
 #[derive(Deserialize, Debug)]
 pub struct Container {

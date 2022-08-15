@@ -53,7 +53,6 @@ ecosystem_date="2021-11-21" # you get whatever packages the solver would have pr
 # mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
 
 [python.packages]
-mbf_bam=""
 importlib-resources=""
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 #scipy=""
@@ -71,8 +70,6 @@ dppd="editable/code"
 # seperate from python packages so you can clone other stuff as well
 dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
 dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
-mbf_r="@mbf"
-mbf_sampledata="@mbf/mbf_sampledata"
 
 [R]
 ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
@@ -115,8 +112,6 @@ version = "1.55.0" # =stable.
 [container.env]
 MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
 MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
-MBF_AUTH_USER = "feed"
-MBF_AUTH_PASSWORD = "feed"
 NICE_HOSTNAME="$NICE_HOSTNAME"
 ANYSNAKE2_SOURCE="$PWD"
 
@@ -168,7 +163,5 @@ python -m rpy2
 """
 
 [clone_regexps]
-"@mbf/(.+)"="hg+https://mbf.imt.uni-marburg.de/hg/\\1"
-"@mbf"="hg+https://mbf.imt.uni-marburg.de/hg/\\0"
 "@gh/([^/]+)"="git+https://github.com/\\1/\\0"
 "@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"

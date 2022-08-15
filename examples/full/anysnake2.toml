@@ -132,8 +132,6 @@ dtach = true # whether to run your container wrapped in dtach https://github.com
 [env]
 MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
 MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
-MBF_AUTH_USER = "feed"
-MBF_AUTH_PASSWORD = "feed"
 
 
 [cmd.default]
