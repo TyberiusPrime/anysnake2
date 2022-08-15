@@ -441,6 +441,15 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
             .map(|x| format!("        inputs.{}.follows = \"{}\";", &x, &x))
             .collect();
         let str_follows = v_follows.join("\n");
+        let url = if fl.url.starts_with("github") && fl.url.matches("/").count() == 3 {
+            //has a branch - but we define a revision, and you can't have both for some reason
+            let mut iter = fl.url.rsplitn(2, "/");
+            iter.next(); // eat the branch
+            iter.collect()
+
+        } else {
+            fl.url.to_string()
+        };
         out.push_str(&format!(
             "
     {} = {{
@@ -449,7 +458,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
 {}
     }};",
             fl.name,
-            fl.url,
+            url,
             if !fl.url.contains("?") { "?" } else { "&" },
             fl.rev,
             &str_follows,

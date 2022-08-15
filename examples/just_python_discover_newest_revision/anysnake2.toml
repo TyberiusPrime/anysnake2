@@ -23,9 +23,11 @@ ecosystem_date="2022-02-16" # you get whatever packages the solver would have pr
 # see other examples for the regular syntax, this
 # is just 'how to wrap nix-source-fetchers'
 # for github
-plotnine = { method = "fetchgit", url = "https://github.com/has2k1/plotnine", rev = "69a5289f625202411e2e543aad9c7f2cb9954fc7", hash_69a5289f625202411e2e543aad9c7f2cb9954fc7 = "sha256-EWf6zs54UOHUG1G51tzogSN4VYAL9UrZXdsmesYaCIc=", branchName = "dev" }
+plotnine = { method = "fetchgit", url = "https://github.com/has2k1/plotnine", branchName = "dev" }
 # for mercurial
-lvr = {method = "fetchhg", url="https://hg.sr.ht/~bwe/lvr", rev = "db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", hash_db6f0a3254fbd3939d6b6b8c6d1711e7129faba1 = "sha256-r2yDQ4JuOAZ7oWfjat2R/5OcMi0q7BY1QCK/Z9hyeyY=" }
+lvr = {method = "fetchhg", url="https://hg.sr.ht/~bwe/lvr" }
+pypipegraph2 = {method = "fetchFromGitHub", owner="TyberiusPrime", repo="pypipegraph2"}
+
 ##
 # you can fetch from github, git and mercurial (any nix fetcher actually, see
 # https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
