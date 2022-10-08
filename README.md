@@ -68,11 +68,11 @@ rev = "1.0"
 
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
+rev = "22.05"
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "21.05" # the nixpgks version or github hash
+rev = "22.05" # the nixpgks version or github hash
 packages = [ # use https://search.nixos.org/packages to search
 	"fish",
 ]
