@@ -144,6 +144,9 @@ pub fn write_flake(
                 &mut flakes_used_for_python_packages,
             )?;
 
+            let out_additional_mkpython_arguments =
+                &python.additional_mkpython_arguments.as_deref().unwrap_or("");
+
             let ecosystem_date = python
                 .parsed_ecosystem_date()
                 .context("Failed to parse python.ecosystem-date")?;
@@ -170,6 +173,10 @@ pub fn write_flake(
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
                 .replace("%PYTHON_BUILD_PACKAGES%", &out_python_build_packages)
+                .replace(
+                    "%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%",
+                    &&out_additional_mkpython_arguments,
+                )
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
@@ -190,7 +197,8 @@ pub fn write_flake(
         None => flake_contents
             .replace("\"%MACHNIX%\"", "null")
             .replace("%DEVELOP_PYTHON_PATH%", "")
-            .replace("%PYTHON_BUILD_PACKAGES%", ""),
+            .replace("%PYTHON_BUILD_PACKAGES%", "")
+            .replace("%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", ""),
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -460,7 +468,6 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
             let mut iter = fl.url.rsplitn(2, "/");
             iter.next(); // eat the branch
             iter.collect()
-
         } else {
             fl.url.to_string()
         };

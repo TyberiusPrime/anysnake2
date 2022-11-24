@@ -235,6 +235,7 @@ pub struct Python {
     pub ecosystem_date: String,
     #[serde(deserialize_with = "de_python_package_definition")]
     pub packages: HashMap<String, PythonPackageDefinition>,
+    pub additional_mkpython_arguments: Option<String>,
 }
 
 impl Python {

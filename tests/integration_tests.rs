@@ -21,9 +21,9 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
     let p = std::env::current_exe()
         .expect("No current exe?")
         .parent()
-        .unwrap()
+        .expect("no parent")
         .parent()
-        .unwrap()
+        .expect("no parent parent")
         .join("anysnake2");
     println!("Current exe {:?}", p);
     let mut full_args = vec!["--no-version-switch"];
@@ -90,7 +90,7 @@ fn test_just_python() {
         "examples/just_python",
         &["run", "--", "python", "--version"],
     );
-    assert!(stdout.contains("3.8.9"));
+    assert!(stdout.contains("3.10.4"));
 
     let td_path = td.path().to_string_lossy();
 
@@ -105,7 +105,7 @@ fn test_just_python() {
         ],
     );
 
-    assert!(stdout.contains("1.2.0"));
+    assert!(stdout.contains("1.5.1"));
 
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
     dbg!(&stdout);
@@ -293,7 +293,7 @@ fn test_python_pip_reinstall_if_venv_changes() {
         run_test_tempdir("examples/just_python", &["run", "--", "cat"]);
     println!("first: {}", stdout);
     let first =
-        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.10/bin/hello")).unwrap();
 
     let toml_path = td.path().join("anysnake2.toml");
     let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
@@ -305,7 +305,7 @@ fn test_python_pip_reinstall_if_venv_changes() {
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"]);
     println!("second: {}", stdout);
     let second =
-        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.8/bin/hello")).unwrap();
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.10/bin/hello")).unwrap();
 
     let lines_first: Vec<_> = first.split("\n").collect();
     let lines_second: Vec<_> = second.split("\n").collect();

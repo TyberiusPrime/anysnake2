@@ -4,17 +4,21 @@
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "21.05" # the nixpgks version or github hash
+rev = "22.05" # the nixpgks version or github hash
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "21.05" # the nixpgks version or github hash
+rev = "22.05" # the nixpgks version or github hash
 packages = ["which"]
 
 
 [python] # python section is optional
-version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2022-02-16" # you get whatever packages the solver would have produced on that day
+version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
+
+additional_mkpython_arguments = """
+providers. platformdirs="nixpkgs";
+""" # must be verbatim nix code
 
 [clones.code]
 # example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
@@ -23,9 +27,13 @@ example-cli-python="file://./example-cli-python/"
 [python.packages]
 # you can use standard python requirements.txt version specification syntax
 # i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-pandas="1.2"
+pandas="1.5.1"
 # you can refer to the repos you cloned
 example-cli-python="editable/code"
+black=""
+tomli=">1.2"
+
+
 
 # and you can fetch from github, git and mercurial (any nix fetcher actually, see
 # https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)

@@ -1,6 +1,6 @@
 [package]
 name = "anysnake2"
-version = "1.9.2"
+version = "1.10.0"
 authors = ["Florian Finkernagel <finkernagel@imt.uni-marburg.de>"]
 edition = "2021"
 

@@ -177,6 +177,7 @@
               substituteInPlace 'requirements.txt' --replace 'pytest' ""
             '';
             %PYTHON_BUILD_PACKAGES%
+            %PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%
           };
         };
       in rec {
