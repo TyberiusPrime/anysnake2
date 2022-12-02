@@ -2,7 +2,7 @@
 
 on:
   release:
-    types: [created]
+    types: [created, edited]
 
 jobs:
   release:
@@ -13,7 +13,16 @@ jobs:
       matrix:
         target: [x86_64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@master
+      - name: what is in the box
+        run: |
+          echo "payload" ${{  github.event}}
+      - name: what is in the box part 2
+        run: |
+          echo "payload" ${{  github.event.release}}
+
+      - uses: actions/checkout@v3
+        with: 
+          ref: ${{ github.event.release.tag_name }}
       - name: Compile and release
         uses: rust-build/rust-build.action@latest
         env:
@@ -21,3 +30,13 @@ jobs:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
           ARCHIVE_TYPES: "tar.gz"
+      - name: tell release flake
+        run: |
+          curl \
+          -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.ANYSNAKE2_RELASE_FLAKE_SECRET }}" \
+          https://api.github.com/repos/TyberiusPrime/anysnake2_release_flakes/dispatches \
+          -d '{"event_type":"on-demand-test","client_payload":{"release_version":"${{ github.event.release.tag_name }}"}}'
+
+
