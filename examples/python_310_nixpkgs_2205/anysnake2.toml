@@ -4,10 +4,10 @@
 rev = "dev" # replace with fixed version outside of tests/examples
 
 [outside_nixpkgs]
-rev = "21.05"
+rev = "22.11"
 
 [nixpkgs]
-rev = "21.05" # the nixpgks version or github hash
+rev = "22.05" # the nixpgks version or github hash
 packages = ['strace', 'python38']
 
 [flake-util]
@@ -19,6 +19,15 @@ packages = ['strace', 'python38']
 # the revision used by flake-util
 # rev = "dc94135e31d5c90c40a00a6cbdf9330526e8153b" # optional
 # url = "github:/DavHau/mach-nix"
+
+[python] # python section is optional
+version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
+
+[python.packages]
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+rpy2="3.5.5" # starting with 3.5.6 it no longer compiles on 22.05
+scipy=""
 
 
 [R] # R section is optional

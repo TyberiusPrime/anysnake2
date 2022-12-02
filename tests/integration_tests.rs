@@ -259,7 +259,7 @@ fn test_just_r() {
         "examples/just_r",
         &["run", "--", "R", "-e", "'library(Rcpp); sessionInfo()'"],
     );
-    assert!(stdout.contains("Rcpp_1.0.7"));
+    assert!(stdout.contains("Rcpp_1.0.8.3"));
 }
 
 #[test]
@@ -383,4 +383,21 @@ fn test_python_package_from_flake() {
     assert!(code == 0);
     assert!(stdout.contains("0.2.0"));
     assert!(stdout.contains("count_reads_unstranded"));
+}
+
+#[test]
+fn test_python_310_nixpkgs_2205() {
+    // needs to be copied to test the tofu functionality.
+    let (code, stdout, _stderr) = run_test(
+        "examples/python_310_nixpkgs_2205/",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import rpy2; print(rpy2.__version__)'",
+        ],
+    );
+    assert!(code == 0);
+    assert!(stdout.contains("3.5.5"));
 }

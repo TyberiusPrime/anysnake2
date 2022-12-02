@@ -262,7 +262,7 @@ impl Default for MachNix {
 
 impl WithDefaultFlakeSource for MachNix {
     fn default_rev() -> String {
-        "913e6c16f986746ba5507878ef7ff992804d1fa8".to_string()  //updated 2022-11-25
+        "65266b5cc867fec2cb6a25409dd7cd12251f6107".to_string()  //updated 2022-12-02
         //"7e14360bde07dcae32e5e24f366c83272f52923f".to_string() // updated 2022-07-11
        // "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
     }
@@ -301,15 +301,23 @@ impl Default for Container {
 
 #[derive(Deserialize, Debug)]
 pub struct R {
-    pub ecosystem_tag: String,
+    pub date: String,
     pub packages: Vec<String>,
     #[serde(default = "R::default_url")]
-    pub r_ecosystem_track_url: String,
+    pub nixr_url: String,
+    #[serde(default = "R::default_tag")]
+    pub nixr_tag: String,
+
+    pub ecosystem_tag: Option<String>,
 }
 
 impl R {
+    fn default_tag() -> String {
+        "5fa155779f1c454fcb92abcdbbcf4372256eb6c6".to_string() // must not be older than 5fa155779f1c454fcb92abcdbbcf4372256eb6c6
+    }
+
     fn default_url() -> String {
-        "github:TyberiusPrime/r_ecosystem_track".to_string()
+        "github:TyberiusPrime/nixR".to_string()
     }
 }
 
