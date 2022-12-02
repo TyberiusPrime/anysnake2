@@ -91,8 +91,9 @@ dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine?rev=8ed7651af759f3f0b715a2fbda7bf
 
 
 [R] # R section is optional
-ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
-# r_ecosystem_track_url= "github:TyberiusPrime/r_ecosystem_track" # optional
+date="2021-10-27" # you must make sure that the the nixpkgs glibc used here and above in [nixpkgs] matches :(
+# nixr_url= "github:TyberiusPrime/nixR" # optional
+# nixr_tag= "github hash" # optional
 packages = [
 	"ACA",
 	"Rcpp"

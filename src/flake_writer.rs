@@ -144,8 +144,10 @@ pub fn write_flake(
                 &mut flakes_used_for_python_packages,
             )?;
 
-            let out_additional_mkpython_arguments =
-                &python.additional_mkpython_arguments.as_deref().unwrap_or("");
+            let out_additional_mkpython_arguments = &python
+                .additional_mkpython_arguments
+                .as_deref()
+                .unwrap_or("");
 
             let ecosystem_date = python
                 .parsed_ecosystem_date()
@@ -172,9 +174,9 @@ pub fn write_flake(
             flake_contents
                 //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
                 .replace("%PYTHON_PACKAGES%", &out_python_packages)
-                .replace("%PYTHON_BUILD_PACKAGES%", &out_python_build_packages)
+                .replace("#%PYTHON_BUILD_PACKAGES%", &out_python_build_packages)
                 .replace(
-                    "%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%",
+                    "#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%",
                     &&out_additional_mkpython_arguments,
                 )
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
@@ -197,8 +199,8 @@ pub fn write_flake(
         None => flake_contents
             .replace("\"%MACHNIX%\"", "null")
             .replace("%DEVELOP_PYTHON_PATH%", "")
-            .replace("%PYTHON_BUILD_PACKAGES%", "")
-            .replace("%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", ""),
+            .replace("#%PYTHON_BUILD_PACKAGES%", "")
+            .replace("#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", ""),
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -251,41 +253,44 @@ pub fn write_flake(
     flake_contents = match &parsed_config.r {
         Some(r_config) => {
             inputs.push(InputFlake::new(
-                "r_ecosystem_track",
-                &r_config.r_ecosystem_track_url,
-                &r_config.ecosystem_tag,
-                &["flake-utils"],
+                "nixR",
+                &r_config.nixr_url,
+                &r_config.nixr_tag,
+                &[],
                 &flake_dir,
             )?);
 
             let r_packages = format!(
                 "
-                R_tracked = if (builtins.hasAttr \"R\" r_ecosystem_track) then
-                      r_ecosystem_track.R.${{system}}
-                    else
-                      (builtins.elemAt r_ecosystem_track.rWrapper.${{system}}.buildInputs 0); # fall back for older r_ecosystem_tracks w/o R export
-                r_packages = with r_ecosystem_track.rPackages.${{system}}; [ {} ];
-                rWrapper = r_ecosystem_track.rWrapper.${{system}}.override{{ packages = r_packages; }};
+                R_tracked = nixR.\"{}\" [{}];
                 ",
-                r_config.packages.join(" ")
+                &r_config.date,
+                r_config
+                    .packages
+                    .iter()
+                    .map(|x| format!("\"{}\"", x))
+                    .join(" ")
             );
             overlays.push(
                 "(final: prev: { 
-                R = R_tracked; 
-                rPackages = r_ecosystem_track.rPackages.${system};
+                R = R_tracked // {meta = { platforms=prev.R.meta.platforms;};};
+                rPackages = R_tracked.rPackages;
                 }) "
                 .to_string(),
             );
 
-            nixpkgs_pkgs.push("rWrapper".to_string());
+            nixpkgs_pkgs.push("R".to_string()); // that's the overlayed R.
             flake_contents.replace("#%RPACKAGES%", &r_packages)
         }
-        None => flake_contents.replace("#%RPACKAGES%", "rWrapper = null;"),
+        None => flake_contents.replace("#%RPACKAGES%", "R_tracked = null;"),
     };
 
     let mut jupyter_kernels = String::new();
     let jupyter_included = python_packages.iter().any(|(k, _)| k == "jupyter");
     if let Some(r) = &parsed_config.r {
+        if r.ecosystem_tag.is_some() {
+            bail!("[R]ecosystem_tag is no longer in use. We're using nixR now and you need to specify a 'date' instead");
+        } 
         // install R kernel
         if r.packages.contains(&"IRkernel".to_string()) && jupyter_included {
             jupyter_kernels.push_str(
@@ -732,7 +737,7 @@ impl Retriever for PyPiDepsDBRetriever {
                 if newest < self.query_date {
                     trace!("{:?} too old", &self.query_date);
                     page -= 1;
-                    if page == 0 {
+                    if page < 0 {
                         bail!("Could not find entry in pypi-deps-db (arrived at latest entry)");
                     }
                 } else if oldest > self.query_date {
