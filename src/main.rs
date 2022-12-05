@@ -46,6 +46,7 @@ mod python_parsing;
 
 use flake_writer::lookup_github_tag;
 
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 trait CloneStringLossy {
@@ -233,19 +234,8 @@ fn configure_logging(matches: &ArgMatches<'static>) {
         .unwrap();
 }
 
-fn read_config(config_file: &str) -> Result<config::ConfigToml> {
-    let abs_config_path = fs::canonicalize(config_file).context("Could not find config file")?;
-    let raw_config = fs::read_to_string(&abs_config_path).context("Could not read config file")?;
-    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_str(&raw_config)
-        .with_context(|| {
-            ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
-        })?;
-    parsed_config.anysnake2_toml_path = Some(abs_config_path);
-    Ok(parsed_config)
-}
-
 fn switch_to_configured_version(
-    parsed_config: &config::ConfigToml,
+    parsed_config: &config::MinimalConfigToml,
     matches: &ArgMatches<'static>,
     flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
@@ -375,16 +365,18 @@ fn inner_main() -> Result<()> {
         print_version_and_exit();
     }
 
-    let mut parsed_config: config::ConfigToml = read_config(config_file)?;
 
     let flake_dir: PathBuf = [".anysnake2_flake"].iter().collect();
     fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
+
+    let minimal_parsed_config: config::MinimalConfigToml = config::MinimalConfigToml::from_file(config_file)?;
     if cmd != "upgrade" {
         //otherwise you could never upgrade < 1.10 versions
-        switch_to_configured_version(&parsed_config, &matches, &flake_dir)?;
+        switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
     }
 
+    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_file(config_file)?;
     if cmd == "version" {
         //output the version you'd actually be using!
         print_version_and_exit();

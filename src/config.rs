@@ -9,6 +9,13 @@ trait WithDefaultFlakeSource {
     fn default_url() -> String;
 }
 
+//just enough to read the requested version
+#[derive(Deserialize, Debug)]
+pub struct MinimalConfigToml {
+    pub anysnake2_toml_path: Option<PathBuf>,
+    pub anysnake2: Anysnake2,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct ConfigToml {
     #[serde(skip)]
@@ -36,6 +43,9 @@ pub struct ConfigToml {
     pub r: Option<R>,
 }
 
+//todo: refactor
+
+
 impl ConfigToml {
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
         let mut res: ConfigToml = toml::from_str(&raw_config)?;
@@ -47,6 +57,47 @@ impl ConfigToml {
             },
         };
         Ok(res)
+    }
+    pub fn from_file(config_file: &str) -> Result<ConfigToml> {
+        use ex::fs;
+        let abs_config_path =
+            fs::canonicalize(config_file).context("Could not find config file")?;
+        let raw_config =
+            fs::read_to_string(&abs_config_path).context("Could not read config file")?;
+        let mut parsed_config: ConfigToml = Self::from_str(&raw_config)
+            .with_context(|| {
+                crate::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+            })?;
+        parsed_config.anysnake2_toml_path = Some(abs_config_path);
+        Ok(parsed_config)
+    }
+}
+
+impl MinimalConfigToml {
+    pub fn from_str(raw_config: &str) -> Result<MinimalConfigToml> {
+        let mut res: MinimalConfigToml = toml::from_str(&raw_config)?;
+        res.anysnake2.url = match res.anysnake2.url {
+            Some(url) => Some(url),
+            None => match res.anysnake2.use_binary {
+                true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
+                false => Some("github:TyberiusPrime/anysnake2".to_string()),
+            },
+        };
+        Ok(res)
+    }
+
+    pub fn from_file(config_file: &str) -> Result<MinimalConfigToml> {
+        use ex::fs;
+        let abs_config_path =
+            fs::canonicalize(config_file).context("Could not find config file")?;
+        let raw_config =
+            fs::read_to_string(&abs_config_path).context("Could not read config file")?;
+        let mut parsed_config: MinimalConfigToml = Self::from_str(&raw_config)
+            .with_context(|| {
+                crate::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+            })?;
+        parsed_config.anysnake2_toml_path = Some(abs_config_path);
+        Ok(parsed_config)
     }
 }
 
@@ -262,9 +313,9 @@ impl Default for MachNix {
 
 impl WithDefaultFlakeSource for MachNix {
     fn default_rev() -> String {
-        "65266b5cc867fec2cb6a25409dd7cd12251f6107".to_string()  //updated 2022-12-02
-        //"7e14360bde07dcae32e5e24f366c83272f52923f".to_string() // updated 2022-07-11
-       // "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
+        "65266b5cc867fec2cb6a25409dd7cd12251f6107".to_string() //updated 2022-12-02
+                                                               //"7e14360bde07dcae32e5e24f366c83272f52923f".to_string() // updated 2022-07-11
+                                                               // "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
     }
     fn default_url() -> String {
         "github:DavHau/mach-nix".to_string()
@@ -278,7 +329,6 @@ pub struct Flake {
     pub follows: Option<Vec<String>>,
     pub packages: Option<Vec<String>>,
 }
-
 
 #[derive(Deserialize, Debug)]
 pub struct Container {
