@@ -81,6 +81,15 @@ plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev
 lvr = {method = "fetchhg", url="https://hg.sr.ht/~bwe/lvr", rev="db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", hash_db6f0a3254fbd3939d6b6b8c6d1711e7129faba1 = "sha256-r2yDQ4JuOAZ7oWfjat2R/5OcMi0q7BY1QCK/Z9hyeyY=" }
 # pandas="<1.0"
 
+# if you have packages that depend on other packages that you define using the 'method' method
+# you unfortunatly must tell anysnake2 about it by providing a list in overrides
+# like it's done for 'testrepo' (which depends on testrepo2) here.
+testrepo={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo", overrides = ["testrepo2"], rev = "97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", hash_97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f = "sha256-mZw37fLouWrA2L+49UOfUsF1MDy/q5pJImw+zczE4wU=" }
+testrepo2={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo2", rev = "a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", hash_a42420f8ba0a6bc9bda0425cd665515fb92dc2b4 = "sha256-tLz9vDTxQqFZPKkkBOZmmNNEhtf6JK2nwWiBKNH6od8="}
+
+
+
+
 [clones.code] # target directory
 # seperate from python packages so you can clone other stuff as well
 dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd

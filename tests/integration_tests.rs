@@ -401,3 +401,21 @@ fn test_python_310_nixpkgs_2205() {
     assert!(code == 0);
     assert!(stdout.contains("3.5.5"));
 }
+
+#[test]
+fn test_python_buildpackage_interdependency_with_overrides() {
+ let (code, stdout, _stderr) = run_test(
+        "examples/python_buildPackage_interdependency_with_overrides//",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import testrepo; print(testrepo.__version__); print(testrepo.testrepo2.__version__)'",
+        ],
+    );
+    assert!(code == 0);
+    assert!(stdout.contains("0.66"));
+    assert!(stdout.contains("0.33"));
+
+}

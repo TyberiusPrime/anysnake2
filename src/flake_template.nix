@@ -206,9 +206,10 @@
             '';
             patches = [];
           };
+        } 
           #%PYTHON_BUILD_PACKAGES%
           #%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%
-        };
+        ;
       };
     in rec {
       defaultPackage = buildSymlinkImage _args;

@@ -1,4 +1,4 @@
-use crate::config;
+use crate::config::{self, BuildPythonPackageInfo};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
@@ -70,7 +70,7 @@ pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
     python_packages: &[(String, String)],
-    python_build_packages: &HashMap<String, HashMap<String, String>>, // those end up as buildPythonPackages
+    python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
     use_generated_file_instead: bool,
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
@@ -177,7 +177,7 @@ pub fn write_flake(
                 .replace("#%PYTHON_BUILD_PACKAGES%", &out_python_build_packages)
                 .replace(
                     "#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%",
-                    &&out_additional_mkpython_arguments,
+                    &format!("// {{{}}}", out_additional_mkpython_arguments),
                 )
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
@@ -290,7 +290,7 @@ pub fn write_flake(
     if let Some(r) = &parsed_config.r {
         if r.ecosystem_tag.is_some() {
             bail!("[R]ecosystem_tag is no longer in use. We're using nixR now and you need to specify a 'date' instead");
-        } 
+        }
         // install R kernel
         if r.packages.contains(&"IRkernel".to_string()) && jupyter_included {
             jupyter_kernels.push_str(
@@ -496,7 +496,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
 
 fn extract_non_editable_python_packages(
     input: &[(String, String)],
-    build_packages: &HashMap<String, HashMap<String, String>>,
+    build_packages: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
 ) -> Result<Vec<String>> {
     let mut res = Vec::new();
@@ -544,18 +544,8 @@ fn extract_non_editable_python_packages(
     Ok(res)
 }
 
-fn src_to_nix(src: &HashMap<String, String>) -> String {
-    let mut res = Vec::new();
-    for (k, v) in src.iter().sorted_by_key(|x| x.0) {
-        if k != "method" && k != "buildInputs" {
-            res.push(format!("\"{}\" = \"{}\";", k, v));
-        }
-    }
-    res.join("\n")
-}
-
 fn python_version_from_spec(
-    spec: &HashMap<String, String>,
+    spec: &BuildPythonPackageInfo,
     override_version: Option<&str>,
 ) -> String {
     format!(
@@ -583,13 +573,26 @@ fn get_flake_rev(
 }
 
 fn format_python_build_packages(
-    input: &HashMap<String, HashMap<String, String>>,
+    input: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
     flakes_used_for_python_packages: &mut HashSet<String>,
 ) -> Result<String> {
-    let mut res: String = "packagesExtra = [".into();
+    let mut res: String = "".into();
     let mut providers: String = "".into();
+    let mut packages_extra: Vec<String> = Vec::new();
     for (key, spec) in input.iter().sorted_by_key(|x| x.0) {
+        let overrides = match &spec.overrides {
+            Some(ov_packages) => {
+                let mut ov = "overridesPre = [ (self: super: { ".to_string();
+                for p in ov_packages {
+                    ov.push_str(&format!("{} = {}_pkg;\n", p, p));
+                }
+
+                ov.push_str(" } ) ];");
+                ov
+            }
+            None => "".to_string(),
+        };
         match spec
             .get("method")
             .expect("no method in package definition")
@@ -600,35 +603,56 @@ fn format_python_build_packages(
                 let flake_rev = get_flake_rev(flake_name, flakes_config)
                     .with_context(|| format!("python.packages.{}", key))?;
                 res.push_str(&format!(
-                    "({}.mach-nix-build-python-package pkgs mach-nix_ \"{}\")\n",
+                    "{}_pkg = ({}.mach-nix-build-python-package pkgs mach-nix_ \"{}\");\n",
+                    //todo: shohorn the overrides into this?!
+                    flake_name,
                     flake_name,
                     python_version_from_spec(spec, Some(&flake_rev))
                 ));
                 flakes_used_for_python_packages.insert(flake_name.to_string());
+                packages_extra.push(flake_name.to_string());
             }
             _ => {
                 res.push_str(&format!(
-                    "
-              (mach-nix_.buildPythonPackage {{
+                    "{}_pkg = (mach-nix_.buildPythonPackage {{
                 version=\"{}\";
                 src = pkgs.{} {{ # {}
                     {}
                 }};
-              }})",
+              {}
+              }});\n",
+                    key,
                     python_version_from_spec(&spec, None),
                     spec.get("method")
                         .expect("Missing 'method' on python build package definition"),
                     key,
-                    src_to_nix(spec),
+                    spec.src_to_nix(),
+                    overrides
                 ));
+                packages_extra.push(key.to_string());
             }
         }
         providers.push_str(&format!("providers.{} = \"nixpkgs\";\n", key));
     }
-    res.push_str("];");
-    res.push_str("\n");
-    res.push_str(&providers);
-    Ok(res)
+
+    let mut out: String = "// (let ".into();
+    out.push_str(&res);
+    out.push_str("machnix_overrides = (self: super: {");
+    for pkg in packages_extra.iter() {
+        out.push_str(&format!("{} = {}_pkg;\n", pkg, pkg));
+    }
+    out.push_str("} );\n");
+    out.push_str("in { packagesExtra = [");
+    for pkg in packages_extra.iter() {
+        out.push_str(pkg);
+        out.push_str("_pkg ");
+    }
+    out.push_str("]");
+    out.push_str("\n; overridesPre = [ machnix_overrides ];\n");
+    out.push_str("\n");
+    out.push_str(&providers);
+    out.push_str("})\n");
+    Ok(out)
 }
 
 fn pypi_deps_date_to_rev(date: NaiveDate, flake_dir: impl AsRef<Path>) -> Result<String> {

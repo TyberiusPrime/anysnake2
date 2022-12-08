@@ -1,7 +1,7 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
-use config::PythonPackageDefinition;
+use config::{BuildPythonPackageInfo, PythonPackageDefinition};
 use ex::fs;
 use indoc::indoc;
 use lazy_static::lazy_static;
@@ -286,12 +286,12 @@ fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
 ) -> Result<(
     Vec<(String, String)>,
-    HashMap<String, HashMap<String, String>>,
+    HashMap<String, BuildPythonPackageInfo>,
 )> {
     Ok(match &mut parsed_config.python {
         Some(python) => {
             let mut requirement_packages: Vec<(String, String)> = Vec::new();
-            let mut build_packages: HashMap<String, HashMap<String, String>> = HashMap::new();
+            let mut build_packages: HashMap<String, BuildPythonPackageInfo> = HashMap::new();
             for (name, pp) in python.packages.drain() {
                 match pp {
                     PythonPackageDefinition::Requirement(str_package_definition) => {
@@ -1664,7 +1664,7 @@ enum PrefetchHashResult {
 /// if no rev is set, discover it as well
 fn apply_trust_on_first_use(
     config: &config::ConfigToml,
-    python_build_packages: &mut HashMap<String, HashMap<String, String>>,
+    python_build_packages: &mut HashMap<String, BuildPythonPackageInfo>,
     outside_nixpkgs_url: &str,
 ) -> Result<()> {
     if !python_build_packages.is_empty() {
@@ -1819,7 +1819,7 @@ fn apply_trust_on_first_use(
 
 /// helper for apply_trust_on_first_use
 fn store_hash(
-    spec: &mut HashMap<String, String>,
+    spec: &mut BuildPythonPackageInfo,
     doc: &mut toml_edit::Document,
     key: String,
     hash_key: &str,
@@ -1831,7 +1831,7 @@ fn store_hash(
 
 /// helper for discover_rev_on_first_use
 fn store_rev(
-    spec: &mut HashMap<String, String>,
+    spec: &mut BuildPythonPackageInfo,
     doc: &mut toml_edit::Document,
     key: String, // teh package
     rev: &String,
