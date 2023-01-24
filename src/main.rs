@@ -46,7 +46,6 @@ mod python_parsing;
 
 use flake_writer::lookup_github_tag;
 
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 trait CloneStringLossy {
@@ -365,12 +364,11 @@ fn inner_main() -> Result<()> {
         print_version_and_exit();
     }
 
-
     let flake_dir: PathBuf = [".anysnake2_flake"].iter().collect();
     fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
-
-    let minimal_parsed_config: config::MinimalConfigToml = config::MinimalConfigToml::from_file(config_file)?;
+    let minimal_parsed_config: config::MinimalConfigToml =
+        config::MinimalConfigToml::from_file(config_file)?;
     if cmd != "upgrade" {
         //otherwise you could never upgrade < 1.10 versions
         switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
@@ -632,12 +630,7 @@ fn inner_main() -> Result<()> {
                         "ro".to_string(),
                     ));
                     let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-                    let egg_target = fs::read_to_string(egg_link)
-                        .context("could not find egg link")?
-                        .split_once("\n")
-                        .context("No newline in egg-link?")?
-                        .0
-                        .to_string();
+                    let egg_target = parse_egg(egg_link)?;
                     python_paths.push(egg_target)
                 }
                 envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
@@ -1278,7 +1271,8 @@ fn fill_venv(
                 .join(format!("python{}", python_version))
                 .join("site-packages");
             let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-            let paths = fs::read_dir(&source_egg_folder).context("could not read site-packages folder in temp venv")?;
+            let paths = fs::read_dir(&source_egg_folder)
+                .context("could not read site-packages folder in temp venv")?;
             let mut any_found = false;
             for path in paths {
                 let path = path.unwrap().path();
@@ -1618,6 +1612,13 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
         Err(anyhow!("dtach reattachment failed"))
     }
 }
+fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
+    let raw = fs::read_to_string(egg_link)?;
+    Ok(match raw.split_once("\n") {
+        Some(x) => x.0.to_string(),
+        None => raw,
+    })
+}
 
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
@@ -1638,11 +1639,7 @@ fn write_develop_python_path(
         let safe_pkg = safe_python_package_name(pkg);
         let real_target = parent_dir.join(&spec.strip_prefix("editable/").unwrap());
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
-        let egg_target = fs::read_to_string(egg_link)?
-            .split_once("\n")
-            .context("No newline in egg-link?")?
-            .0
-            .to_string();
+        let egg_target = parse_egg(egg_link)?;
         let egg_target =
             egg_target.replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());
 
