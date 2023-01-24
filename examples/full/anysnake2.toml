@@ -108,6 +108,20 @@ packages = [
 	"Rcpp"
 	]
 
+# you can apply overrideAttrs to
+# individual R packages, for those times you really really need to patch 'em
+# see https://nixos.org/manual/nixpkgs/stable/#sec-pkg-overrideAttrs
+# they take a function just like the example below
+[R.override_attrs]
+ACA = '''
+finalAttrs: prevAttrs: {
+postBuild = ''
+	echo "Yes" >$out/override_in_place
+	aoeuaoesuchaoeusch
+'';
+}
+'''
+
 [flakes.hello]
 	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
 	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here

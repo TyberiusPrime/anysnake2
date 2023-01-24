@@ -465,6 +465,8 @@ pub struct R {
     pub nixr_tag: String,
 
     pub ecosystem_tag: Option<String>,
+
+    pub override_attrs: Option<HashMap<String, String>>,
 }
 
 impl R {

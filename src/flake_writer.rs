@@ -259,17 +259,33 @@ pub fn write_flake(
                 &[],
                 &flake_dir,
             )?);
+            let r_override_args = match &r_config.override_attrs {
+                Some(override_attrs) => {
+                    let mut r_override_args = "R_tracked = R_tracked_ // {rPackages = R_tracked_.rPackages // {".to_string();
+                    for (pkg_name, override_nix_func) in override_attrs.iter() {
+                        r_override_args.push_str(&format!(
+                            "{} = (R_tracked.rPackages.{}.overrideAttrs ({}));",
+                            pkg_name, pkg_name, override_nix_func
+                        ));
+                    }
+                    r_override_args.push_str("};};");
+                    r_override_args
+                }
+                None => "R_tracked = R_tracked_;".to_string(),
+            };
 
             let r_packages = format!(
                 "
-                R_tracked = nixR.\"{}\" [{}];
+                R_tracked_ = nixR.\"{}\" [{}];
+                {}
                 ",
                 &r_config.date,
                 r_config
                     .packages
                     .iter()
                     .map(|x| format!("\"{}\"", x))
-                    .join(" ")
+                    .join(" "),
+                r_override_args
             );
             overlays.push(
                 "(final: prev: { 

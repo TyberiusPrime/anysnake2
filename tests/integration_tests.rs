@@ -176,7 +176,9 @@ fn test_basic_projct_folder() {
 
 fn rm_clones(path: &str) {
     let pb = PathBuf::from(path).join("code");
-    std::fs::remove_dir_all(pb).unwrap()
+    if pb.exists() {
+        std::fs::remove_dir_all(pb).unwrap()
+    }
 }
 
 #[test]
@@ -204,13 +206,19 @@ fn test_full() {
 fn test_full_r_packages() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
+    let test_dir = "examples/full";
 
-    rm_clones("examples/full");
+    rm_clones(&test_dir);
     let (_code, stdout, _stderr) = run_test(
-        "examples/full",
+        &test_dir,
         &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"],
     );
     assert!(stdout.contains("ACA_1.1"));
+
+    let override_test_file =
+        PathBuf::from("examples/full").join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
+    assert!(override_test_file.exists());
+    assert_eq!(std::fs::read_to_string(override_test_file).unwrap(), "Yes");
 }
 
 #[test]
@@ -404,7 +412,7 @@ fn test_python_310_nixpkgs_2205() {
 
 #[test]
 fn test_python_buildpackage_interdependency_with_overrides() {
- let (code, stdout, _stderr) = run_test(
+    let (code, stdout, _stderr) = run_test(
         "examples/python_buildPackage_interdependency_with_overrides//",
         &[
             "run",
@@ -417,5 +425,4 @@ fn test_python_buildpackage_interdependency_with_overrides() {
     assert!(code == 0);
     assert!(stdout.contains("0.66"));
     assert!(stdout.contains("0.33"));
-
 }
