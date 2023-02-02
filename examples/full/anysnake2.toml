@@ -115,7 +115,7 @@ packages = [
 [R.override_attrs]
 ACA = '''
 finalAttrs: prevAttrs: {
-postBuild = ''
+buildPhase = ''
 	echo "Yes" >$out/override_in_place
 	aoeuaoesuchaoeusch
 '';

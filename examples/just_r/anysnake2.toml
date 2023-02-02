@@ -31,3 +31,14 @@ packages = [
 
 ]
 
+[R.override_attrs]
+Rcpp = '''
+finalAttrs: prevAttrs: {
+buildPhase = ''
+	echo "Yes" >$out/override_in_place
+	aoeuaoesuchaoeusch
+'';
+}
+'''
+
+
