@@ -261,23 +261,22 @@ pub fn write_flake(
             )?);
             let r_override_args = match &r_config.override_attrs {
                 Some(override_attrs) => {
-                    let mut r_override_args = "R_tracked = R_tracked_ // {rPackages = R_tracked_.rPackages // {".to_string();
+                    let mut r_override_args = "".to_string();
                     for (pkg_name, override_nix_func) in override_attrs.iter() {
-                        r_override_args.push_str(&format!(
-                            "{} = (R_tracked.rPackages.{}.overrideAttrs ({}));",
-                            pkg_name, pkg_name, override_nix_func
-                        ));
+                        r_override_args.push_str(&format!("{} = ({});", pkg_name, override_nix_func));
                     }
-                    r_override_args.push_str("};};");
                     r_override_args
                 }
-                None => "R_tracked = R_tracked_;".to_string(),
+                None => "".to_string(),
             };
 
             let r_packages = format!(
                 "
-                R_tracked_ = nixR.\"{}\" [{}];
-                {}
+                R_tracked = nixR.R_by_date {{
+                    date = \"{}\" ;
+                    r_pkg_names = [{}];
+                    packageOverrideAttrs = {{ {} }};
+                }};
                 ",
                 &r_config.date,
                 r_config
@@ -632,17 +631,31 @@ fn format_python_build_packages(
                 res.push_str(&format!(
                     "{}_pkg = (mach-nix_.buildPythonPackage {{
                 version=\"{}\";
-                src = pkgs.{} {{ # {}
+                src = {} {{ # {}
                     {}
                 }};
+                {}
               {}
               }});\n",
                     key,
                     python_version_from_spec(&spec, None),
-                    spec.get("method")
-                        .expect("Missing 'method' on python build package definition"),
+                    match spec
+                        .get("method")
+                        .expect("Missing 'method' on python build package definition")
+                        .as_ref()
+                    {
+                        "fetchPypi" => "pkgs.python3Packages.fetchPypi".to_string(),
+                        other => format!("pkgs.{other}"),
+                    },
                     key,
                     spec.src_to_nix(),
+                    spec.get("buildPythonPackage_arguments")
+                        .map(|str_including_curly_braces| str_including_curly_braces
+                            .trim()
+                            .trim_matches('{')
+                            .trim_matches('}')
+                            .trim())
+                        .unwrap_or(""),
                     overrides
                 ));
                 packages_extra.push(key.to_string());

@@ -33,10 +33,9 @@ packages = [
 
 [R.override_attrs]
 Rcpp = '''
-finalAttrs: prevAttrs: {
-buildPhase = ''
-	echo "Yes" >$out/override_in_place
-	aoeuaoesuchaoeusch
+old: {
+postInstall = ''
+  echo "Yes" >$out/library/Rcpp/override_in_place
 '';
 }
 '''

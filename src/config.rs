@@ -257,7 +257,7 @@ impl BuildPythonPackageInfo {
     pub fn src_to_nix(&self) -> String {
         let mut res = Vec::new();
         for (k, v) in self.options.iter().sorted_by_key(|x| x.0) {
-            if k != "method" && k != "buildInputs" {
+            if k != "method" && k != "buildInputs" && k != "buildPythonPackage_arguments" {
                 res.push(format!("\"{}\" = \"{}\";", k, v));
             }
         }
@@ -354,7 +354,20 @@ where
                 let string_defs: Result<HashMap<String, String>, D::Error> = def
                     .into_iter()
                     .filter_map(|(k, v)| match v {
-                        toml::Value::String(v) => Some(Ok((k, v))),
+                        toml::Value::String(v) => {
+                            if k == "pkg_option" {
+                                let v = v.trim();
+                                if ! (v.starts_with("{") && v.ends_with("}")) {
+                                    return Some(Err(serde::de::Error::custom(format!(
+                                        "Field {} on python package {} must be the string representwation of the nix attrSet that we shall pass to buildPythonPackage",
+                                        k, pkg_name
+                                    ))));
+                                }
+                            }
+
+                            Some(Ok((k, v)))
+
+                        },
                         toml::Value::Array(_) => {
                             if k != "overrides" {
                                 return Some(Err(serde::de::Error::custom(format!(
@@ -470,8 +483,8 @@ pub struct R {
 }
 
 impl R {
-    fn default_tag() -> String {
-        "5fa155779f1c454fcb92abcdbbcf4372256eb6c6".to_string() // must not be older than 5fa155779f1c454fcb92abcdbbcf4372256eb6c6
+    fn default_tag() -> String { //yes, this is the nixR version
+        "f77d23b8b6ec1c7009d8251edd60590517a54bbf".to_string() // must not be older than 5fa155779f1c454fcb92abcdbbcf4372256eb6c6
     }
 
     fn default_url() -> String {

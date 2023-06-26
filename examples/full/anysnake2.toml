@@ -88,6 +88,46 @@ testrepo={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test
 testrepo2={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo2", rev = "a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", hash_a42420f8ba0a6bc9bda0425cd665515fb92dc2b4 = "sha256-tLz9vDTxQqFZPKkkBOZmmNNEhtf6JK2nwWiBKNH6od8="}
 
 
+# a (complicated) example on how to use a python package from pypi.
+# ideally, ,you'd only need
+# scanpy = {method = "fetchPypi", version="1.9.3"}
+# but machnix has trouble inspecting pyproject.toml projects,
+# so we have to tell it the requiremenths, repeat the pname 
+# on the outside options, etc.
+# [python.packages.scanpy] 
+# method = "fetchPypi"
+# version="1.9.3"
+# buildPythonPackage_arguments="""
+# {
+# format="pyproject";
+# pname = "scanpy";
+# requirements=''
+# anndata>=0.7.4
+# numpy>=1.17.0
+# matplotlib>=3.4
+# pandas>=1.0
+# scipy>=1.4
+# seaborn
+# h5py>=3
+# tqdm
+# scikit-learn>=0.24
+# statsmodels>=0.10.0rc2
+# patsy
+# networkx>=2.3
+# natsort
+# joblib
+# numba>=0.41.0
+# umap-learn>=0.3.10
+# packaging
+# session-info
+# setuptools_scm # don't forget this one.
+# flit
+# '';
+# }
+# """
+# "hash_1.9.3" = "sha256-3+Zfms2fTBdAB5oJn4n6akS28O917K+FJHrUr4WRRNc="
+
+
 
 
 [clones.code] # target directory
@@ -114,10 +154,9 @@ packages = [
 # they take a function just like the example below
 [R.override_attrs]
 ACA = '''
-finalAttrs: prevAttrs: {
-buildPhase = ''
-	echo "Yes" >$out/override_in_place
-	aoeuaoesuchaoeusch
+old: {
+postInstall = ''
+  echo "Yes" >$out/library/ACA/override_in_place
 '';
 }
 '''

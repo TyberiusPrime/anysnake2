@@ -215,10 +215,10 @@ fn test_full_r_packages() {
     );
     assert!(stdout.contains("ACA_1.1"));
 
-    let override_test_file =
-        PathBuf::from("examples/full").join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
+    let override_test_file = PathBuf::from("examples/full")
+        .join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
     assert!(override_test_file.exists());
-    assert_eq!(std::fs::read_to_string(override_test_file).unwrap(), "Yes");
+    assert_eq!(std::fs::read_to_string(override_test_file).unwrap(), "Yes\n");
 }
 
 #[test]
@@ -268,6 +268,10 @@ fn test_just_r() {
         &["run", "--", "R", "-e", "'library(Rcpp); sessionInfo()'"],
     );
     assert!(stdout.contains("Rcpp_1.0.8.3"));
+    let override_test_file = PathBuf::from("examples/just_r")
+        .join(".anysnake2_flake/result/rootfs/R_libs/Rcpp/override_in_place");
+    assert!(override_test_file.exists());
+
 }
 
 #[test]
@@ -425,4 +429,29 @@ fn test_python_buildpackage_interdependency_with_overrides() {
     assert!(code == 0);
     assert!(stdout.contains("0.66"));
     assert!(stdout.contains("0.33"));
+}
+
+#[test]
+fn test_just_python_pypi() {
+    // needs to be copied to test the tofu functionality.
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
+        "examples//just_python_package_from_pypi",
+        &["run", "--", "python", "--version"],
+    );
+    assert!(stdout.contains("3.10.4"));
+
+    let td_path = td.path().to_string_lossy();
+
+    let (_code, stdout, _stderr) = run_test(
+        &td_path,
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import scanpy; print(scanpy.__version__)'",
+        ],
+    );
+
+    assert!(stdout.contains("1.9.3"));
 }
