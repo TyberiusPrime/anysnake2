@@ -166,7 +166,7 @@ pub fn write_flake(
                 "pypi-deps-db",
                 "github:DavHau/pypi-deps-db",
                 &pypi_debs_db_rev,
-                &["nixpkgs", "mach-nix"],
+                &["mach-nix"],
                 &flake_dir,
                 ecosystem_date > chrono::NaiveDate::from_ymd(2021, 04, 30),
             )?);
