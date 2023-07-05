@@ -110,7 +110,7 @@ pub fn write_flake(
         "flake-utils",
         &parsed_config.flake_util.url,
         &parsed_config.flake_util.rev,
-        &["nixpkgs"],
+        &[],
         &flake_dir,
     )?);
 
@@ -158,7 +158,7 @@ pub fn write_flake(
                 "mach-nix",
                 &parsed_config.mach_nix.url,
                 &parsed_config.mach_nix.rev,
-                &["nixpkgs", "flake-utils", "pypi-deps-db"],
+                &["pypi-deps-db"],
                 &flake_dir,
             )?);
 
