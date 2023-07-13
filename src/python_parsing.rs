@@ -106,7 +106,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
                 }
             }
         }
-        None => bail!("no [options] in setup.cfg"),
+        None => {},//bail!("no [options] in setup.cfg"),
     };
     Ok(res)
     //Err(anyhow!("Could not parse"))

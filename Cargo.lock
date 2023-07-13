@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "anysnake2"
-version = "1.13.1"
+version = "1.13.3"
 dependencies = [
  "anyhow",
  "base64",
