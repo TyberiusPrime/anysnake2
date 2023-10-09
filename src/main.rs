@@ -1,6 +1,6 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
-use clap::{value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{value_t, App, AppSettings, Arg, Argmatches, Subcommand};
 use config::{BuildPythonPackageInfo, PythonPackageDefinition};
 use ex::fs;
 use indoc::indoc;
@@ -1014,8 +1014,8 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                                         .current_dir(&final_dir)
                                         .output()
                                         .context(format!(
-                                            "Failed to execute checkout revision {} in {}",
-                                            v,
+                                            "Failed to execute checkout revision {v} in {target_dir}",
+                                            v=v,
                                             target_dir = target_dir,
                                         ))
                                 })?;
@@ -1393,15 +1393,20 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 
     //where nix goes on the hunt
     //
-    let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &whoami::username()]
-        .iter()
-        .collect();
+    //test_python_pip_reinstall_if_venv_changes
+    use uzers::{get_current_uid, get_user_by_uid};
+    let user: String = get_user_by_uid(get_current_uid())
+        .unwrap()
+        .name()
+        .to_string_lossy()
+        .to_string();
+    let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &user].iter().collect();
     let flake_hash = sha256::digest(
         flake_dir
             .as_ref()
             .to_owned()
             .into_os_string()
-            .to_string_lossy(),
+            .to_string_lossy().to_string(),
     );
 
     //first we store and hash the flake itself and record tha.
@@ -1801,10 +1806,7 @@ fn apply_trust_on_first_use(
                 }
 
                 "fetchPypi" => {
-                    let pname = spec
-                        .get("pname")
-                        .unwrap_or(key)
-                        .to_string();
+                    let pname = spec.get("pname").unwrap_or(key).to_string();
                     let version = spec
                         .get("version")
                         .expect("missing version on fetchPypI")
@@ -1964,11 +1966,11 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
 
 fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
     /*
-     * nix-universal-prefetch pythonPackages.fetchPypi \
-    --pname home-assistant-frontend \
-    --version 20200519.1
-149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
-*/
+         * nix-universal-prefetch pythonPackages.fetchPypi \
+        --pname home-assistant-frontend \
+        --version 20200519.1
+    149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
+    */
     let nix_prefetch_scripts = format!("{}#nix-universal-prefetch", outside_nixpkgs_url);
     let nix_prefetch_args = &[
         "shell",
@@ -1976,8 +1978,10 @@ fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> 
         "-c",
         "nix-universal-prefetch",
         "pythonPackages.fetchPypi",
-        "--pname", pname,
-        "--version", version,
+        "--pname",
+        pname,
+        "--version",
+        version,
     ];
     let stdout = Command::new("nix")
         .args(nix_prefetch_args)
