@@ -168,7 +168,7 @@ pub fn write_flake(
                 &pypi_debs_db_rev,
                 &["mach-nix"],
                 &flake_dir,
-                ecosystem_date > chrono::NaiveDate::from_ymd(2021, 04, 30),
+                ecosystem_date > chrono::NaiveDate::from_ymd_opt(2021, 04, 30).unwrap(),
             )?);
 
             flake_contents
@@ -685,7 +685,7 @@ fn format_python_build_packages(
 }
 
 fn pypi_deps_date_to_rev(date: NaiveDate, flake_dir: impl AsRef<Path>) -> Result<String> {
-    let query_date = date.and_hms(0, 0, 0);
+    let query_date = date.and_hms_opt(0, 0, 0).unwrap();
     //chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
     //.context("Failed to parse pypi-deb-db date")?;
     let lowest =

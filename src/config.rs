@@ -483,7 +483,8 @@ pub struct R {
 }
 
 impl R {
-    fn default_tag() -> String { //yes, this is the nixR version
+    fn default_tag() -> String {
+        //yes, this is the nixR version
         "f77d23b8b6ec1c7009d8251edd60590517a54bbf".to_string() // must not be older than 5fa155779f1c454fcb92abcdbbcf4372256eb6c6
     }
 
@@ -494,11 +495,13 @@ impl R {
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
     const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
-    use chrono::TimeZone;
-    Ok(chrono::Utc
-        .datetime_from_str(&format!("{} 00:00:00", s), FORMAT)?
-        .naive_utc()
-        .date())
+    dbg!(&s);
+    dbg!(&FORMAT);
+    Ok(
+        chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00:00", s), FORMAT)?
+            .and_utc()
+            .date_naive(),
+    )
 }
 
 impl ConfigToml {

@@ -1,6 +1,6 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
-use clap::{value_t, App, AppSettings, Arg, Argmatches, Subcommand};
+use clap::{Arg, ArgMatches};
 use config::{BuildPythonPackageInfo, PythonPackageDefinition};
 use ex::fs;
 use indoc::indoc;
@@ -123,91 +123,94 @@ fn install_ctrl_c_handler() -> Result<()> {
     })?)
 }
 
-fn parse_args() -> ArgMatches<'static> {
-    App::new("Anysnake2")
+fn parse_args() -> ArgMatches {
+    clap::Command::new("Anysnake2")
         .version(VERSION)
         .author("Florian Finkernagel <finkernagel@imt.uni-marburg.de>")
         .about("Sane version declaration and container generation using nix")
-        .setting(AppSettings::AllowExternalSubcommands)
+        .allow_external_subcommands(true)
         .arg(
-            //Arg::with_name("no-version-switch")
-            Arg::from_usage("--no-version-switch 'do not change to toml file defined version'")
+            Arg::new("no-version-switch")
+                .long("no-version-switch")
+                .help("do not change to toml file defined version")
+                .action(clap::ArgAction::SetTrue)
             )
         .arg(
-            Arg::with_name("config_file")
-                .short("c")
+            Arg::new("config_file")
+                .short('c')
                 .long("config")
                 .value_name("FILE")
                 .help("Sets a custom config file")
-                .takes_value(true),
         )
         .arg(
-            Arg::with_name("verbose")
-                .short("v")
+            Arg::new("verbose")
+                .short('v')
                 .long("verbose")
-                .takes_value(true)
+                .value_name("LEVEL")
                 //.default_value("2")
                 .help("Sets the level of verbosity (0=quiet,1=error/warnings, 2=info (default), 3=debug, 4=trace, 5=trace)"),
         )
         .arg(
-            Arg::with_name("_running_version")
+            Arg::new("_running_version")
                 .long("_running_version")
                 .help("internal use only")
-                .hidden(true)
-                .takes_value(true),
+                .hide(true)
+                .action(clap::ArgAction::Set)
         )
         .subcommand(
-            SubCommand::with_name("build").about("build containers (see subcommands), but do not run anything")
+            clap::Command::new("build").about("build containers (see subcommands), but do not run anything")
             .subcommand(
-                SubCommand::with_name("flake").about("write just the flake, but don't nix build anything"),
+                clap::Command::new("flake").about("write just the flake, but don't nix build anything"),
             )
             .subcommand(
-                SubCommand::with_name("rootfs").about("build rootfs container (used for singularity)"),
+                clap::Command::new("rootfs").about("build rootfs container (used for singularity)"),
             )
             .subcommand(
-                SubCommand::with_name("sif").about("build SIF (singularity) container image (anysnake2_container.sif)"),
+                clap::Command::new("sif").about("build SIF (singularity) container image (anysnake2_container.sif)"),
             )
 
         )
         .subcommand(
-            SubCommand::with_name("config")
+            clap::Command::new("config")
                 .about("dump different example anysnake2.toml to stdout")
-                .subcommand(SubCommand::with_name("basic"))
-                .subcommand(SubCommand::with_name("minimal"))
-                .subcommand(SubCommand::with_name("full"))
+                .subcommand(clap::Command::new("basic"))
+                .subcommand(clap::Command::new("minimal"))
+                .subcommand(clap::Command::new("full"))
         )
-        .subcommand(SubCommand::with_name("develop").about("run nix develop, and go back to this dir with your favourite shell"))
-        .subcommand(SubCommand::with_name("version").about("the version actually used by the config file. Error if no config file is present (use --version for the version of this binary"))
-        .subcommand(SubCommand::with_name("attach").about("attach to previously running session"))
+        .subcommand(clap::Command::new("develop").about("run nix develop, and go back to this dir with your favourite shell"))
+        .subcommand(clap::Command::new("version").about("the version actually used by the config file. Error if no config file is present (use --version for the version of this binary"))
+        .subcommand(clap::Command::new("attach").about("attach to previously running session"))
 
         .subcommand(
-            SubCommand::with_name("upgrade")
+            clap::Command::new("upgrade")
             .arg(
-                Arg::with_name("what").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+                Arg::new("what").num_args(1..).action(clap::ArgAction::Append), //.last(true), // Indicates that `slop` is only accessible after `--`.
                 ).about("query remotes and upgrade anysnake2.toml accordingly")
         )
         .subcommand(
-            SubCommand::with_name("run")
+            clap::Command::new("run")
                 .about("run arbitray commands in container (w/o any pre/post bash scripts)")
                 .arg(
-                    Arg::with_name("slop").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+                    Arg::new("slop").num_args(1..).action( clap::ArgAction::Append) , //.last(true), // Indicates that `slop` is only accessible after `--`.
                 ),
         )
         .arg(
-            Arg::with_name("slop").takes_value(true).multiple(true), //.last(true), // Indicates that `slop` is only accessible after `--`.
+            Arg::new("slop").num_args(1..).action( clap::ArgAction::Append,) //.last(true), // Indicates that `slop` is only accessible after `--`.
         ) //todo: argument passing to the scripts? 
         .get_matches()
 }
 
-fn handle_config_command(matches: &ArgMatches<'static>) -> Result<bool> {
-    if let ("config", Some(sc)) = matches.subcommand() {
-        match sc.subcommand().0 {
-            "minimal" => println!(
+fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
+    if let Some(("config", sc)) = matches.subcommand() {
+        match sc.subcommand() {
+            Some(("minimal", _)) => println!(
                 "{}",
                 std::include_str!("../examples/minimal/anysnake2.toml")
             ),
-            "full" => println!("{}", std::include_str!("../examples/full/anysnake2.toml")),
-            "basic" => {
+            Some(("full", _)) => {
+                println!("{}", std::include_str!("../examples/full/anysnake2.toml"))
+            }
+            Some(("basic", _)) => {
                 // includes basic
                 println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
             }
@@ -221,8 +224,8 @@ fn handle_config_command(matches: &ArgMatches<'static>) -> Result<bool> {
     }
 }
 
-fn configure_logging(matches: &ArgMatches<'static>) {
-    let verbosity = value_t!(matches, "verbose", usize).unwrap_or(2);
+fn configure_logging(matches: &ArgMatches) {
+    let verbosity = *matches.get_one::<usize>("verbose").unwrap_or(&2);
     stderrlog::new()
         .module(module_path!())
         .quiet(verbosity == 0)
@@ -235,17 +238,18 @@ fn configure_logging(matches: &ArgMatches<'static>) {
 
 fn switch_to_configured_version(
     parsed_config: &config::MinimalConfigToml,
-    matches: &ArgMatches<'static>,
+    matches: &ArgMatches,
     flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
     if parsed_config.anysnake2.rev == "dev" {
         info!("Using development version of anysnake");
-    } else if matches.is_present("no-version-switch") {
+    } else if matches.contains_id("no-version-switch") {
         info!("--no-version-switch was passed, not switching versions");
     } else if parsed_config.anysnake2.rev
-        != matches
-            .value_of("_running_version")
-            .unwrap_or("noversionspecified")
+        != *matches
+            .get_one::<String>("_running_version")
+            .map(|x| x.clone())
+            .unwrap_or_else(|| "noversionspecified".to_string())
     {
         info!("restarting with version {}", &parsed_config.anysnake2.rev);
         let repo = format!(
@@ -338,18 +342,19 @@ fn inner_main() -> Result<()> {
         return Ok(());
     };
 
-    let top_level_slop: Vec<&str> = match matches.values_of("slop") {
-        Some(slop) => slop.collect(),
+    let top_level_slop: Vec<String> = match matches.get_many::<String>("slop") {
+        Some(slop) => slop.cloned().collect(),
         None => Vec::new(),
     };
+    dbg!(&matches.subcommand());
 
     let cmd = match matches.subcommand() {
-        (name, Some(_subcommand)) => name,
+        Some((name, _subcommand)) => name,
         _ => {
             if top_level_slop.is_empty() {
                 "default"
             } else {
-                top_level_slop[0]
+                &top_level_slop[0]
             }
         }
     };
@@ -358,8 +363,11 @@ fn inner_main() -> Result<()> {
         bail!("Can't run anysnake within singularity container - nesting not supported");
     }
 
-    let config_file = matches.value_of("config_file").unwrap_or("anysnake2.toml");
-    if cmd == "version" && !Path::new(config_file).exists() {
+    let config_file = matches
+        .get_one::<String>("config_file")
+        .map(|x| x.clone())
+        .unwrap_or_else(|| "anysnake2.toml".to_string());
+    if cmd == "version" && !Path::new(&config_file).exists() {
         //output the version of binary
         print_version_and_exit();
     }
@@ -368,13 +376,13 @@ fn inner_main() -> Result<()> {
     fs::create_dir_all(&flake_dir)?; //we must create it now, so that we can store the anysnake tag lookup
 
     let minimal_parsed_config: config::MinimalConfigToml =
-        config::MinimalConfigToml::from_file(config_file)?;
+        config::MinimalConfigToml::from_file(&config_file)?;
     if cmd != "upgrade" {
         //otherwise you could never upgrade < 1.10 versions
         switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
     }
 
-    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_file(config_file)?;
+    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_file(&config_file)?;
     if cmd == "version" {
         //output the version you'd actually be using!
         print_version_and_exit();
@@ -400,10 +408,10 @@ fn inner_main() -> Result<()> {
         return upgrade(
             matches
                 .subcommand()
-                .1
                 .unwrap()
-                .values_of("what")
-                .map(|x| x.collect()),
+                .1
+                .get_many::<String>("what")
+                .map(|x| x.cloned().collect()),
             &parsed_config,
             use_generated_file_instead,
         );
@@ -452,14 +460,14 @@ fn inner_main() -> Result<()> {
         use_generated_file_instead,
     )?;
 
-    if let ("build", Some(sc)) = matches.subcommand() {
+    if let Some(("build", sc)) = matches.subcommand() {
         {
-            match sc.subcommand().0 {
-                "flake" => {
+            match sc.subcommand() {
+                Some(("flake", _)) => {
                     println!("Writing just flake/flake.nix");
                     rebuild_flake(use_generated_file_instead, "flake", &flake_dir)?;
                 }
-                "sif" => {
+                Some(("sif", _)) => {
                     println!("Building sif in flake/result/...sif");
                     rebuild_flake(
                         use_generated_file_instead,
@@ -467,7 +475,7 @@ fn inner_main() -> Result<()> {
                         &flake_dir,
                     )?;
                 }
-                "rootfs" => {
+                Some(("rootfs", _)) => {
                     println!("Building rootfs in flake/result");
                     rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
                 }
@@ -534,9 +542,9 @@ fn inner_main() -> Result<()> {
             let mut post_run_outside: Option<String> = None;
 
             if cmd == "run" {
-                let slop = matches.subcommand().1.unwrap().values_of("slop");
-                let slop: Vec<&str> = match slop {
-                    Some(slop) => slop.collect(),
+                let slop = matches.subcommand().unwrap().1.get_many::<String>("slop");
+                let slop: Vec<String> = match slop {
+                    Some(slop) => slop.cloned().collect(),
                     None => {
                         bail!("ad hoc command (=run) passed, but nothing to actually run passed")
                     }
@@ -1406,7 +1414,8 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
             .as_ref()
             .to_owned()
             .into_os_string()
-            .to_string_lossy().to_string(),
+            .to_string_lossy()
+            .to_string(),
     );
 
     //first we store and hash the flake itself and record tha.
@@ -1515,7 +1524,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
 }
 
 fn upgrade(
-    what: Option<Vec<&str>>,
+    what: Option<Vec<String>>,
     parsed_config: &config::ConfigToml,
     use_generated_file_instead: bool,
 ) -> Result<()> {
