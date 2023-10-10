@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 
 anyhow = {version="1.0.44", features=["backtrace"]}
-base64 = "0.13.0"
+base64 = "0.21.4"
 chrono = "0.4"
 clap = "4.4.6"
 ctrlc = {version="3.2.1", features = ["termination"] }

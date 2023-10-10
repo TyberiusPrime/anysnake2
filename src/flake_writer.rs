@@ -722,7 +722,8 @@ struct PyPiDepsDBRetriever {
 
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
     let usrpw = String::from(user) + ":" + pass;
-    String::from("Basic ") + &base64::encode(usrpw.as_bytes())
+    use base64::Engine;
+    String::from("Basic ") + &base64::engine::general_purpose::STANDARD.encode(usrpw.as_bytes())
 }
 
 pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
