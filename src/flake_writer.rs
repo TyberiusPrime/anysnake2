@@ -629,16 +629,18 @@ fn format_python_build_packages(
             }
             _ => {
                 res.push_str(&format!(
-                    "{}_pkg = (mach-nix_.buildPythonPackage {{
-                version=\"{}\";
-                src = {} {{ # {}
-                    {}
+                    "{key}_pkg = (mach-nix_.buildPythonPackage rec {{ 
+                pname = \"{key}\";
+                version=\"{version}\";
+                src = {src_method} {{ # {src_comment}
+                    {src_spec}
                 }};
-                {}
-              {}
+                {arguments}
+              {overrides}
               }});\n",
-                    key,
-                    python_version_from_spec(&spec, None),
+                    key=key,
+                    version=python_version_from_spec(&spec, None),
+                    src_method=
                     match spec
                         .get("method")
                         .expect("Missing 'method' on python build package definition")
@@ -647,16 +649,16 @@ fn format_python_build_packages(
                         "fetchPypi" => "pkgs.python3Packages.fetchPypi".to_string(),
                         other => format!("pkgs.{other}"),
                     },
-                    key,
-                    spec.src_to_nix(),
-                    spec.get("buildPythonPackage_arguments")
+                    src_comment=key,
+                    src_spec=spec.src_to_nix(),
+                    arguments=spec.get("buildPythonPackage_arguments")
                         .map(|str_including_curly_braces| str_including_curly_braces
                             .trim()
                             .trim_matches('{')
                             .trim_matches('}')
                             .trim())
                         .unwrap_or(""),
-                    overrides
+                    overrides=overrides
                 ));
                 packages_extra.push(key.to_string());
             }

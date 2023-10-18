@@ -256,10 +256,14 @@ impl BuildPythonPackageInfo {
 
     pub fn src_to_nix(&self) -> String {
         let mut res = Vec::new();
+        let inherit_pname: bool = self.options.get("method").map_or(false, |x| x == "fetchPypi");
         for (k, v) in self.options.iter().sorted_by_key(|x| x.0) {
             if k != "method" && k != "buildInputs" && k != "buildPythonPackage_arguments" {
                 res.push(format!("\"{}\" = \"{}\";", k, v));
             }
+        }
+        if inherit_pname && !self.options.contains_key("pname") {
+            res.push("inherit pname;".to_string());
         }
         res.join("\n")
     }

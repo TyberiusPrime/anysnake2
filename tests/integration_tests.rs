@@ -101,11 +101,12 @@ fn test_just_python() {
             "--",
             "python",
             "-c",
-            "'import pandas; print(pandas.__version__)'",
+            "'import pandas; print(pandas.__version__); import dppd; print(dppd.__version__)'",
         ],
     );
 
     assert!(stdout.contains("1.5.1"));
+    assert!(stdout.contains("0.24"));
 
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
     dbg!(&stdout);

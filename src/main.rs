@@ -1372,7 +1372,6 @@ struct NixBuildOutput {
     outputs: NixBuildOutputs,
 }
 
-
 fn prefetch_flake(url_without_hash: &str) -> Result<String> {
     debug!("nix prefetching flake {}", &url_without_hash);
     run_without_ctrl_c(|| {
@@ -1393,15 +1392,13 @@ fn prefetch_flake(url_without_hash: &str) -> Result<String> {
 fn register_gc_root(store_path: &str, symlink: &Path) -> Result<()> {
     debug!("registering gc root for {} at {:?}", &store_path, &symlink);
     run_without_ctrl_c(|| {
-        let args = [
+        let output = std::process::Command::new("nix-store")
+            .args(&[
                 "--realise",
                 store_path,
                 "--add-root",
                 &symlink.to_string_lossy(),
-            ];
-        dbg!(&args); 
-        let output = std::process::Command::new("nix-store")
-            .args(&args)
+            ])
             .output()?;
         if !output.status.success() {
             Err(anyhow!("nix-store realise failed"))
