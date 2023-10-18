@@ -500,6 +500,8 @@ fn inner_main() -> Result<()> {
 
         let build_output: PathBuf = flake_dir.join("result/rootfs");
         let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
+                                                                         //
+        //early error exit if you try to run an non-existant command
         if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
             info!("Rebuilding flake");
             rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
@@ -1777,10 +1779,18 @@ fn apply_trust_on_first_use(
 
                 "fetchPypi" => {
                     let pname = spec.get("pname").unwrap_or(key).to_string();
-                    let version = spec
+                    let version = match spec
                         .get("version")
-                        .expect("missing version on fetchPypI")
-                        .to_string();
+                        {
+                            Some(ver) => ver.to_string(),
+                            None => {
+                                println!("Retrieving current version for {} from pypi, updating your anysnake2.toml", key);
+                                let version = get_newest_pipi_version(&pname)?;
+                                store_version(spec, &mut doc, key.to_owned(), &version);
+                                println!("Received version {}", &version);
+                                version
+                            }
+                        };
 
                     hash_key = format!("hash_{}", version);
                     if !spec.contains_key(&hash_key) {
@@ -1835,6 +1845,18 @@ fn store_rev(
     doc["python"]["packages"][key]["rev"] = value(rev);
     spec.insert("rev".to_string(), rev.to_owned());
 }
+
+fn store_version(
+    spec: &mut BuildPythonPackageInfo,
+    doc: &mut toml_edit::Document,
+    key: String,
+    version: &String,
+) -> () {
+    doc["python"]["packages"][key]["version"] = value(version);
+    spec.insert("version".to_string(), version.to_owned());
+}
+
+
 
 fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
     let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
@@ -1933,6 +1955,16 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
     println!("before convert: {}, after: {}", &old_format, &new_format);
     Ok(PrefetchHashResult::Hash(new_format))
 }
+
+fn get_newest_pipi_version(package_name: &str) -> Result<String> {
+    use flake_writer::{ get_proxy_req}; //todo: refactor out of flake_writer
+    let json  = get_proxy_req()?.get(&format!("https://pypi.org/pypi/{package_name}/json")).call()?.into_string()?;
+    let json: serde_json::Value = serde_json::from_str(&json)?;
+    let version = json["info"]["version"].as_str().context("no version in json")?;
+    Ok(version.to_string())
+
+}
+
 
 fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
     /*

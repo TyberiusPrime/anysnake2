@@ -455,4 +455,22 @@ fn test_just_python_pypi() {
     );
 
     assert!(stdout.contains("1.9.3"));
+
+    let (_code, stdout, _stderr) = run_test(
+        &td_path,
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import dppd; print(\"dppd_version=\", dppd.__version__)'",
+        ],
+    );
+    assert!(stdout.contains("dppd_version="));
+    dbg!(&stdout);
+    let dppd_version = stdout.trim().split_once("dppd_version=").unwrap().1.trim();
+    dbg!(dppd_version);
+    let dppd_version: Vec<u32> = dppd_version.split(".").map(|x| x.parse::<u32>().unwrap()).collect();
+    dbg!(&dppd_version);
+    assert!(dppd_version >= vec![0u32, 25]);
 }
