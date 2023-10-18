@@ -346,7 +346,6 @@ fn inner_main() -> Result<()> {
         Some(slop) => slop.cloned().collect(),
         None => Vec::new(),
     };
-    dbg!(&matches.subcommand());
 
     let cmd = match matches.subcommand() {
         Some((name, _subcommand)) => name,
@@ -1373,23 +1372,68 @@ struct NixBuildOutput {
     outputs: NixBuildOutputs,
 }
 
-fn symlink_for_sure<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> Result<()> {
-    debug!(
-        "symlink_for_sure {:?} <- {:?}",
-        &original.as_ref(),
-        &link.as_ref()
-    );
-    if fs::read_link(&link).is_ok() {
-        // ie it existed...
-        debug!("removing old symlink {:?}", &link.as_ref());
-        fs::remove_file(&link)?;
-    }
-    std::os::unix::fs::symlink(&original, &link).with_context(|| {
-        format!(
-            "Failed to symlink {:?} to {:?}",
-            &original.as_ref(),
-            &link.as_ref()
-        )
+
+fn prefetch_flake(url_without_hash: &str) -> Result<String> {
+    debug!("nix prefetching flake {}", &url_without_hash);
+    run_without_ctrl_c(|| {
+        let output = std::process::Command::new("nix")
+            .args(&["flake", "prefetch", url_without_hash, "--json"])
+            .output()?;
+        if !output.status.success() {
+            Err(anyhow!("nix build failed"))
+        } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
+            //now from the gc_dir
+            Ok(j.storePath)
+        }
+    })
+}
+
+fn register_gc_root(store_path: &str, symlink: &Path) -> Result<()> {
+    debug!("registering gc root for {} at {:?}", &store_path, &symlink);
+    run_without_ctrl_c(|| {
+        let args = [
+                "--realise",
+                store_path,
+                "--add-root",
+                &symlink.to_string_lossy(),
+            ];
+        dbg!(&args); 
+        let output = std::process::Command::new("nix-store")
+            .args(&args)
+            .output()?;
+        if !output.status.success() {
+            Err(anyhow!("nix-store realise failed"))
+        } else {
+            Ok(())
+        }
+    })
+}
+
+fn nix_build_flake(url: &str) -> Result<String> {
+    run_without_ctrl_c(|| {
+        let output = std::process::Command::new("nix")
+            .args(&[
+                "build",
+                url,
+                "--max-jobs",
+                "auto",
+                "--cores",
+                "4",
+                "--no-link",
+                "--json",
+            ])
+            .output()?;
+        if !output.status.success() {
+            Err(anyhow!("nix build failed"))
+        } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("{}", stdout);
+            let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout)?;
+            let j = j.into_iter().next().unwrap();
+            Ok(j.outputs.out)
+        }
     })
 }
 
@@ -1399,98 +1443,18 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     let gc_roots = flake_dir.as_ref().join(".gcroots");
     fs::create_dir_all(&gc_roots)?;
 
-    //where nix goes on the hunt
-    //
-    //test_python_pip_reinstall_if_venv_changes
-    use uzers::{get_current_uid, get_user_by_uid};
-    let user: String = get_user_by_uid(get_current_uid())
-        .unwrap()
-        .name()
-        .to_string_lossy()
-        .to_string();
-    let gc_per_user_base: PathBuf = ["/nix/var/nix/gcroots/per-user", &user].iter().collect();
-    let flake_hash = sha256::digest(
-        flake_dir
-            .as_ref()
-            .to_owned()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string(),
-    );
-
-    //first we store and hash the flake itself and record tha.
     let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
+    //first we store and hash the flake itself and record tha.
     let flake_symlink_here = gc_roots.join(&without_hash.replace("/", "_"));
     if !flake_symlink_here.exists() {
-        debug!("nix prefetching flake {}", &without_hash);
-        run_without_ctrl_c(|| {
-            let output = std::process::Command::new("nix")
-                .args(&["flake", "prefetch", without_hash, "--json"])
-                .output()?;
-            if !output.status.success() {
-                Err(anyhow!("nix build failed"))
-            } else {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
-                symlink_for_sure(&j.storePath, &flake_symlink_here)?;
-                symlink_for_sure(
-                    &gc_roots
-                        .canonicalize()?
-                        .join(&without_hash.replace("/", "_")),
-                    &gc_per_user_base.join(&format!(
-                        "{}_{}",
-                        &flake_hash,
-                        &without_hash.replace("/", "_")
-                    )),
-                )?;
-                //now from the gc_dir
-                Ok(())
-            }
-        })?;
+        let store_path = prefetch_flake(&without_hash)?;
+        register_gc_root(&store_path, &flake_symlink_here)?;
     }
 
-    //now the nix build.
-
-    let out_dir = gc_roots.join(&url.replace("/", "_"));
-    let rev_file = gc_roots.join(format!("{}.rev", url.replace("/", "_")));
-    let last = fs::read_to_string(&rev_file).unwrap_or_else(|_| "".to_string());
-    if last != url || !out_dir.exists() {
-        fs::remove_file(&out_dir).ok();
-        fs::write(&rev_file, &url).ok();
-        debug!("nix building {}", &url);
-
-        let store_path = run_without_ctrl_c(|| {
-            let output = std::process::Command::new("nix")
-                .args(&[
-                    "build",
-                    url,
-                    "--max-jobs",
-                    "auto",
-                    "--cores",
-                    "4",
-                    "--no-link",
-                    "--json",
-                ])
-                .output()?;
-            if !output.status.success() {
-                Err(anyhow!("nix build failed"))
-            } else {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                println!("{}", stdout);
-                let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout)?;
-                let j = j.into_iter().next().unwrap();
-                Ok(j.outputs.out)
-            }
-        })?;
-        symlink_for_sure(store_path, &out_dir)?;
-        symlink_for_sure(
-            &out_dir
-                .parent()
-                .context("parent not found")?
-                .canonicalize()?
-                .join(&url.replace("/", "_")),
-            &gc_per_user_base.join(&format!("{}_{}", &flake_hash, &url.replace("/", "_"))),
-        )?;
+    let build_symlink_here = gc_roots.join(url.replace("/", "_"));
+    if !build_symlink_here.exists() {
+        let store_path = nix_build_flake(&url)?;
+        register_gc_root(&store_path, &build_symlink_here)?;
     }
     Ok(())
 }

@@ -495,8 +495,6 @@ impl R {
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
     const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
-    dbg!(&s);
-    dbg!(&FORMAT);
     Ok(
         chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00:00", s), FORMAT)?
             .and_utc()
