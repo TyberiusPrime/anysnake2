@@ -55,7 +55,7 @@ fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir
     );
     ) */
     let status = Command::new("bash")
-        .args(&[
+        .args([
             "-c",
             &format!("cp {}/* {} -a", cwd, &td.path().to_string_lossy()[..]),
         ])
@@ -190,7 +190,7 @@ fn test_full() {
     let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "--version"]);
     assert!(stdout.contains("4.1.1"));
     let out = Command::new("git")
-        .args(&["log"])
+        .args(["log"])
         .current_dir("examples/full/code/dppd_plotnine")
         .output()
         .expect("git log failed");
@@ -208,9 +208,9 @@ fn test_full_r_packages() {
     let _guad = lock.lock().unwrap();
     let test_dir = "examples/full";
 
-    rm_clones(&test_dir);
+    rm_clones(test_dir);
     let (_code, stdout, _stderr) = run_test(
-        &test_dir,
+        test_dir,
         &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"],
     );
     assert!(stdout.contains("ACA_1.1"));
@@ -319,8 +319,8 @@ fn test_python_pip_reinstall_if_venv_changes() {
     let second =
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.10/bin/hello")).unwrap();
 
-    let lines_first: Vec<_> = first.split("\n").collect();
-    let lines_second: Vec<_> = second.split("\n").collect();
+    let lines_first: Vec<_> = first.split('\n').collect();
+    let lines_second: Vec<_> = second.split('\n').collect();
     assert!(lines_first[0] != lines_second[0]);
     assert!(lines_first[1..] == lines_second[1..]);
 }
@@ -329,7 +329,7 @@ fn test_python_pip_reinstall_if_venv_changes() {
 fn test_fetch_from_github_to_fetchgit_transition() {
     {
         let toml_path = "examples/github_tarballs_can_be_unstable/anysnake2.toml";
-        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+        let toml = ex::fs::read_to_string(toml_path).unwrap();
         assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"));
     }
 
@@ -345,7 +345,7 @@ fn test_fetch_from_github_to_fetchgit_transition() {
     );
     assert!(stdout.contains("6c82cdc"));
     let toml_path = td.path().join("anysnake2.toml");
-    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml = ex::fs::read_to_string(toml_path).unwrap();
     assert!(toml.contains("plotnine = { method = \"fetchgit\", url = \"https://github.com/has2k1/plotnine\", rev = \"6c82cdc20d6f81c96772da73fc07a672a0a0a6ef\", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
 }
 
@@ -353,7 +353,7 @@ fn test_fetch_from_github_to_fetchgit_transition() {
 fn test_fetch_trust_on_first_use() {
     {
         let toml_path = "examples/just_python_trust_on_first_use/anysnake2.toml";
-        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+        let toml = ex::fs::read_to_string(toml_path).unwrap();
 
         assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
         assert!(!toml.contains("hash_f42bc1481ed2275427342309d6e876e2d01c3a1a = \"sha256-+TTjvSyR719HQFHU8PNMjWmevDAE5gDKPOeTgcNQ3Bo=\" }"));
@@ -370,7 +370,7 @@ fn test_fetch_trust_on_first_use() {
             ],
         );
         let toml_path = td.path().join("anysnake2.toml");
-        let toml = ex::fs::read_to_string(&toml_path).unwrap();
+        let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
 
         assert!(toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\""));

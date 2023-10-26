@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use log::{debug, warn};
-use std::collections::{HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
@@ -66,47 +66,44 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
     //ini dies on them as well.
     //so we do our own poor man's parsing
     debug!("Parsing {:?}", &setup_cfg_file);
-    let raw = std::fs::read_to_string(&setup_cfg_file)?;
+    let raw = std::fs::read_to_string(setup_cfg_file)?;
     let mut res = Vec::new();
-    match raw.find("[options]") {
-        Some(options_start) => {
-            let mut inside_value = false;
-            let mut value_indention = 0;
-            let mut value = "".to_string();
-            for line in raw[options_start..].split('\n') {
-                if !inside_value {
-                    if line.contains("install_requires") {
-                        let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
-                        value_indention = line.len() - wo_indent_len;
-                        match line.find('=') {
-                            Some(equal_pos) => {
-                                let v = line[equal_pos + 1..].trim_end();
-                                value += v;
-                                value += "\n";
-                                inside_value = true;
-                            }
-                            None => bail!("No = in install_requires line"),
+    if let Some(options_start) = raw.find("[options]") {
+        let mut inside_value = false;
+        let mut value_indention = 0;
+        let mut value = "".to_string();
+        for line in raw[options_start..].split('\n') {
+            if !inside_value {
+                if line.contains("install_requires") {
+                    let wo_indent_len = (line.replace('\t', "    ").trim_start()).len();
+                    value_indention = line.len() - wo_indent_len;
+                    match line.find('=') {
+                        Some(equal_pos) => {
+                            let v = line[equal_pos + 1..].trim_end();
+                            value += v;
+                            value += "\n";
+                            inside_value = true;
                         }
-                    }
-                } else {
-                    // inside value
-                    let wo_indent_len = (line.replace("\t", "    ").trim_start()).len();
-                    let indent = line.len() - wo_indent_len;
-                    if indent > value_indention {
-                        value += line.trim_start();
-                        value += "\n"
-                    } else {
-                        break;
+                        None => bail!("No = in install_requires line"),
                     }
                 }
-            }
-            for line in value.split('\n') {
-                if !line.trim().is_empty() {
-                    res.push(line.trim().to_string())
+            } else {
+                // inside value
+                let wo_indent_len = (line.replace('\t', "    ").trim_start()).len();
+                let indent = line.len() - wo_indent_len;
+                if indent > value_indention {
+                    value += line.trim_start();
+                    value += "\n"
+                } else {
+                    break;
                 }
             }
         }
-        None => {},//bail!("no [options] in setup.cfg"),
+        for line in value.split('\n') {
+            if !line.trim().is_empty() {
+                res.push(line.trim().to_string())
+            }
+        }
     };
     Ok(res)
     //Err(anyhow!("Could not parse"))

@@ -55,6 +55,8 @@
           pkgs.rust-analyzer
           pkgs.git
           pkgs.cargo-udeps
+          pkgs.cargo-crev
+          pkgs.cargo-vet
           pkgs.cargo-outdated
           pkgs.cargo-audit
           bacon

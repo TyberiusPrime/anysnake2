@@ -125,7 +125,7 @@ pub fn write_flake(
                         format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
             }
             let python_major_dot_minor = &python.version;
-            let python_major_minor = format!("python{}", python.version.replace(".", ""));
+            let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
             let mut out_python_packages = extract_non_editable_python_packages(
                 python_packages,
@@ -139,7 +139,7 @@ pub fn write_flake(
             let out_python_packages = out_python_packages.join("\n");
 
             let out_python_build_packages = format_python_build_packages(
-                &python_build_packages,
+                python_build_packages,
                 &parsed_config.flakes,
                 &mut flakes_used_for_python_packages,
             )?;
@@ -168,7 +168,7 @@ pub fn write_flake(
                 &pypi_debs_db_rev,
                 &["mach-nix"],
                 &flake_dir,
-                ecosystem_date > chrono::NaiveDate::from_ymd_opt(2021, 04, 30).unwrap(),
+                ecosystem_date > chrono::NaiveDate::from_ymd_opt(2021, 4, 30).unwrap(),
             )?);
 
             flake_contents
@@ -179,7 +179,7 @@ pub fn write_flake(
                     "#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%",
                     &format!("// {{{}}}", out_additional_mkpython_arguments),
                 )
-                .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
+                .replace("%PYTHON_MAJOR_DOT_MINOR%", python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
                     "\"%MACHNIX%\"",
@@ -406,7 +406,7 @@ pub fn write_flake(
     git_path.push(".git");
     if !git_path.exists() {
         let output = Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&flake_dir)
             .output()
             .context(format!(
@@ -483,9 +483,9 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
             .map(|x| format!("        inputs.{}.follows = \"{}\";", &x, &x))
             .collect();
         let str_follows = v_follows.join("\n");
-        let url = if fl.url.starts_with("github") && fl.url.matches("/").count() == 3 {
+        let url = if fl.url.starts_with("github") && fl.url.matches('/').count() == 3 {
             //has a branch - but we define a revision, and you can't have both for some reason
-            let mut iter = fl.url.rsplitn(2, "/");
+            let mut iter = fl.url.rsplitn(2, '/');
             iter.next(); // eat the branch
             iter.collect()
         } else {
@@ -500,7 +500,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
     }};",
             fl.name,
             url,
-            if !fl.url.contains("?") { "?" } else { "&" },
+            if !fl.url.contains('?') { "?" } else { "&" },
             fl.rev,
             &str_follows,
             if fl.is_flake { "" } else { "flake = false;" }
@@ -587,6 +587,7 @@ fn get_flake_rev(
         .to_string())
 }
 
+#[allow(clippy::single_char_add_str)]
 fn format_python_build_packages(
     input: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
@@ -638,7 +639,7 @@ fn format_python_build_packages(
               {}
               }});\n",
                     key,
-                    python_version_from_spec(&spec, None),
+                    python_version_from_spec(spec, None),
                     match spec
                         .get("method")
                         .expect("Missing 'method' on python build package definition")
@@ -676,7 +677,7 @@ fn format_python_build_packages(
         out.push_str(pkg);
         out.push_str("_pkg ");
     }
-    out.push_str("]");
+    out.push_str("]"); 
     out.push_str("\n; overridesPre = [ machnix_overrides ];\n");
     out.push_str("\n");
     out.push_str(&providers);
@@ -841,11 +842,10 @@ fn next_larger_date(
 ) -> Option<chrono::NaiveDateTime> {
     let q = date.format("%Y%m%d").to_string();
     let oldest = mappings.keys().filter(|x| *x > &q).min();
-    oldest
-        .map(|oldest| {
+    oldest.and_then(
+        |oldest| {
             chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", oldest), "%Y%m%d %H:%M").ok()
         })
-        .flatten()
 }
 fn next_smaller_date(
     mappings: &HashMap<String, String>,
@@ -854,10 +854,9 @@ fn next_smaller_date(
     let q = date.format("%Y%m%d").to_string();
     let oldest = mappings.keys().filter(|x| *x < &q).max();
     oldest
-        .map(|oldest| {
+        .and_then(|oldest| {
             chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", oldest), "%Y%m%d %H:%M").ok()
         })
-        .flatten()
 }
 
 pub fn get_proxy_req() -> Result<ureq::Agent> {
@@ -892,9 +891,9 @@ pub fn lookup_github_tag(
     } else {
         let repo = url.strip_prefix("github:").unwrap();
         fetch_cached(
-            &flake_dir
+            flake_dir
                 .as_ref()
-                .join(format!(".github_{}.json", repo.replace("/", "_"))),
+                .join(format!(".github_{}.json", repo.replace('/', "_"))),
             tag_or_rev,
             GitHubTagRetriever {
                 repo: repo.to_string(),
@@ -925,10 +924,10 @@ fn fetch_cached(
             known.insert(k, v);
         }
         fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
-        return Ok(known
+        Ok(known
             .get(query)
             .context(format!("Could not find query value: {}", query))?
-            .to_string());
+            .to_string())
     }
 }
 

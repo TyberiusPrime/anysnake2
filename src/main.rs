@@ -248,7 +248,7 @@ fn switch_to_configured_version(
     } else if parsed_config.anysnake2.rev
         != *matches
             .get_one::<String>("_running_version")
-            .map(|x| x.clone())
+            .cloned()
             .unwrap_or_else(|| "noversionspecified".to_string())
     {
         info!("restarting with version {}", &parsed_config.anysnake2.rev);
@@ -256,7 +256,7 @@ fn switch_to_configured_version(
             "{}?rev={}",
             &parsed_config.anysnake2.url.as_ref().unwrap(),
             lookup_github_tag(
-                &parsed_config.anysnake2.url.as_ref().unwrap(),
+                parsed_config.anysnake2.url.as_ref().unwrap(),
                 &parsed_config.anysnake2.rev,
                 flake_dir
             )?
@@ -285,12 +285,15 @@ fn switch_to_configured_version(
     Ok(())
 }
 
+struct CollectedPythonPackages{
+    requirement_packages: Vec<(String, String)>,
+    build_packages: HashMap<String, BuildPythonPackageInfo>,
+}
+
+
 fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
-) -> Result<(
-    Vec<(String, String)>,
-    HashMap<String, BuildPythonPackageInfo>,
-)> {
+) -> Result<CollectedPythonPackages> {
     Ok(match &mut parsed_config.python {
         Some(python) => {
             let mut requirement_packages: Vec<(String, String)> = Vec::new();
@@ -326,9 +329,9 @@ fn collect_python_packages(
                     requirement_packages.push((pkg, version_spec));
                 }
             }
-            (requirement_packages, build_packages)
+            CollectedPythonPackages{requirement_packages, build_packages}
         }
-        None => (Vec::new(), HashMap::new()),
+        None => CollectedPythonPackages{requirement_packages: Vec::new(), build_packages: HashMap::new()},
     })
 }
 
@@ -365,7 +368,7 @@ fn inner_main() -> Result<()> {
 
     let config_file = matches
         .get_one::<String>("config_file")
-        .map(|x| x.clone())
+        .cloned()
         .unwrap_or_else(|| "anysnake2.toml".to_string());
     if cmd == "version" && !Path::new(&config_file).exists() {
         //output the version of binary
@@ -434,7 +437,8 @@ fn inner_main() -> Result<()> {
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
-    let (python_packages, mut python_build_packages) = collect_python_packages(&mut parsed_config)?;
+    let temp = collect_python_packages(&mut parsed_config)?;
+    let (python_packages, mut python_build_packages) = (temp.requirement_packages, temp.build_packages);
     trace!(
         "python packages: {:?} {:?}",
         python_packages,
@@ -648,7 +652,7 @@ fn inner_main() -> Result<()> {
             match &parsed_config.container.volumes_ro {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
-                        let from: PathBuf = fs::canonicalize(&from)
+                        let from: PathBuf = fs::canonicalize(from)
                             .context(format!("canonicalize path failed on {} (read only volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "ro".to_string()));
@@ -659,7 +663,7 @@ fn inner_main() -> Result<()> {
             match &parsed_config.container.volumes_rw {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
-                        let from: PathBuf = fs::canonicalize(&from)
+                        let from: PathBuf = fs::canonicalize(from)
                             .context(format!("canonicalize path failed on {} (read/write volume - does the path exist?)", &from))?;
                         let from = from.into_os_string().to_string_lossy().to_string();
                         binds.push((from, to.to_string(), "rw".to_string()));
@@ -893,7 +897,7 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     Ok(())
 }
 
-fn dir_empty(path: &PathBuf) -> Result<bool> {
+fn dir_empty(path: &Path) -> Result<bool> {
     Ok(path
         .read_dir()
         .context("Failed to read_dir")?
@@ -951,7 +955,7 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                         let clone_url_for_cmd = base_url.as_str();
                         let clone_url_for_cmd = match clone_url_for_cmd.strip_prefix("file://") {
                             Some(path) => {
-                                if path.starts_with("/") {
+                                if path.starts_with('/') {
                                     path.to_string()
                                 } else {
                                     // we are in target/package, so we need to go up to to make it
@@ -963,7 +967,7 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                         };
                         let output = run_without_ctrl_c(|| match cmd {
                             "hg" | "git" => Command::new(cmd)
-                                .args(&["clone", &clone_url_for_cmd, "."])
+                                .args(["clone", &clone_url_for_cmd, "."])
                                 .current_dir(&final_dir)
                                 .output()
                                 .context(format!(
@@ -978,13 +982,13 @@ fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
                                     &format!(
                                         "cp {}/* . -a",
                                         &clone_url_for_cmd
-                                            .strip_suffix("/")
+                                            .strip_suffix('/')
                                             .unwrap_or(&clone_url_for_cmd)
                                     )[..],
                                 ];
                                 dbg!(&args);
                                 Command::new("bash")
-                                    .args(&args)
+                                    .args(args)
                                     .current_dir(&final_dir)
                                     .output()
                                     .context(format!(
@@ -1068,7 +1072,7 @@ fn rebuild_flake(
     if !use_generated_file_instead {
         run_without_ctrl_c(|| {
             Command::new("git")
-                .args(&["commit", "-m", "autocommit"])
+                .args(["commit", "-m", "autocommit"])
                 .current_dir(&flake_dir)
                 .output()
                 .context("Failed git add flake.nix")
@@ -1081,7 +1085,7 @@ fn rebuild_flake(
         debug!("building container");
         let nix_build_result = run_without_ctrl_c(|| {
             Command::new("nix")
-                .args(&["build", &format!("./#{}", target), "-v",
+                .args(["build", &format!("./#{}", target), "-v",
                 "--max-jobs", "auto",
                 "--cores", "4",
                 "--keep-going"
@@ -1129,7 +1133,7 @@ fn replace_env_vars(input: &str) -> String {
 }
 
 fn safe_python_package_name(input: &str) -> String {
-    input.replace("_", "-")
+    input.replace('_', "-")
 }
 
 fn fill_venv(
@@ -1170,7 +1174,7 @@ fn fill_venv(
                 ex::fs::read_to_string(anysnake_link)?
             }
         };
-        if !egg_link.exists() || &venv_used != &target_python_str {
+        if !egg_link.exists() || venv_used != target_python_str {
             // so that changing python versions triggers a rebuild.
             to_build.push((safe_pkg, target_dir));
         }
@@ -1262,7 +1266,7 @@ fn fill_venv(
                 outside_nixpkgs_url,
                 Some(&venv_dir.join("singularity.bash")),
                 None,
-                &flake_dir,
+                flake_dir,
             )
             .context("singularity failed")?;
             if !singularity_result.success() {
@@ -1346,7 +1350,7 @@ fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
             })?;
             let re = Regex::new("exec \"([^\"]+)\"").unwrap();
             let out: String = re
-                .captures_iter(&text)
+                .captures_iter(text)
                 .next()
                 .context(format!("Could not find exec in {:?}", &path))?[1]
                 .to_string();
@@ -1420,27 +1424,27 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 
     //first we store and hash the flake itself and record tha.
     let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
-    let flake_symlink_here = gc_roots.join(&without_hash.replace("/", "_"));
+    let flake_symlink_here = gc_roots.join(without_hash.replace('/', "_"));
     if !flake_symlink_here.exists() {
         debug!("nix prefetching flake {}", &without_hash);
         run_without_ctrl_c(|| {
             let output = std::process::Command::new("nix")
-                .args(&["flake", "prefetch", without_hash, "--json"])
+                .args(["flake", "prefetch", without_hash, "--json"])
                 .output()?;
             if !output.status.success() {
                 Err(anyhow!("nix build failed"))
             } else {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
-                symlink_for_sure(&j.storePath, &flake_symlink_here)?;
+                symlink_for_sure(j.storePath, &flake_symlink_here)?;
                 symlink_for_sure(
-                    &gc_roots
+                    gc_roots
                         .canonicalize()?
-                        .join(&without_hash.replace("/", "_")),
-                    &gc_per_user_base.join(&format!(
+                        .join(without_hash.replace('/', "_")),
+                    gc_per_user_base.join(format!(
                         "{}_{}",
                         &flake_hash,
-                        &without_hash.replace("/", "_")
+                        without_hash.replace('/', "_")
                     )),
                 )?;
                 //now from the gc_dir
@@ -1451,17 +1455,17 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 
     //now the nix build.
 
-    let out_dir = gc_roots.join(&url.replace("/", "_"));
-    let rev_file = gc_roots.join(format!("{}.rev", url.replace("/", "_")));
+    let out_dir = gc_roots.join(url.replace('/', "_"));
+    let rev_file = gc_roots.join(format!("{}.rev", url.replace('/', "_")));
     let last = fs::read_to_string(&rev_file).unwrap_or_else(|_| "".to_string());
     if last != url || !out_dir.exists() {
         fs::remove_file(&out_dir).ok();
-        fs::write(&rev_file, &url).ok();
+        fs::write(&rev_file, url).ok();
         debug!("nix building {}", &url);
 
         let store_path = run_without_ctrl_c(|| {
             let output = std::process::Command::new("nix")
-                .args(&[
+                .args([
                     "build",
                     url,
                     "--max-jobs",
@@ -1484,12 +1488,12 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
         })?;
         symlink_for_sure(store_path, &out_dir)?;
         symlink_for_sure(
-            &out_dir
+            out_dir
                 .parent()
                 .context("parent not found")?
                 .canonicalize()?
-                .join(&url.replace("/", "_")),
-            &gc_per_user_base.join(&format!("{}_{}", &flake_hash, &url.replace("/", "_"))),
+                .join(url.replace('/', "_")),
+            gc_per_user_base.join(format!("{}_{}", &flake_hash, url.replace('/', "_"))),
         )?;
     }
     Ok(())
@@ -1550,8 +1554,7 @@ fn upgrade(
                             let gh_tags = flake_writer::get_github_tags(repo, 1)?;
                             if !gh_tags.is_empty() {
                                 let newest = gh_tags
-                                    .iter()
-                                    .next()
+                                    .first()
                                     .expect("No tags though vec was not empty!?");
                                 let newest_tag = newest["name"]
                                     .as_str()
@@ -1628,7 +1631,7 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
 }
 fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
     let raw = fs::read_to_string(egg_link)?;
-    Ok(match raw.split_once("\n") {
+    Ok(match raw.split_once('\n') {
         Some(x) => x.0.to_string(),
         None => raw,
     })
@@ -1651,7 +1654,7 @@ fn write_develop_python_path(
         .filter(|(_, spec)| spec.starts_with("editable/"))
     {
         let safe_pkg = safe_python_package_name(pkg);
-        let real_target = parent_dir.join(&spec.strip_prefix("editable/").unwrap());
+        let real_target = parent_dir.join(spec.strip_prefix("editable/").unwrap());
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
         let egg_target = parse_egg(egg_link)?;
         let egg_target =
@@ -1835,7 +1838,7 @@ fn apply_trust_on_first_use(
                     println!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
                 }
             };
-            if hash_key != "" {
+            if !hash_key.is_empty() {
                 spec.insert(
                     "sha256".to_string(),
                     spec.get(&hash_key.to_string()).unwrap().to_string(),
@@ -1859,7 +1862,7 @@ fn store_hash(
     key: String,
     hash_key: &str,
     hash: String,
-) -> () {
+) {
     doc["python"]["packages"][key][&hash_key] = value(&hash);
     spec.insert(hash_key.to_string(), hash.to_owned());
 }
@@ -1870,7 +1873,7 @@ fn store_rev(
     doc: &mut toml_edit::Document,
     key: String, // teh package
     rev: &String,
-) -> () {
+) {
     doc["python"]["packages"][key]["rev"] = value(rev);
     spec.insert("rev".to_string(), rev.to_owned());
 }
@@ -1883,7 +1886,7 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
         "-c",
         "nix-prefetch-git",
         "--url",
-        &url,
+        url,
         "--rev",
         rev,
         "--quiet",
@@ -1900,7 +1903,7 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
         .get("sha256")
         .context("No sha256 in nix-prefetch-git json output")?;
     let old_format: &str = old_format.as_str().context("sha256 was no string")?;
-    let new_format = convert_hash_to_subresource_format(&old_format)?;
+    let new_format = convert_hash_to_subresource_format(old_format)?;
 
     Ok(new_format)
 }
@@ -1912,7 +1915,7 @@ fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<S
         &nix_prefetch_hg_url,
         "-c",
         "nix-prefetch-hg",
-        &url,
+        url,
         rev,
     ];
     let stdout = Command::new("nix")
@@ -1921,11 +1924,11 @@ fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<S
         .context("failed on nix-prefetch-hg")?
         .stdout;
     let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split("\n");
+    let lines = stdout.split('\n');
     let old_format = lines
         .last()
         .expect("Could not parse nix-prefetch-hg output");
-    let new_format = convert_hash_to_subresource_format(&old_format)?;
+    let new_format = convert_hash_to_subresource_format(old_format)?;
 
     Ok(new_format)
 }
@@ -1939,7 +1942,7 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
     );
 
     let stdout = Command::new("nix-prefetch-url")
-        .args(&[&url, "--type", "sha256", "--unpack", "--print-path"])
+        .args([&url, "--type", "sha256", "--unpack", "--print-path"])
         .output()
         .context(format!("Failed to nix-prefetch {url}", url = url))?
         .stdout;
@@ -1998,11 +2001,11 @@ fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> 
         .context("failed on nix-prefetch-url for pypi")?
         .stdout;
     let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split("\n");
+    let lines = stdout.split('\n');
     let old_format = lines
         .last()
         .expect("Could not parse nix-prefetch-pypi output");
-    let new_format = convert_hash_to_subresource_format(&old_format)?;
+    let new_format = convert_hash_to_subresource_format(old_format)?;
 
     Ok(new_format)
 }
@@ -2014,7 +2017,7 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         ));
     }
     let res = Command::new("nix")
-        .args(&["hash", "to-sri", "--type", "sha256", hash])
+        .args(["hash", "to-sri", "--type", "sha256", hash])
         .output()
         .context(format!(
             "Failed to nix hash to-sri --type sha256 '{hash}'",
@@ -2100,8 +2103,8 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
                     println!("auto detected head revision for {}", &flake_name);
                     flake.rev = Some(commit.to_string());
                 } else if flake.url.starts_with("hg+https:") {
-                    let url = if flake.url.contains("?") {
-                        flake.url.split_once("?").unwrap().0
+                    let url = if flake.url.contains('?') {
+                        flake.url.split_once('?').unwrap().0
                     } else {
                         &flake.url[..]
                     }
@@ -2113,8 +2116,8 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
                     println!("auto detected head revision for {}", &flake_name);
                     flake.rev = Some(rev);
                 } else if flake.url.starts_with("git+https:") {
-                    let url = if flake.url.contains("?") {
-                        flake.url.split_once("?").unwrap().0
+                    let url = if flake.url.contains('?') {
+                        flake.url.split_once('?').unwrap().0
                     } else {
                         &flake.url[..]
                     }
@@ -2151,14 +2154,14 @@ fn discover_newest_rev_git(url: &str, branch: Option<&String>) -> Result<String>
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
         Ok(std::process::Command::new("git")
-            .args(&["ls-remote", url, &refs])
+            .args(["ls-remote", url, &refs])
             .output()?)
     })
     .expect("git ls-remote failed");
     let stdout =
         std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
     let hash_re = Regex::new(&format!("^([0-9a-z]{{40}})\\s+{}", &refs)).unwrap(); //hash is on a line together with the ref...
-    for group in hash_re.captures_iter(stdout) {
+    if let Some(group) = hash_re.captures_iter(stdout).next() {
         return Ok(group[1].to_string());
     }
     Err(anyhow!(
@@ -2177,14 +2180,14 @@ fn discover_newest_rev_hg(url: &str) -> Result<String> {
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
         Ok(std::process::Command::new("hg")
-            .args(&["id", "--debug", url, "--id"])
+            .args(["id", "--debug", url, "--id"])
             .output()?)
     })
     .with_context(|| format!("hg id --debug {} failed", url))?;
     let stdout =
         std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
     let hash_re = Regex::new("(?m)^([0-9a-z]{40})$").unwrap(); //hash is on it's own line.
-    for group in hash_re.captures_iter(stdout) {
+    if let Some(group) = hash_re.captures_iter(stdout).next() {
         return Ok(group[0].to_string());
     }
     Err(anyhow!(

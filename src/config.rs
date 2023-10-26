@@ -48,7 +48,7 @@ pub struct ConfigToml {
 
 impl ConfigToml {
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
-        let mut res: ConfigToml = toml::from_str(&raw_config)?;
+        let mut res: ConfigToml = toml::from_str(raw_config)?;
         res.anysnake2.url = match res.anysnake2.url {
             Some(url) => Some(url),
             None => match res.anysnake2.use_binary {
@@ -74,7 +74,7 @@ impl ConfigToml {
 
 impl MinimalConfigToml {
     pub fn from_str(raw_config: &str) -> Result<MinimalConfigToml> {
-        let mut res: MinimalConfigToml = toml::from_str(&raw_config)?;
+        let mut res: MinimalConfigToml = toml::from_str(raw_config)?;
         res.anysnake2.url = match res.anysnake2.url {
             Some(url) => Some(url),
             None => match res.anysnake2.use_binary {
@@ -305,7 +305,7 @@ where
                             pkg_name
                         ))
                     })?;
-                match &method[..] {
+                match method {
                     "fetchFromGitHub" => {
                         if !def.contains_key("owner") {
                             errors.push("Was missing 'owner' key.")
@@ -332,7 +332,7 @@ where
                     None => None,
                     Some(toml::Value::Array(input)) => {
                         let mut output: Vec<String> = Vec::new();
-                        for ov in input.into_iter() {
+                        for ov in input.iter() {
                             output.push(
                                 ov.as_str()
                                     .ok_or(serde::de::Error::custom(format!(
@@ -357,7 +357,7 @@ where
                         toml::Value::String(v) => {
                             if k == "pkg_option" {
                                 let v = v.trim();
-                                if ! (v.starts_with("{") && v.ends_with("}")) {
+                                if ! (v.starts_with('{') && v.ends_with('}')) {
                                     return Some(Err(serde::de::Error::custom(format!(
                                         "Field {} on python package {} must be the string representwation of the nix attrSet that we shall pass to buildPythonPackage",
                                         k, pkg_name
@@ -370,19 +370,19 @@ where
                         },
                         toml::Value::Array(_) => {
                             if k != "overrides" {
-                                return Some(Err(serde::de::Error::custom(format!(
+                                Some(Err(serde::de::Error::custom(format!(
                                     "Field {} on python package {} must be a string ",
                                     k, pkg_name
-                                ))));
+                                ))))
                             } else {
                                 None
                             }
                         }
                         _ => {
-                            return Some(Err(serde::de::Error::custom(format!(
+                            Some(Err(serde::de::Error::custom(format!(
                                 "Field {} on python package {} must be a string ",
                                 k, pkg_name
-                            ))));
+                            ))))
                         }
                     })
                     .collect();
@@ -390,7 +390,7 @@ where
                     pkg_name,
                     PythonPackageDefinition::BuildPythonPackage(BuildPythonPackageInfo {
                         options: string_defs?,
-                        overrides: overrides,
+                        overrides,
                     }),
                 ))
             }
@@ -449,7 +449,7 @@ pub struct Flake {
     pub packages: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct Container {
     pub home: Option<String>,
     pub volumes_ro: Option<HashMap<String, String>>,
@@ -457,16 +457,6 @@ pub struct Container {
     pub env: Option<HashMap<String, String>>,
 }
 
-impl Default for Container {
-    fn default() -> Self {
-        Container {
-            home: None,
-            volumes_ro: None,
-            volumes_rw: None,
-            env: None,
-        }
-    }
-}
 
 #[derive(Deserialize, Debug)]
 pub struct R {
