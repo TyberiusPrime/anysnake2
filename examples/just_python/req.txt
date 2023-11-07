@@ -1,0 +1,8 @@
+	 black
+  hatchling
+  loguru
+  pandas==1.5.1
+  pip
+  setuptools
+  tomli>1.2
+

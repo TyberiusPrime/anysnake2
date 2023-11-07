@@ -256,7 +256,10 @@ impl BuildPythonPackageInfo {
 
     pub fn src_to_nix(&self) -> String {
         let mut res = Vec::new();
-        let inherit_pname: bool = self.options.get("method").map_or(false, |x| x == "fetchPypi");
+        let inherit_pname: bool = self
+            .options
+            .get("method")
+            .map_or(false, |x| x == "fetchPypi");
         for (k, v) in self.options.iter().sorted_by_key(|x| x.0) {
             if k != "method" && k != "buildInputs" && k != "buildPythonPackage_arguments" {
                 res.push(format!("\"{}\" = \"{}\";", k, v));
@@ -478,8 +481,7 @@ pub struct R {
     pub packages: Vec<String>,
     #[serde(default = "R::default_url")]
     pub nixr_url: String,
-    #[serde(default = "R::default_tag")]
-    pub nixr_tag: String,
+    pub nixr_tag: Option<String>,
 
     pub ecosystem_tag: Option<String>,
 
@@ -487,11 +489,6 @@ pub struct R {
 }
 
 impl R {
-    fn default_tag() -> String {
-        //yes, this is the nixR version
-        "f77d23b8b6ec1c7009d8251edd60590517a54bbf".to_string() // must not be older than 5fa155779f1c454fcb92abcdbbcf4372256eb6c6
-    }
-
     fn default_url() -> String {
         "github:TyberiusPrime/nixR".to_string()
     }

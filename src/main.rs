@@ -449,7 +449,7 @@ fn inner_main() -> Result<()> {
             &flake_dir
         )?,
     );
-    apply_trust_on_first_use(&parsed_config, &mut python_build_packages, &nixpkgs_url)?;
+    apply_trust_on_first_use(&mut parsed_config, &mut python_build_packages, &nixpkgs_url)?;
 
     let flake_changed = flake_writer::write_flake(
         &flake_dir,
@@ -501,7 +501,7 @@ fn inner_main() -> Result<()> {
         let build_output: PathBuf = flake_dir.join("result/rootfs");
         let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
                                                                          //
-        //early error exit if you try to run an non-existant command
+                                                                         //early error exit if you try to run an non-existant command
         if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
             info!("Rebuilding flake");
             rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
@@ -1634,19 +1634,74 @@ enum PrefetchHashResult {
     HaveToUseFetchGit,
 }
 
+type Updates = Vec<(Vec<String>, toml_edit::Value)>;
+
 /// if no hash_{rev} is set, discover it and update anysnake2.toml
 /// if no rev is set, discover it as well
 fn apply_trust_on_first_use(
-    config: &config::ConfigToml,
+    //todo: Where ist the flake stuff?
+    config: &mut config::ConfigToml,
     python_build_packages: &mut HashMap<String, BuildPythonPackageInfo>,
     outside_nixpkgs_url: &str,
 ) -> Result<()> {
-    if !python_build_packages.is_empty() {
+    let mut updates: Updates = Vec::new();
+    apply_trust_on_first_use_python(
+        config,
+        python_build_packages,
+        outside_nixpkgs_url,
+        &mut updates,
+    )?;
+    apply_trust_on_first_use_r(config, &mut updates)?;
+
+    if !updates.is_empty() {
         let toml = std::fs::read_to_string(config.anysnake2_toml_path.as_ref().unwrap())
             .expect("Could not reread config file");
         let mut doc = toml.parse::<Document>().expect("invalid doc");
-        let mut write = false;
+        for (path, value) in updates {
+            let mut x = &mut doc[&path[0]];
+            for p in path[1..path.len() - 1].iter() {
+                x = &mut x[p];
+            }
+            x[&path[path.len() - 1]] = toml_edit::Item::Value(value);
+        }
+        //now apply updates
+        let out_toml = doc.to_string();
+        std::fs::write(config.anysnake2_toml_path.as_ref().unwrap(), out_toml)
+            .expect("failed to rewrite config file");
+    }
+    Ok(())
+}
 
+fn apply_trust_on_first_use_r(
+    config: &mut config::ConfigToml,
+    updates: &mut Updates,
+) -> Result<()> {
+    if let Some(r) = &mut config.r {
+        if !r.packages.is_empty() {
+            if let None = r.nixr_tag {
+                println!(
+                    "Using discover-newest on first use for nixR, updating your anysnake2.toml"
+                );
+                let rev = discover_newest_rev_git(&r.nixr_url, Some("main"))?;
+                println!("\tDiscovered nixR revision {}", &rev);
+                updates.push((
+                    vec!["R".to_string(), "nixr_tag".to_string()],
+                    rev.clone().into(),
+                ));
+                r.nixr_tag = Some(rev);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn apply_trust_on_first_use_python(
+    _config: &config::ConfigToml,
+    python_build_packages: &mut HashMap<String, BuildPythonPackageInfo>,
+    outside_nixpkgs_url: &str,
+    updates: &mut Updates,
+) -> Result<()> {
+    if !python_build_packages.is_empty() {
         for (key, spec) in python_build_packages.iter_mut() {
             let method = spec
                 .get("method")
@@ -1662,9 +1717,11 @@ fn apply_trust_on_first_use(
                                 let owner = spec.get("owner").expect("missing owner").to_string();
                                 let repo = spec.get("repo").expect("missing repo").to_string();
                                 let url = format!("https://github.com/{}/{}", owner, repo);
-                                let rev = discover_newest_rev_git(&url, spec.get("branchName"))?;
-                                store_rev(spec, &mut doc, key.to_owned(), &rev);
-                                write = true;
+                                let rev = discover_newest_rev_git(
+                                    &url,
+                                    spec.get("branchName").map(AsRef::as_ref),
+                                )?;
+                                store_rev(spec, updates, key.to_owned(), &rev);
                                 rev
                             }
                         }
@@ -1672,7 +1729,6 @@ fn apply_trust_on_first_use(
 
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
-                        write = true;
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
 
                         let owner = spec.get("owner").expect("missing owner").to_string();
@@ -1681,7 +1737,7 @@ fn apply_trust_on_first_use(
                         match hash {
                             PrefetchHashResult::Hash(hash) => {
                                 println!("nix-prefetch-hash for {} is {}", key, hash);
-                                store_hash(spec, &mut doc, key.to_owned(), &hash_key, hash);
+                                store_hash(spec, updates, key.to_owned(), &hash_key, hash);
                             }
                             PrefetchHashResult::HaveToUseFetchGit => {
                                 let fetchgit_url = format!("https://github.com/{}/{}", owner, repo);
@@ -1698,9 +1754,14 @@ fn apply_trust_on_first_use(
                                 if spec.contains_key("branchName") {
                                     out["branchName"] = value(spec.get("branchName").unwrap());
                                 }
-                                doc["python"]["packages"][key.to_owned()] = toml_edit::Item::Value(
+                                updates.push((
+                                    vec![
+                                        "python".to_string(),
+                                        "packages".to_string(),
+                                        key.to_owned(),
+                                    ],
                                     toml_edit::Value::InlineTable(out.into_inline_table()),
-                                );
+                                ));
 
                                 spec.retain(|k, _| k == "branchName");
                                 spec.insert("method".to_string(), "fetchgit".into());
@@ -1723,10 +1784,12 @@ fn apply_trust_on_first_use(
                             Some(x) => x.to_string(),
                             None => {
                                 println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", key);
-                                let rev = discover_newest_rev_git(&url, spec.get("branchName"))?;
+                                let rev = discover_newest_rev_git(
+                                    &url,
+                                    spec.get("branchName").map(AsRef::as_ref),
+                                )?;
                                 println!("\tDiscovered revision {}", &rev);
-                                store_rev(spec, &mut doc, key.to_owned(), &rev);
-                                write = true;
+                                store_rev(spec, updates, key.to_owned(), &rev);
                                 rev
                             }
                         }
@@ -1735,10 +1798,9 @@ fn apply_trust_on_first_use(
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        write = true;
                         let hash = prefetch_git_hash(&url, &rev, outside_nixpkgs_url)
                             .context("prefetch_git-hash failed")?;
-                        store_hash(spec, &mut doc, key.to_owned(), &hash_key, hash);
+                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
                 }
@@ -1751,7 +1813,7 @@ fn apply_trust_on_first_use(
                                 println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", key);
                                 let rev = discover_newest_rev_hg(&url)?;
                                 println!("\tDiscovered revision {}", &rev);
-                                store_rev(spec, &mut doc, key.to_owned(), &rev);
+                                store_rev(spec, updates, key.to_owned(), &rev);
                                 rev
                             }
                         }
@@ -1759,11 +1821,10 @@ fn apply_trust_on_first_use(
                     hash_key = format!("hash_{}", rev);
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        write = true;
                         let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url).with_context(
                             || format!("prefetch_hg-hash failed for {} {}", url, rev),
                         )?;
-                        store_hash(spec, &mut doc, key.to_owned(), &hash_key, hash);
+                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
                 }
@@ -1779,26 +1840,23 @@ fn apply_trust_on_first_use(
 
                 "fetchPypi" => {
                     let pname = spec.get("pname").unwrap_or(key).to_string();
-                    let version = match spec
-                        .get("version")
-                        {
-                            Some(ver) => ver.to_string(),
-                            None => {
-                                println!("Retrieving current version for {} from pypi, updating your anysnake2.toml", key);
-                                let version = get_newest_pipi_version(&pname)?;
-                                store_version(spec, &mut doc, key.to_owned(), &version);
-                                println!("Received version {}", &version);
-                                version
-                            }
-                        };
+                    let version = match spec.get("version") {
+                        Some(ver) => ver.to_string(),
+                        None => {
+                            println!("Retrieving current version for {} from pypi, updating your anysnake2.toml", key);
+                            let version = get_newest_pipi_version(&pname)?;
+                            store_version(spec, updates, key.to_owned(), &version);
+                            println!("Received version {}", &version);
+                            version
+                        }
+                    };
 
                     hash_key = format!("hash_{}", version);
                     if !spec.contains_key(&hash_key) {
                         println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        write = true;
                         let hash = prefetch_pypi_hash(&pname, &version, outside_nixpkgs_url)
                             .context("prefetch-pypi-hash")?;
-                        store_hash(spec, &mut doc, key.to_owned(), &hash_key, hash);
+                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
                         //bail!("bail1")
                     }
                 }
@@ -1814,11 +1872,6 @@ fn apply_trust_on_first_use(
                 spec.retain(|key, _| !key.starts_with("hash_"));
             }
         }
-        if write {
-            let out_toml = doc.to_string();
-            std::fs::write(config.anysnake2_toml_path.as_ref().unwrap(), out_toml)
-                .expect("failed to rewrite config file");
-        }
     }
     Ok(())
 }
@@ -1826,37 +1879,60 @@ fn apply_trust_on_first_use(
 /// helper for apply_trust_on_first_use
 fn store_hash(
     spec: &mut BuildPythonPackageInfo,
-    doc: &mut toml_edit::Document,
+    updates: &mut Updates,
     key: String,
     hash_key: &str,
     hash: String,
 ) -> () {
-    doc["python"]["packages"][key][&hash_key] = value(&hash);
+    updates.push((
+        vec![
+            "python".to_string(),
+            "packages".to_string(),
+            key,
+            hash_key.to_string(),
+        ],
+        hash.to_owned().into(),
+    ));
+
     spec.insert(hash_key.to_string(), hash.to_owned());
 }
 
 /// helper for discover_rev_on_first_use
 fn store_rev(
     spec: &mut BuildPythonPackageInfo,
-    doc: &mut toml_edit::Document,
+    updates: &mut Updates,
     key: String, // teh package
     rev: &String,
 ) -> () {
-    doc["python"]["packages"][key]["rev"] = value(rev);
+    updates.push((
+        vec![
+            "python".to_string(),
+            "packages".to_string(),
+            key,
+            "rev".to_string(),
+        ],
+        rev.into(),
+    ));
     spec.insert("rev".to_string(), rev.to_owned());
 }
 
 fn store_version(
     spec: &mut BuildPythonPackageInfo,
-    doc: &mut toml_edit::Document,
+    updates: &mut Updates,
     key: String,
     version: &String,
 ) -> () {
-    doc["python"]["packages"][key]["version"] = value(version);
+    updates.push((
+        vec![
+            "python".to_string(),
+            "packages".to_string(),
+            key,
+            "version".to_string(),
+        ],
+        version.into(),
+    ));
     spec.insert("version".to_string(), version.to_owned());
 }
-
-
 
 fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
     let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
@@ -1957,14 +2033,17 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
 }
 
 fn get_newest_pipi_version(package_name: &str) -> Result<String> {
-    use flake_writer::{ get_proxy_req}; //todo: refactor out of flake_writer
-    let json  = get_proxy_req()?.get(&format!("https://pypi.org/pypi/{package_name}/json")).call()?.into_string()?;
+    use flake_writer::get_proxy_req; //todo: refactor out of flake_writer
+    let json = get_proxy_req()?
+        .get(&format!("https://pypi.org/pypi/{package_name}/json"))
+        .call()?
+        .into_string()?;
     let json: serde_json::Value = serde_json::from_str(&json)?;
-    let version = json["info"]["version"].as_str().context("no version in json")?;
+    let version = json["info"]["version"]
+        .as_str()
+        .context("no version in json")?;
     Ok(version.to_string())
-
 }
-
 
 fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
     /*
@@ -2136,7 +2215,12 @@ fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<(
     Ok(())
 }
 
-fn discover_newest_rev_git(url: &str, branch: Option<&String>) -> Result<String> {
+fn discover_newest_rev_git(url: &str, branch: Option<&str>) -> Result<String> {
+    let rewritten_url = if url.starts_with("github:") {
+        url.replace("github:", "https://github.com/")
+    } else {
+        url.to_string()
+    };
     let refs = match branch {
         Some(x) => Cow::from(format!("refs/heads/{}", x)),
         None => Cow::from("HEAD"),
@@ -2144,7 +2228,7 @@ fn discover_newest_rev_git(url: &str, branch: Option<&String>) -> Result<String>
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
         Ok(std::process::Command::new("git")
-            .args(&["ls-remote", url, &refs])
+            .args(&["ls-remote", &rewritten_url, &refs])
             .output()?)
     })
     .expect("git ls-remote failed");

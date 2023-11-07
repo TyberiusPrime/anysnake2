@@ -255,7 +255,7 @@ pub fn write_flake(
             inputs.push(InputFlake::new(
                 "nixR",
                 &r_config.nixr_url,
-                &r_config.nixr_tag,
+                &r_config.nixr_tag.as_ref().expect("No nixR tag? Should have been lookup up automatically. Anysnake2 bug"),
                 &[],
                 &flake_dir,
             )?);

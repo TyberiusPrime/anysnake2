@@ -219,7 +219,10 @@ fn test_full_r_packages() {
     let override_test_file = PathBuf::from("examples/full")
         .join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
     assert!(override_test_file.exists());
-    assert_eq!(std::fs::read_to_string(override_test_file).unwrap(), "Yes\n");
+    assert_eq!(
+        std::fs::read_to_string(override_test_file).unwrap(),
+        "Yes\n"
+    );
 }
 
 #[test]
@@ -264,7 +267,13 @@ fn test_full_rpy2_sitepaths() {
 
 #[test]
 fn test_just_r() {
-    let (_code, stdout, _stderr) = run_test(
+    use toml_edit::Document;
+    let toml_path = "examples/just_python_trust_on_first_use/anysnake2.toml";
+    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+
+    assert!(!toml.contains("nixr_tag"));
+
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/just_r",
         &["run", "--", "R", "-e", "'library(Rcpp); sessionInfo()'"],
     );
@@ -272,7 +281,11 @@ fn test_just_r() {
     let override_test_file = PathBuf::from("examples/just_r")
         .join(".anysnake2_flake/result/rootfs/R_libs/Rcpp/override_in_place");
     assert!(override_test_file.exists());
-
+    let toml_path = td.path().join("anysnake2.toml");
+    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+    assert!(toml.contains("nixr_tag ="));
+    //verify it's toml
+    toml.parse::<Document>().expect("invalid doc");
 }
 
 #[test]
@@ -470,7 +483,10 @@ fn test_just_python_pypi() {
     dbg!(&stdout);
     let dppd_version = stdout.trim().split_once("dppd_version=").unwrap().1.trim();
     dbg!(dppd_version);
-    let dppd_version: Vec<u32> = dppd_version.split(".").map(|x| x.parse::<u32>().unwrap()).collect();
+    let dppd_version: Vec<u32> = dppd_version
+        .split(".")
+        .map(|x| x.parse::<u32>().unwrap())
+        .collect();
     dbg!(&dppd_version);
     assert!(dppd_version >= vec![0u32, 25]);
 }

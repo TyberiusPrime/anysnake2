@@ -147,6 +147,7 @@ packages = [
 	"ACA",
 	"Rcpp"
 	]
+nixr_tag = "263cce0d9cda1e6c06b8dc8afa84b4887d32255d"
 
 # you can apply overrideAttrs to
 # individual R packages, for those times you really really need to patch 'em
