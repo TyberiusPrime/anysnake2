@@ -255,7 +255,7 @@ pub fn write_flake(
             inputs.push(InputFlake::new(
                 "nixR",
                 &r_config.nixr_url,
-                &r_config.nixr_tag.as_ref().expect("No nixR tag? Should have been lookup up automatically. Anysnake2 bug"),
+                &r_config.nixr_tag,
                 &[],
                 &flake_dir,
             )?);
@@ -639,9 +639,14 @@ fn format_python_build_packages(
                 {arguments}
               {overrides}
               }});\n",
+<<<<<<< HEAD
+                    key,
+                    python_version_from_spec(spec, None),
+=======
                     key=key,
-                    version=python_version_from_spec(spec, None),
+                    version=python_version_from_spec(&spec, None),
                     src_method=
+>>>>>>> refs/remotes/origin/main
                     match spec
                         .get("method")
                         .expect("Missing 'method' on python build package definition")
