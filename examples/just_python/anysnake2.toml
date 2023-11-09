@@ -32,6 +32,7 @@ example-cli-python="editable/code"
 black=""
 tomli=">1.2"
 hatchling=""
+dppd={method="fetchPypi", version = "0.24", "hash_0.24" = "sha256-kHZi58W1OJF/69hF72Sg+svRpsJfA+JZVbmEt63HNRg=" }
 
 
 

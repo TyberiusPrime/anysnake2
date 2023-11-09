@@ -3,7 +3,17 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
+fn assert_have_github_api_token() {
+    if !std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD").is_ok() {
+        panic!("Need to set ANYSNAKE2_GITHUB_API_PASSWORD to run tests");
+    }
+    if !std::env::var("ANYSNAKE2_GITHUB_API_USERNAME").is_ok() {
+        panic!("Need to set ANYSNAKE2_GITHUB_API_USERNAME to run tests");
+    }
+}
+
 fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
+    assert_have_github_api_token();
     //can't have more than one running from a given folder at a time
     //let lock = NamedLock::create(&cwd.replace("/", "_")).unwrap();
     let lock = NamedLock::create("anysnaketest").unwrap();
@@ -44,6 +54,7 @@ fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir) {
+    assert_have_github_api_token();
     let td = tempfile::Builder::new()
         .prefix("anysnake_test")
         .tempdir()
@@ -101,11 +112,12 @@ fn test_just_python() {
             "--",
             "python",
             "-c",
-            "'import pandas; print(pandas.__version__)'",
+            "'import pandas; print(pandas.__version__); import dppd; print(dppd.__version__)'",
         ],
     );
 
     assert!(stdout.contains("1.5.1"));
+    assert!(stdout.contains("0.24"));
 
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
     dbg!(&stdout);
@@ -218,7 +230,10 @@ fn test_full_r_packages() {
     let override_test_file = PathBuf::from("examples/full")
         .join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
     assert!(override_test_file.exists());
-    assert_eq!(std::fs::read_to_string(override_test_file).unwrap(), "Yes\n");
+    assert_eq!(
+        std::fs::read_to_string(override_test_file).unwrap(),
+        "Yes\n"
+    );
 }
 
 #[test]
@@ -271,7 +286,6 @@ fn test_just_r() {
     let override_test_file = PathBuf::from("examples/just_r")
         .join(".anysnake2_flake/result/rootfs/R_libs/Rcpp/override_in_place");
     assert!(override_test_file.exists());
-
 }
 
 #[test]
@@ -454,4 +468,25 @@ fn test_just_python_pypi() {
     );
 
     assert!(stdout.contains("1.9.3"));
+
+    let (_code, stdout, _stderr) = run_test(
+        &td_path,
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import dppd; print(\"dppd_version=\", dppd.__version__)'",
+        ],
+    );
+    assert!(stdout.contains("dppd_version="));
+    dbg!(&stdout);
+    let dppd_version = stdout.trim().split_once("dppd_version=").unwrap().1.trim();
+    dbg!(dppd_version);
+    let dppd_version: Vec<u32> = dppd_version
+        .split(".")
+        .map(|x| x.parse::<u32>().unwrap())
+        .collect();
+    dbg!(&dppd_version);
+    assert!(dppd_version >= vec![0u32, 25]);
 }

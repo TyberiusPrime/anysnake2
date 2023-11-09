@@ -22,19 +22,19 @@ version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for 
 ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
 
 [mach-nix]
-rev="4b9e5e087a154c9903c533848907ea077007d6ee"
+#rev="4b9e5e087a154c9903c533848907ea077007d6ee"
 
 [python.packages]
 # just tell it to use 'useFlake' and define the flake below
+dppd={method="fetchPypi"} # version is auto detected
 
 [python.packages.scanpy] 
 method = "fetchPypi"
 version="1.9.3"
-pname = "scanpy"
+#pname = "scanpy"
 buildPythonPackage_arguments="""
 {
 format="pyproject";
-pname = "scanpy";
 requirements=''
 anndata>=0.7.4
 numpy>=1.17.0

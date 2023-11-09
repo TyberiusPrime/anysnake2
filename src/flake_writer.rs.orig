@@ -639,9 +639,14 @@ fn format_python_build_packages(
                 {arguments}
               {overrides}
               }});\n",
+<<<<<<< HEAD
+                    key,
+                    python_version_from_spec(spec, None),
+=======
                     key=key,
-                    version=python_version_from_spec(spec, None),
+                    version=python_version_from_spec(&spec, None),
                     src_method=
+>>>>>>> refs/remotes/origin/main
                     match spec
                         .get("method")
                         .expect("Missing 'method' on python build package definition")
