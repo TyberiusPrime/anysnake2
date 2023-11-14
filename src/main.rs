@@ -285,11 +285,10 @@ fn switch_to_configured_version(
     Ok(())
 }
 
-struct CollectedPythonPackages{
+struct CollectedPythonPackages {
     requirement_packages: Vec<(String, String)>,
     build_packages: HashMap<String, BuildPythonPackageInfo>,
 }
-
 
 fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
@@ -329,9 +328,15 @@ fn collect_python_packages(
                     requirement_packages.push((pkg, version_spec));
                 }
             }
-            CollectedPythonPackages{requirement_packages, build_packages}
+            CollectedPythonPackages {
+                requirement_packages,
+                build_packages,
+            }
         }
-        None => CollectedPythonPackages{requirement_packages: Vec::new(), build_packages: HashMap::new()},
+        None => CollectedPythonPackages {
+            requirement_packages: Vec::new(),
+            build_packages: HashMap::new(),
+        },
     })
 }
 
@@ -437,7 +442,8 @@ fn inner_main() -> Result<()> {
     perform_clones(&parsed_config)?;
 
     let temp = collect_python_packages(&mut parsed_config)?;
-    let (python_packages, mut python_build_packages) = (temp.requirement_packages, temp.build_packages);
+    let (python_packages, mut python_build_packages) =
+        (temp.requirement_packages, temp.build_packages);
     trace!(
         "python packages: {:?} {:?}",
         python_packages,
@@ -1417,7 +1423,7 @@ fn register_gc_root(store_path: &str, symlink: &Path) -> Result<()> {
 fn nix_build_flake(url: &str) -> Result<String> {
     run_without_ctrl_c(|| {
         let output = std::process::Command::new("nix")
-                .args([
+            .args([
                 "build",
                 url,
                 "--max-jobs",
@@ -1516,9 +1522,8 @@ fn upgrade(
                         Some(repo) => {
                             let gh_tags = flake_writer::get_github_tags(repo, 1)?;
                             if !gh_tags.is_empty() {
-                                let newest = gh_tags
-                                    .first()
-                                    .expect("No tags though vec was not empty!?");
+                                let newest =
+                                    gh_tags.first().expect("No tags though vec was not empty!?");
                                 let newest_tag = newest["name"]
                                     .as_str()
                                     .context("Could not find name for tag in github api output")?

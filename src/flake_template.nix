@@ -182,34 +182,37 @@
           %NIXPKGS_PACKAGES%
           %FURTHER_FLAKE_PACKAGES%
         '';
-        additional_mkPythonArgs = {
-          _."jupyter-core".postInstall = ''
-            rm $out/lib/python*/site-packages/jupyter.py
-            rm $out/lib/python*/site-packages/__pycache__/jupyter.cpython*.pyc
-          '';
-          # which is only going to work inside our container
-          _."rpy2" = {
-            postPatch = ''
-                            #substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace '@NIX_R_LIBS_SITE@' "/R_libs"
-                            substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace "os.environ['R_HOME'] = openrlib.R_HOME" \
-                            "os.environ['R_HOME'] = openrlib.R_HOME
-                      # path to libraries
-                      existing = os.environ.get('R_LIBS_SITE')
-                      if existing is not None:
-                          prefix = existing + ':'
-                      else:
-                          prefix = '''
-                      additional = '/R_libs'
-                      os.environ['R_LIBS_SITE'] = prefix + additional
-              "
-                            substituteInPlace 'requirements.txt' --replace 'pytest' ""
-            '';
-            patches = [];
-          };
-        } 
-          #%PYTHON_BUILD_PACKAGES%
-          #%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%
-        ;
+        additional_mkPythonArgs = let
+          input =
+            {
+              _."jupyter-core".postInstall = ''
+                rm $out/lib/python*/site-packages/jupyter.py
+                rm $out/lib/python*/site-packages/__pycache__/jupyter.cpython*.pyc
+              '';
+              # which is only going to work inside our container
+              _."rpy2" = {
+                postPatch = ''
+                                #substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace '@NIX_R_LIBS_SITE@' "/R_libs"
+                                substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace "os.environ['R_HOME'] = openrlib.R_HOME" \
+                                "os.environ['R_HOME'] = openrlib.R_HOME
+                          # path to libraries
+                          existing = os.environ.get('R_LIBS_SITE')
+                          if existing is not None:
+                              prefix = existing + ':'
+                          else:
+                              prefix = '''
+                          additional = '/R_libs'
+                          os.environ['R_LIBS_SITE'] = prefix + additional
+                  "
+                                substituteInPlace 'requirements.txt' --replace 'pytest' ""
+                '';
+                patches = [];
+              };
+            }
+            PYTHON_BUILD_PACKAGES;
+          override_func = PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS_FUNC;
+        in
+          override_func input;
       };
     in rec {
       defaultPackage = buildSymlinkImage _args;

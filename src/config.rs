@@ -291,117 +291,124 @@ where
         crate::maps_duplicate_key_is_error::deserialize(deserializer)?;
     let res: Result<HashMap<String, PythonPackageDefinition>, D::Error> = parsed
         .into_iter()
-        .map(|(pkg_name, v)| match v {
-            ParsedPythonPackageDefinition::Requirement(x) => {
-                Ok((pkg_name, PythonPackageDefinition::Requirement(x)))
-            }
-            ParsedPythonPackageDefinition::BuildPythonPackage(def) => {
-                let mut errors: Vec<&str> = Vec::new();
-                let method = def
-                    .get("method")
-                    .ok_or_else(|| {
-                        serde::de::Error::custom(format!(
-                            "Missing method on python package {}",
-                            pkg_name
-                        ))
-                    })?
-                    .as_str()
-                    .ok_or_else(|| {
-                        serde::de::Error::custom(format!(
-                            "method must be a string on python package {}",
-                            pkg_name
-                        ))
-                    })?;
-                match method {
-                    "fetchFromGitHub" => {
-                        if !def.contains_key("owner") {
-                            errors.push("Was missing 'owner' key.")
-                        }
-                        if !def.contains_key("repo") {
-                            errors.push("Was missing 'repo' key.")
-                        }
-                    }
-                    "fetchGit" | "fetchhg" => {
-                        if !def.contains_key("url") {
-                            errors.push("Was missing 'url' key.")
-                        }
-                    }
-                    _ => {}
-                }
-                if !errors.is_empty() {
-                    return Err(serde::de::Error::custom(format!(
-                        "Python.packages.{}: {}",
-                        pkg_name,
-                        errors.join("\n")
-                    )));
-                }
-                let overrides = match def.get("overrides") {
-                    None => None,
-                    Some(toml::Value::Array(input)) => {
-                        let mut output: Vec<String> = Vec::new();
-                        for ov in input.iter() {
-                            output.push(
-                                ov.as_str()
-                                    .ok_or(serde::de::Error::custom(format!(
-                                        "Overrides must be an array of strings. Python package {}",
-                                        pkg_name,
-                                    )))?
-                                    .to_string(),
-                            );
-                        }
-                        Some(output)
-                    }
-                    Some(_) => {
+        .map(|(pkg_name, v)| {
+            if pkg_name == "additional_mkpython_arguments_func" {
                         return Err(serde::de::Error::custom(format!(
-                            "Overrides must be an array of strings. Python package {}",
+                                "additional_mkpython_arguments_func used in python.packages, but it's meant to be on python proper"
+                            )));
+                    }
+
+            match v {
+                ParsedPythonPackageDefinition::Requirement(x) => {
+                    Ok((pkg_name, PythonPackageDefinition::Requirement(x)))
+                }
+                ParsedPythonPackageDefinition::BuildPythonPackage(def) => {
+                    let mut errors: Vec<&str> = Vec::new();
+                    let method = def
+                        .get("method")
+                        .ok_or_else(|| {
+                            serde::de::Error::custom(format!(
+                                "Missing method on python package {}",
+                                pkg_name
+                            ))
+                        })?
+                        .as_str()
+                        .ok_or_else(|| {
+                            serde::de::Error::custom(format!(
+                                "method must be a string on python package {}",
+                                pkg_name
+                            ))
+                        })?;
+                    match method {
+                        "fetchFromGitHub" => {
+                            if !def.contains_key("owner") {
+                                errors.push("Was missing 'owner' key.")
+                            }
+                            if !def.contains_key("repo") {
+                                errors.push("Was missing 'repo' key.")
+                            }
+                        }
+                        "fetchGit" | "fetchhg" => {
+                            if !def.contains_key("url") {
+                                errors.push("Was missing 'url' key.")
+                            }
+                        }
+                        _ => {}
+                    }
+                    if !errors.is_empty() {
+                        return Err(serde::de::Error::custom(format!(
+                            "Python.packages.{}: {}",
                             pkg_name,
+                            errors.join("\n")
                         )));
                     }
-                };
-                let string_defs: Result<HashMap<String, String>, D::Error> = def
-                    .into_iter()
-                    .filter_map(|(k, v)| match v {
-                        toml::Value::String(v) => {
-                            if k == "pkg_option" {
-                                let v = v.trim();
-                                if ! (v.starts_with('{') && v.ends_with('}')) {
-                                    return Some(Err(serde::de::Error::custom(format!(
-                                        "Field {} on python package {} must be the string representwation of the nix attrSet that we shall pass to buildPythonPackage",
+                    let overrides = match def.get("overrides") {
+                        None => None,
+                        Some(toml::Value::Array(input)) => {
+                            let mut output: Vec<String> = Vec::new();
+                            for ov in input.iter() {
+                                output.push(
+                                    ov.as_str()
+                                        .ok_or(serde::de::Error::custom(format!(
+                                            "Overrides must be an array of strings. Python package {}",
+                                            pkg_name,
+                                        )))?
+                                        .to_string(),
+                                );
+                            }
+                            Some(output)
+                        }
+                        Some(_) => {
+                            return Err(serde::de::Error::custom(format!(
+                                "Overrides must be an array of strings. Python package {}",
+                                pkg_name,
+                            )));
+                        }
+                    };
+                    let string_defs: Result<HashMap<String, String>, D::Error> = def
+                        .into_iter()
+                        .filter_map(|(k, v)| match v {
+                            toml::Value::String(v) => {
+                                if k == "pkg_option" {
+                                    let v = v.trim();
+                                    if ! (v.starts_with('{') && v.ends_with('}')) {
+                                        return Some(Err(serde::de::Error::custom(format!(
+                                            "Field {} on python package {} must be the string representwation of the nix attrSet that we shall pass to buildPythonPackage",
+                                            k, pkg_name
+                                        ))));
+                                    }
+                                }
+
+                                Some(Ok((k, v)))
+
+                            },
+                            toml::Value::Array(_) => {
+                                if k != "overrides" {
+                                    Some(Err(serde::de::Error::custom(format!(
+                                        "Field {} on python package {} must be a string ",
                                         k, pkg_name
-                                    ))));
+                                    ))))
+                                } else {
+                                    None
                                 }
                             }
-
-                            Some(Ok((k, v)))
-
-                        },
-                        toml::Value::Array(_) => {
-                            if k != "overrides" {
+                            _ => {
                                 Some(Err(serde::de::Error::custom(format!(
                                     "Field {} on python package {} must be a string ",
                                     k, pkg_name
                                 ))))
-                            } else {
-                                None
                             }
-                        }
-                        _ => {
-                            Some(Err(serde::de::Error::custom(format!(
-                                "Field {} on python package {} must be a string ",
-                                k, pkg_name
-                            ))))
-                        }
-                    })
-                    .collect();
-                Ok((
-                    pkg_name,
-                    PythonPackageDefinition::BuildPythonPackage(BuildPythonPackageInfo {
-                        options: string_defs?,
-                        overrides,
-                    }),
-                ))
-            }
-        })
+                        })
+                        .collect();
+                    Ok((
+                        pkg_name,
+                        PythonPackageDefinition::BuildPythonPackage(BuildPythonPackageInfo {
+                            options: string_defs?,
+                            overrides,
+                        }),
+                    ))
+                }
+            }})
         .collect();
     res
 }
@@ -413,6 +420,7 @@ pub struct Python {
     #[serde(deserialize_with = "de_python_package_definition")]
     pub packages: HashMap<String, PythonPackageDefinition>,
     pub additional_mkpython_arguments: Option<String>,
+    pub additional_mkpython_arguments_func: Option<String>,
 }
 
 impl Python {
@@ -463,7 +471,6 @@ pub struct Container {
     pub volumes_rw: Option<HashMap<String, String>>,
     pub env: Option<HashMap<String, String>>,
 }
-
 
 #[derive(Deserialize, Debug)]
 pub struct R {

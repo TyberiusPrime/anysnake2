@@ -56,6 +56,16 @@ allow_unfree = true # set to true to allow unfree packages from nixpkgs
 [python] # python section is optional
 version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+additional_mkpython_arguments_func = """
+old: old // {"_"  = old."_" // {
+	pandas.postInstall = ''
+        touch $out//lib/python3.8/site-packages/pandas/mkpython_args_worked
+	'';
+	};
+}
+""" # must be verbatim nix code defing a function old -> new (attrSets)
+
+
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53

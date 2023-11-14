@@ -211,7 +211,16 @@ fn test_full() {
         .split('\n')
         .next()
         .unwrap()
-        .contains("8ed7651af759f3f0b715a2fbda7bf5119f7145d7"))
+        .contains("8ed7651af759f3f0b715a2fbda7bf5119f7145d7"));
+
+    let test_dir = PathBuf::from("examples/full");
+
+    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/pandas/mkpython_args_worked");
+    assert!(should_be_there.exists());
+
+    let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/rpy2/rinterface_lib/embedded.py");
+    let rpy2_embedded_text = std::fs::read_to_string(rpy2_embededed).unwrap();
+    assert!(rpy2_embedded_text.contains("# path to libraries"));
 }
 
 #[test]
@@ -335,7 +344,7 @@ fn test_python_pip_reinstall_if_venv_changes() {
     let toml_path = td.path().join("anysnake2.toml");
     let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
     println!("{}", toml);
-    toml = toml.replace("pandas", "solidpython=\"\"\npandas");
+    toml = toml.replace("pandas=", "solidpython=\"\"\npandas=");
     ex::fs::write(toml_path, toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
