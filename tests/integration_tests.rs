@@ -288,14 +288,14 @@ fn test_full_rpy2_sitepaths() {
 #[test]
 fn test_just_r() {
     use toml_edit::Document;
-    let toml_path = "examples/just_python_trust_on_first_use/anysnake2.toml";
+    let toml_path = "examples/just_r/anysnake2.toml";
     let toml = ex::fs::read_to_string(&toml_path).unwrap();
 
     assert!(!toml.contains("nixr_tag"));
 
     let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/just_r",
-        &["run", "--", "R", "-e", "'library(Rcpp); sessionInfo()'"],
+        &["run", "--", "R", "-e", "'library(Rcpp); library('R6'); library('kedd'); sessionInfo()'"],
     );
     assert!(stdout.contains("Rcpp_1.0.8.3"));
     let override_test_file = PathBuf::from("examples/just_r")

@@ -483,6 +483,8 @@ pub struct R {
     pub ecosystem_tag: Option<String>,
 
     pub override_attrs: Option<HashMap<String, String>>,
+    pub dependency_overrides: Option<HashMap<String, String>>,
+    pub additional_packages: Option<HashMap<String, String>>,
 }
 
 impl R {

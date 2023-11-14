@@ -274,17 +274,32 @@ old: old // {{\"_\"  = old.\"_\" // {{
                 &[],
                 &flake_dir,
             )?);
-            let r_override_args = match &r_config.override_attrs {
-                Some(override_attrs) => {
-                    let mut r_override_args = "".to_string();
-                    for (pkg_name, override_nix_func) in override_attrs.iter() {
-                        r_override_args
-                            .push_str(&format!("{} = ({});", pkg_name, override_nix_func));
+
+            fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
+                let mut out = "".to_string();
+                    for (pkg_name, override_nix_func) in attrset.iter() {
+                        out
+                            .push_str(&format!("\"{}\" = ({});", pkg_name, override_nix_func));
                     }
-                    r_override_args
+                    out
+
+            }
+
+            let r_override_args = r_config.override_attrs.as_ref().map_or("".to_string(), attrset_from_hashmap);
+            let r_dependency_overrides = r_config.dependency_overrides.as_ref().map_or("".to_string(), attrset_from_hashmap);
+            let r_additional_packages = r_config.additional_packages.as_ref().map_or("".to_string(), attrset_from_hashmap);
+
+            let mut r_pkg_list: Vec<String> = r_config.packages.iter().map(|x| x.to_string()).collect();
+            if let Some(additional_packages) = &r_config.additional_packages {
+                for pkg_ver in additional_packages.keys() {
+                    let (pkg, _ver) = pkg_ver.split_once("_").expect("R.additional_packages key did not conform to 'name_version' schema");
+                    r_pkg_list.push(pkg.to_string());
                 }
-                None => "".to_string(),
-            };
+            }
+            //remove duplicates
+            r_pkg_list.sort();
+            r_pkg_list.dedup();
+
 
             let r_packages = format!(
                 "
@@ -292,15 +307,19 @@ old: old // {{\"_\"  = old.\"_\" // {{
                     date = \"{}\" ;
                     r_pkg_names = [{}];
                     packageOverrideAttrs = {{ {} }};
+                    r_dependency_overrides = {{ {} }};
+                    additional_packages = {{ {} }};
                 }};
                 ",
                 &r_config.date,
-                r_config
-                    .packages
-                    .iter()
+                r_pkg_list                    .iter()
                     .map(|x| format!("\"{}\"", x))
                     .join(" "),
-                r_override_args
+
+               r_override_args,
+                r_dependency_overrides,
+                r_additional_packages
+
             );
             overlays.push(
                 "(final: prev: { 

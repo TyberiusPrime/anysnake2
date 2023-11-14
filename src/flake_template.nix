@@ -212,7 +212,7 @@
             PYTHON_BUILD_PACKAGES;
           override_func = PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS_FUNC;
         in
-          override_func input;
+          input // (override_func input);
       };
     in rec {
       defaultPackage = buildSymlinkImage _args;

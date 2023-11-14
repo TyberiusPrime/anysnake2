@@ -28,7 +28,6 @@ date="2022-05-10" # you get whatever packages were current that day.
 packages = [
 	"Rcpp",
 	"stringi"
-
 ]
 
 [R.override_attrs]
@@ -38,6 +37,20 @@ postInstall = ''
   echo "Yes" >$out/library/Rcpp/override_in_place
 '';
 }
+'''
+
+[R.dependency_overrides]
+Rcpp = '''
+old: old ++ ["R6"]
+'''
+
+[R.additional_packages]
+"kedd_1.0.3" = '''{
+      src = pkgs.fetchurl {
+        sha256 = "38760abd8c8e8f69ad85ca7992803060acc44ce68358de1763bd2415fdf83c9f";
+        url = "https://cran.r-project.org/src/contrib/Archive/kedd/kedd_1.0.3.tar.gz";
+      };
+    }
 '''
 
 

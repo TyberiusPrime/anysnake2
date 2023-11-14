@@ -1,0 +1,193 @@
+    Finished dev [unoptimized + debuginfo] target(s) in 0.08s
+     Running `/home/finkernagel/upstream/anysnake2/target/debug/anysnake2 run bash`
+Using development version of anysnake
+Rebuilding flake
+evaluating derivation 'git+file:///home/finkernagel/upstream/anysnake2/examples/just_r/.anysnake2_flake#packages.x86_64-linux.default'...
+using revision 3daffce71ba7bc30969f708e71ad1c8f7b2d9c84 of repo '/home/finkernagel/upstream/anysnake2/examples/just_r/.anysnake2_flake'
+evaluating file '/nix/store/qwnbnm14vg106c7v8ydr0m28264iaasp-source/flake.nix'
+evaluating file '/nix/store/x72k67fj7hgwkq9943skv0p3famv93a7-source/flake.nix'
+downloading 'https://api.github.com/repos/NixOS/nixpkgs/commits/22.11'...
+evaluating file '/nix/store/nkhjmzkf9hky9h34yrfy0cgyd9pbh03v-source/flake.nix'
+downloading 'https://api.github.com/repos/NixOS/nixpkgs/commits/23.05'...
+downloading 'https://api.github.com/repos/NixOS/nixpkgs/tarball/4ecab3273592f27479a583fb6d975d4aba3486fe'...
+evaluating file '/nix/store/vhq11h949l5zycaw07acphv53ifq4p2c-source/flake.nix'
+warning: updating lock file '/home/finkernagel/upstream/anysnake2/examples/just_r/.anysnake2_flake/flake.lock':
+• Updated input 'nixR':
+    'github:TyberiusPrime/nixR/f77d23b8b6ec1c7009d8251edd60590517a54bbf' (2023-06-26)
+  → 'github:TyberiusPrime/nixR/0808c3aed0509d3baab31ab6c270ec853e66c5bf' (2023-11-09)
+• Added input 'nixR/nixpkgs_22_11':
+    'github:NixOS/nixpkgs/4d2b37a84fad1091b9de401eb450aae66f1a741e' (2022-11-30)
+• Added input 'nixR/nixpkgs_23_05':
+    'github:NixOS/nixpkgs/4ecab3273592f27479a583fb6d975d4aba3486fe' (2023-05-31)
+warning: Git tree '/home/finkernagel/upstream/anysnake2/examples/just_r/.anysnake2_flake' is dirty
+evaluating file '/nix/store/x5l9xgqylx8r054cl71i4z1libpsc8dj-source/flake.nix'
+evaluating file '/nix/store/ddm4xvz1gbbd1hbjaxmfsbzd6gzyglz2-source/flake.nix'
+evaluating file '/nix/store/ddm4xvz1gbbd1hbjaxmfsbzd6gzyglz2-source/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/flake.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/minver.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/impure.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/booter.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/fixed-points.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/lists.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/attrsets.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/inspect.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/architectures.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/parse.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/strings.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/types.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/trivial.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/platforms.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/modules.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/config.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/options.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/linux/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/stage.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/adapters.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/trivial-builders.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/splice.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/all-packages.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/aliases.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/generic/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/customisation.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/text/gawk/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/servers/x11/xorg/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/servers/x11/xorg/overrides.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/generic/make-derivation.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/generic/check-meta.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/systems/doubles.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/cc-wrapper/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/meta.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/linux/bootstrap-tools/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/glibc/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/glibc/common.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/os-specific/linux/kernel-headers/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/bintools-wrapper/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/linux/bootstrap-files/x86_64.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/linux/bootstrap-files/i686.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/binutils/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/licenses.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/zlib/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/fetchurl/boot.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/gettext/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/compression/xz/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/fetchurl/mirrors.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/parsing/bison/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/gnum4/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/interpreters/perl/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/texinfo/6.7.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/texinfo/common.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/expand-response-params/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/interpreters/python/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/interpreters/python/cpython/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/asserts.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/compression/bzip2/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/expat/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libffi/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/autoconf/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/automake/automake-1.16.x.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/libtool/libtool2.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/help2man/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/top-level/perl-packages.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/perl-modules/generic/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/nuke-references/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/shells/bash/4.4.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/shells/bash/bash-4.4-patches.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/interpreters/python/setup-hook.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libidn2/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libunistring/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/compilers/gcc/10/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libelf/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/misc/coreutils/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/acl/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/text/gnugrep/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/patchelf/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/compilers/gcc/common/extra-target-flags.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/isl/0.20.0.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/gmp/6.x.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/mpfr/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libmpc/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/compilers/gcc/common/configure-flags.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/compilers/gcc/common/platform-flags.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/system/which/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/compilers/gcc/common/pre-configure.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/compression/gzip/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/attr/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/text/diffutils/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/misc/findutils/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/build-managers/gnumake/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/text/gnused/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/archivers/gnutar/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/pcre/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/text/gnupatch/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/applications/editors/ed/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/compression/lzip/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/common-path.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/shells/bash/5.1.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/readline/8.1.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/shells/bash/bash-5.1-patches.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/readline/readline-8.1-patches.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/ncurses/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/pkg-config-wrapper/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/pkg-config/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/fetchurl/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/fetchers.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/networking/curl/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/nghttp2/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/openssl/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libssh2/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/kerberos/krb5.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/os-specific/linux/keyutils/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libev/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/c-ares/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/tools/misc/strace/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/libunwind/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/data/misc/mime-types/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/fetchzip/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/gdbm/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/sqlite/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/readline/6.3.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/data/misc/tzdata/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/sqlite/archive-version.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/lib/versions.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/development/libraries/readline/readline-6.3-patches.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/tools/archivers/unzip/default.nix'
+evaluating file '/nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/data/misc/cacert/default.nix'
+evaluating file '/nix/store/di36mqc6y19ivaa4qjrb2l82c6dqg7m3-source/flake.nix'
+evaluating file '/nix/store/di36mqc6y19ivaa4qjrb2l82c6dqg7m3-source/lib/default.nix'
+evaluating file '/nix/store/di36mqc6y19ivaa4qjrb2l82c6dqg7m3-source/lib/fixed-points.nix'
+evaluating file '/nix/store/di36mqc6y19ivaa4qjrb2l82c6dqg7m3-source/lib/attrsets.nix'
+evaluating file '/nix/store/x72k67fj7hgwkq9943skv0p3famv93a7-source/generated/r_by_date.nix'
+error:
+       … while calling the 'derivationStrict' builtin
+
+         at //builtin/derivation.nix:9:12: (source not available)
+
+       … while evaluating derivation 'anysnake2_container'
+         whose name attribute is located at /nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/stdenv/generic/make-derivation.nix:201:11
+
+       … while evaluating attribute 'buildCommand' of derivation 'anysnake2_container'
+
+         at /nix/store/fa7d7b3920mzvbk9ad2nv14gp6n4xpvl-source/pkgs/build-support/trivial-builders.nix:77:14:
+
+           76|       name = lib.strings.sanitizeDerivationName name;
+           77|       inherit buildCommand;
+             |              ^
+           78|       passAsFile = [ "buildCommand" ]
+
+       (stack trace truncated; use '--show-trace' to show the full trace)
+
+       error: function 'R_by_date' called with unexpected argument 'additonal_packages'
+
+       at /nix/store/x72k67fj7hgwkq9943skv0p3famv93a7-source/flake.nix:108:17:
+
+          107|     };
+          108|     R_by_date = {
+             |                 ^
+          109|       date,
+       Did you mean additional_packages?
+flake building failed
