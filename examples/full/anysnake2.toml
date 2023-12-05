@@ -229,10 +229,21 @@ pre_run_outside = """
 echo "pre run outside"
 """
 
-# runs independend of the sucess inside
+# runs independend of the sucess inside (same as post_run_inside)
 post_run_outside = """
 echo 'post run outside'
 """
+
+# this runs *while* the singularity process is running,
+# and get's killed() when the singularity process finishes
+while_run_outside ="""
+while :
+do
+    # usage idea: snapshot zfs
+	sleep 100;
+done
+"""
+
 
 [cmd.shell]
 run = """fish

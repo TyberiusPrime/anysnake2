@@ -192,6 +192,7 @@ impl Default for FlakeUtil {
 pub struct Cmd {
     pub run: String,
     pub pre_run_outside: Option<String>,
+    pub while_run_outside: Option<String>,
     pub post_run_inside: Option<String>,
     pub post_run_outside: Option<String>,
 }

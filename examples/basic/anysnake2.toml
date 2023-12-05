@@ -40,6 +40,25 @@ cd /project
 jupyter notebook
 """
 
+[cmd.test_pre_post]
+pre_run_outside = """
+echo "pre_run"
+"""
+while_run_outside ="""
+while :
+do
+	# write pid to pre_run.txt
+	echo "$BASHPID" > while_run.txt
+	sleep 1;
+done
+"""
+run = """
+echo "run"
+"""
+post_run_outside = """
+echo "post_run"
+"""
+
 [cmd.shell]
 run = """fish
 """

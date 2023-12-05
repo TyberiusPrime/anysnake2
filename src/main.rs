@@ -551,6 +551,7 @@ fn inner_main() -> Result<()> {
             fs::create_dir_all(&run_dir).context("Failed to create run dir for scripts")?;
             let post_run_sh: PathBuf = run_dir.join("post_run.sh");
             let mut post_run_outside: Option<String> = None;
+            let mut parallel_running_child: Option<std::process::Child> = None;
 
             if cmd == "run" {
                 let slop = matches.subcommand().unwrap().1.get_many::<String>("slop");
@@ -572,10 +573,15 @@ fn inner_main() -> Result<()> {
                 match &cmd_info.pre_run_outside {
                     Some(bash_script) => {
                         info!("Running pre_run_outside for cmd - cmd {}", cmd);
-                        run_bash(bash_script).context("pre run outside failed")?;
+                        run_bash(bash_script).with_context(|| format!("pre run outside failed. Script:\n{}", add_line_numbers(bash_script)))?;
                     }
                     None => {}
                 };
+                if let Some(while_run_outside) =  &cmd_info.while_run_outside { 
+                    parallel_running_child = Some(spawn_bash(while_run_outside)?);
+
+
+                }
                 info!("Running singularity - cmd {}", cmd);
                 let run_template = std::include_str!("run.sh");
                 let run_script = run_template.replace("%RUN%", &cmd_info.run);
@@ -735,11 +741,15 @@ fn inner_main() -> Result<()> {
             if let Some(bash_script) = post_run_outside {
                 if let Err(e) = run_bash(&bash_script) {
                     warn!(
-                        "An error occured when running the post_run_outside bash script: {}",
-                        e
+                        "An error occured when running the post_run_outside bash script: {}\nScript: {}",
+                        e, 
+                        add_line_numbers(&bash_script)
                     )
                 }
             };
+            if let Some(mut parallel_running_child) = parallel_running_child {
+                parallel_running_child.kill().context("Failed to kill parallel running child")?;
+            }
             std::process::exit(
                 singularity_result
                     .code()
@@ -1114,13 +1124,19 @@ fn rebuild_flake(
     }
 }
 
+fn spawn_bash(script: &str) -> Result<std::process::Child> {
+    let mut child = Command::new("bash").stdin(Stdio::piped()).spawn()?;
+    let child_stdin = child.stdin.as_mut().unwrap();
+    child_stdin.write_all(b"set -euo pipefail\n")?;
+    child_stdin.write_all(script.as_bytes())?;
+    child_stdin.write_all(b"\n")?;
+    Ok(child)
+
+}
+
 fn run_bash(script: &str) -> Result<()> {
     run_without_ctrl_c(|| {
-        let mut child = Command::new("bash").stdin(Stdio::piped()).spawn()?;
-        let child_stdin = child.stdin.as_mut().unwrap();
-        child_stdin.write_all(b"set -euo pipefail\n")?;
-        child_stdin.write_all(script.as_bytes())?;
-        child_stdin.write_all(b"\n")?;
+        let mut child = spawn_bash(script)?;
         let ecode = child.wait().context("Failed to wait on bash")?; // closes stdin
         if ecode.success() {
             Ok(())
@@ -2276,4 +2292,13 @@ fn discover_newest_rev_hg(url: &str) -> Result<String> {
         "Could not find revision hash in 'hg id --debug {}' output",
         url
     ))
+}
+
+
+fn add_line_numbers(s: &str) -> String {
+    let mut out = String::new();
+    for (i, line) in s.lines().enumerate() {
+        out.push_str(&format!("{:>4} | {}\n", i + 1, line));
+    }
+    out
 }

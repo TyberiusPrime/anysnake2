@@ -156,6 +156,28 @@ fn test_basic_python() {
 }
 
 #[test]
+fn test_basic_pre_post_run() {
+    let ((_code, stdout, _stderr), td) = run_test_tempdir(
+        "examples/basic",
+        &["test_pre_post"]
+    );
+    assert!(stdout.contains("pre_run"));
+    assert!(stdout.contains("run"));
+    assert!(stdout.contains("post_run"));
+    //assert order
+    assert!(stdout.find("pre_run").unwrap() < stdout.find("run").unwrap());
+    assert!(stdout.find("run").unwrap() < stdout.find("post_run").unwrap());
+
+    let while_run_file = td.path().join("while_run.txt");
+    assert!(while_run_file.exists());
+    let raw = std::fs::read_to_string(while_run_file).unwrap();
+    // now make sure that that pid's not in existance
+    let pid = raw.trim().parse::<u32>().unwrap();
+    assert!(!PathBuf::from(format!("/proc/{}", pid)).exists());
+
+}
+
+#[test]
 fn test_basic_jupyter() {
     let (_code, stdout, _stderr) = run_test(
         "examples/basic",
