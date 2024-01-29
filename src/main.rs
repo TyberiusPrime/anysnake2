@@ -224,8 +224,13 @@ fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
     }
 }
 
-fn configure_logging(matches: &ArgMatches) {
-    let verbosity = *matches.get_one::<usize>("verbose").unwrap_or(&2);
+fn configure_logging(matches: &ArgMatches) -> Result<()> {
+    let default_verbosity = 2;
+    let str_verbosity = matches.get_one::<String>("verbose");
+    let verbosity: usize =  match str_verbosity {
+        Some(str_verbosity) => usize::from_str(&str_verbosity).context("Failed to parse verbosity. Must be an integer")?,
+        None => default_verbosity
+    };
     stderrlog::new()
         .module(module_path!())
         .quiet(verbosity == 0)
@@ -234,6 +239,11 @@ fn configure_logging(matches: &ArgMatches) {
         .timestamp(stderrlog::Timestamp::Off)
         .init()
         .unwrap();
+
+    if verbosity > default_verbosity {
+        info!("verbosity set to {}", verbosity);
+    }
+    Ok(())
 }
 
 fn switch_to_configured_version(
@@ -344,7 +354,7 @@ fn collect_python_packages(
 fn inner_main() -> Result<()> {
     install_ctrl_c_handler()?;
     let matches = parse_args();
-    configure_logging(&matches);
+    configure_logging(&matches)?;
 
     if handle_config_command(&matches)? {
         return Ok(());
