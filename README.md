@@ -3,7 +3,7 @@
 Fully reproducible C/Python/R/Rust environments for research.
 
 Anysnake2 levers [Nix](https://nixos.org/), [mach-nix](https://github.com/DavHau/mach-nix), 
-[r_ecosystem_track](https://github.com/TyberiusPrime/r_ecosystem_track) and [rust-overlay](https://github.com/oxalica/rust-overlay)
+[nixR](https://github.com/TyberiusPrime/nixR) and [rust-overlay](https://github.com/oxalica/rust-overlay)
 to give you 'virtual environments' that are fully defined in an easy to use [toml](https://github.com/toml-lang/toml) file.
 
 # How it works
