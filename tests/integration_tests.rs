@@ -456,7 +456,7 @@ fn test_python_package_from_flake() {
 #[test]
 fn test_python_310_nixpkgs_2205() {
     // needs to be copied to test the tofu functionality.
-    let (code, stdout, _stderr) = run_test(
+    let ((code, stdout, _stderr), _td) = run_test_tempdir(
         "examples/python_310_nixpkgs_2205/",
         &[
             "run",

@@ -1,4 +1,3 @@
-r = { nixr_tag = "263cce0d9cda1e6c06b8dc8afa84b4887d32255d" }
 # fully featured anysnake2.toml example
 [anysnake2]
 # We leverage nix flakes to run exactly that version.
@@ -40,4 +39,5 @@ packages = [
 	"stringi"
 
 ]
+nixr_tag = "806abf9f18916e4203ddf70907ac7671ebfd3656"
 
