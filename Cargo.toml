@@ -38,3 +38,7 @@ features = []
 named-lock = "0.3"
 hex = "0.4"
 nix-base32="0.1"
+
+
+[profile.dev.package."*"]
+debug = false # only have debug symbols for the main package
