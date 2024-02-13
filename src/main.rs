@@ -9,16 +9,17 @@ use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
+use std::ffi::OsStr;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::{borrow::Cow, ffi::OsStr};
 use std::{collections::HashMap, str::FromStr};
-use toml_edit::{value, Document, Table};
+use tofu::{apply_trust_on_first_use, lookup_missing_flake_revs};
 use url::Url;
+use util::{add_line_numbers, change_toml_file, dir_empty, CloneStringLossy};
 
 /* TODO
 
@@ -43,37 +44,13 @@ mod config;
 mod flake_writer;
 mod maps_duplicate_key_is_error;
 mod python_parsing;
+mod tofu;
+mod util;
 
 use flake_writer::lookup_github_tag;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-trait CloneStringLossy {
-    fn to_string_lossy(&self) -> String;
-}
-
-impl CloneStringLossy for PathBuf {
-    fn to_string_lossy(&self) -> String {
-        self.clone().into_os_string().to_string_lossy().to_string()
-    }
-}
-impl CloneStringLossy for Path {
-    fn to_string_lossy(&self) -> String {
-        self.to_owned()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string()
-    }
-}
-/*
-impl CloneStringLossy for std::ffi::OsStr {
-    fn to_string_lossy(&self) -> String {
-        self.to_owned()
-            .to_string_lossy()
-            .to_string()
-    }
-}
-*/
 #[derive(Debug)]
 pub struct ErrorWithExitCode {
     msg: String,
@@ -93,6 +70,7 @@ impl std::fmt::Display for ErrorWithExitCode {
 }
 
 fn main() {
+    // we wrap  the actual main to enable exit codes.
     let r = inner_main();
     match r {
         Err(e) => {
@@ -110,6 +88,7 @@ fn main() {
 }
 
 lazy_static! {
+    /// whether ctrl-c can terminate us right now.
     static ref CTRL_C_ALLOWED: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
 }
 
@@ -117,7 +96,7 @@ fn install_ctrl_c_handler() -> Result<()> {
     let c = CTRL_C_ALLOWED.clone();
     Ok(ctrlc::set_handler(move || {
         if c.load(Ordering::Relaxed) {
-            println!("anysnake aborted");
+            error!("anysnake aborted");
             std::process::exit(1);
         }
     })?)
@@ -227,9 +206,10 @@ fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
 fn configure_logging(matches: &ArgMatches) -> Result<()> {
     let default_verbosity = 2;
     let str_verbosity = matches.get_one::<String>("verbose");
-    let verbosity: usize =  match str_verbosity {
-        Some(str_verbosity) => usize::from_str(&str_verbosity).context("Failed to parse verbosity. Must be an integer")?,
-        None => default_verbosity
+    let verbosity: usize = match str_verbosity {
+        Some(str_verbosity) => usize::from_str(&str_verbosity)
+            .context("Failed to parse verbosity. Must be an integer")?,
+        None => default_verbosity,
     };
     stderrlog::new()
         .module(module_path!())
@@ -246,6 +226,8 @@ fn configure_logging(matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+/// We switch to a different version of anysnake2 if the version in the config file is different from the one we are currently running.
+/// (unless that's 'dev', or --no-version-switch was passed)
 fn switch_to_configured_version(
     parsed_config: &config::MinimalConfigToml,
     matches: &ArgMatches,
@@ -300,6 +282,10 @@ struct CollectedPythonPackages {
     build_packages: HashMap<String, BuildPythonPackageInfo>,
 }
 
+/// take our python.packages section
+/// and extract straight requirements, nixified requirements
+/// and editable packages
+/// The straight requirements are augmented with those from the editable packages
 fn collect_python_packages(
     parsed_config: &mut config::ConfigToml,
 ) -> Result<CollectedPythonPackages> {
@@ -483,11 +469,11 @@ fn inner_main() -> Result<()> {
         {
             match sc.subcommand() {
                 Some(("flake", _)) => {
-                    println!("Writing just flake/flake.nix");
+                    info!("Writing just flake/flake.nix");
                     rebuild_flake(use_generated_file_instead, "flake", &flake_dir)?;
                 }
                 Some(("sif", _)) => {
-                    println!("Building sif in flake/result/...sif");
+                    info!("Building sif in flake/result/...sif");
                     rebuild_flake(
                         use_generated_file_instead,
                         "sif_image.x86_64-linux",
@@ -495,11 +481,11 @@ fn inner_main() -> Result<()> {
                     )?;
                 }
                 Some(("rootfs", _)) => {
-                    println!("Building rootfs in flake/result");
+                    info!("Building rootfs in flake/result");
                     rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
                 }
                 _ => {
-                    println!("Please pass a subcommand as to what to build");
+                    info!("Please pass a subcommand as to what to build");
                     std::process::exit(1);
                 }
             }
@@ -538,7 +524,7 @@ fn inner_main() -> Result<()> {
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
                 let full_args = vec!["develop", "-c", "bash", &s];
-                println!("{:?}", full_args);
+                info!("{:?}", full_args);
                 Ok(Command::new("nix")
                     .current_dir(&flake_dir)
                     .args(full_args)
@@ -583,14 +569,17 @@ fn inner_main() -> Result<()> {
                 match &cmd_info.pre_run_outside {
                     Some(bash_script) => {
                         info!("Running pre_run_outside for cmd - cmd {}", cmd);
-                        run_bash(bash_script).with_context(|| format!("pre run outside failed. Script:\n{}", add_line_numbers(bash_script)))?;
+                        run_bash(bash_script).with_context(|| {
+                            format!(
+                                "pre run outside failed. Script:\n{}",
+                                add_line_numbers(bash_script)
+                            )
+                        })?;
                     }
                     None => {}
                 };
-                if let Some(while_run_outside) =  &cmd_info.while_run_outside { 
+                if let Some(while_run_outside) = &cmd_info.while_run_outside {
                     parallel_running_child = Some(spawn_bash(while_run_outside)?);
-
-
                 }
                 info!("Running singularity - cmd {}", cmd);
                 let run_template = std::include_str!("run.sh");
@@ -752,13 +741,15 @@ fn inner_main() -> Result<()> {
                 if let Err(e) = run_bash(&bash_script) {
                     warn!(
                         "An error occured when running the post_run_outside bash script: {}\nScript: {}",
-                        e, 
+                        e,
                         add_line_numbers(&bash_script)
                     )
                 }
             };
             if let Some(mut parallel_running_child) = parallel_running_child {
-                parallel_running_child.kill().context("Failed to kill parallel running child")?;
+                parallel_running_child
+                    .kill()
+                    .context("Failed to kill parallel running child")?;
             }
             std::process::exit(
                 singularity_result
@@ -777,6 +768,7 @@ fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
     res
 }
 
+/// run a process inside a singularity container.
 fn run_singularity(
     args: &[String],
     outside_nix_repo: &str,
@@ -843,7 +835,7 @@ fn run_singularity(
 }
 
 fn print_version_and_exit() -> ! {
-    println!("anysnake2 version: {}", VERSION);
+    info!("anysnake2 version: {}", VERSION);
     std::process::exit(0);
 }
 
@@ -876,7 +868,6 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
 }
 
 /// expand clones by clone_regular_expressions, verify url schema
-
 fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     let clone_regexps: Vec<(Regex, &String)> = match &parsed_config.clone_regexps {
         Some(replacements) => {
@@ -922,14 +913,6 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     //assert!(re.is_match("2014-01-01"));
 
     Ok(())
-}
-
-fn dir_empty(path: &Path) -> Result<bool> {
-    Ok(path
-        .read_dir()
-        .context("Failed to read_dir")?
-        .next()
-        .is_none())
 }
 
 fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
@@ -1141,7 +1124,6 @@ fn spawn_bash(script: &str) -> Result<std::process::Child> {
     child_stdin.write_all(script.as_bytes())?;
     child_stdin.write_all(b"\n")?;
     Ok(child)
-
 }
 
 fn run_bash(script: &str) -> Result<()> {
@@ -1156,6 +1138,7 @@ fn run_bash(script: &str) -> Result<()> {
     })
 }
 
+/// so we can use ${env_var} in the home dir, and export envs into the containers
 fn replace_env_vars(input: &str) -> String {
     let mut output = input.to_string();
     for (k, v) in std::env::vars() {
@@ -1169,6 +1152,7 @@ fn safe_python_package_name(input: &str) -> String {
     input.replace('_', "-")
 }
 
+// deal with the editable packages.
 fn fill_venv(
     python_version: &str,
     python: &[(String, String)],
@@ -1220,8 +1204,8 @@ fn fill_venv(
             let td_home_str = td_home.path().to_string_lossy().to_string();
 
             let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
-            println!("target_python {:?}", target_python);
-            println!("search_python {:?}", search_python);
+            debug!("target_python {:?}", target_python);
+            debug!("search_python {:?}", search_python);
 
             let mut cmd_file = tempfile::NamedTempFile::new()?;
             writeln!(
@@ -1464,7 +1448,7 @@ fn nix_build_flake(url: &str) -> Result<String> {
             Err(anyhow!("nix build failed"))
         } else {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("{}", stdout);
+            info!("{}", stdout);
             let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout)?;
             let j = j.into_iter().next().unwrap();
             Ok(j.outputs.out)
@@ -1502,7 +1486,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
     if available.is_empty() {
         bail!("No session to attach to available");
     } else if available.len() == 1 {
-        println!("reattaching to {:?}", available[0].file_name());
+        info!("reattaching to {:?}", available[0].file_name());
         run_dtach(available[0].path(), outside_nix_repo)
     } else {
         available.sort_unstable_by_key(|x| x.file_name());
@@ -1522,6 +1506,38 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
     }
 }
 
+fn get_newest_anysnake2_tag(parsed_config: &config::ConfigToml) -> Result<String> {
+    debug!("querying github for newest anysnake2 version");
+    let repo = parsed_config
+        .anysnake2
+        .url
+        .as_ref()
+        .context("no anysnake2 url???")?
+        .strip_prefix("github:");
+    match repo {
+        Some(repo) => {
+            let gh_tags = flake_writer::get_github_tags(repo, 1)?;
+            if !gh_tags.is_empty() {
+                let newest = gh_tags.first().expect("No tags though vec was not empty!?");
+                let newest_tag = newest["name"]
+                    .as_str()
+                    .context("Could not find name for tag in github api output")?
+                    .to_string();
+                debug!("found newest tag: {}", newest_tag);
+                debug!("current tag: {}", parsed_config.anysnake2.rev);
+                return Ok(newest_tag);
+            } else {
+                return Err(anyhow!("Could not find any version in {}", &repo));
+            }
+        }
+        None => {
+            return Err(anyhow!(
+                "Can only upgrade anysnake2 if it's being sourced from github"
+            ))
+        }
+    }
+}
+
 fn upgrade(
     what: Option<Vec<String>>,
     parsed_config: &config::ConfigToml,
@@ -1529,70 +1545,38 @@ fn upgrade(
 ) -> Result<()> {
     match what {
         None => {
-            println!("no upgrade specified");
-            println!("Available for upgrade");
-            println!("\tanysnake2");
+            error!("no upgrade specified");
+            error!("Available for upgrade");
+            error!("\tanysnake2");
             return Ok(());
         }
         Some(what_) => {
             for w in what_ {
                 if w == "anysnake2" {
-                    println!("querying github for newest anysnake2 version");
-                    let repo = parsed_config
-                        .anysnake2
-                        .url
-                        .as_ref()
-                        .context("no anysnake2 url???")?
-                        .strip_prefix("github:");
-                    match repo {
-                        Some(repo) => {
-                            let gh_tags = flake_writer::get_github_tags(repo, 1)?;
-                            if !gh_tags.is_empty() {
-                                let newest =
-                                    gh_tags.first().expect("No tags though vec was not empty!?");
-                                let newest_tag = newest["name"]
-                                    .as_str()
-                                    .context("Could not find name for tag in github api output")?
-                                    .to_string();
-                                println!("found newest tag: {}", newest_tag);
-                                println!("current tag: {}", parsed_config.anysnake2.rev);
-                                if newest_tag != parsed_config.anysnake2.rev {
-                                    if use_generated_file_instead {
-                                        return Err(anyhow!(
-                                            "do_not_modify_flake is set. Not upgrading anything"
-                                        ));
-                                    }
-                                    if parsed_config.anysnake2.rev == "dev" {
-                                        return Err(anyhow!("Currently the 'dev' version is specified. Not overwriting that."));
-                                    }
-                                    //todo: refactor into 'modify-toml-closure-taking-func'?
-                                    let toml = std::fs::read_to_string(
-                                        parsed_config.anysnake2_toml_path.as_ref().unwrap(),
-                                    )
-                                    .expect("Could not reread config file");
-                                    let mut doc = toml.parse::<Document>().expect("invalid doc");
-                                    doc["anysnake2"]["rev"] = value(newest_tag);
-                                    let out_toml = doc.to_string();
-                                    std::fs::write(
-                                        parsed_config.anysnake2_toml_path.as_ref().unwrap(),
-                                        out_toml,
-                                    )
-                                    .expect("failed to rewrite config file");
-                                    println!("Upgraded anysnake2.toml");
-                                } else {
-                                    println!(
-                                        "not upgrading anysnake2 entry - already at newest version",
-                                    );
-                                }
-                            } else {
-                                return Err(anyhow!("Could not find any version in {}", &repo));
-                            }
-                        }
-                        None => {
+                    let newest_tag = get_newest_anysnake2_tag(parsed_config)?;
+
+                    if newest_tag != parsed_config.anysnake2.rev {
+                        if use_generated_file_instead {
                             return Err(anyhow!(
-                                "Can only upgrade anysnake2 if it's being sourced from github"
-                            ))
+                                "do_not_modify_flake is set. Not upgrading anything"
+                            ));
                         }
+                        if parsed_config.anysnake2.rev == "dev" {
+                            return Err(anyhow!(
+                                "Currently the 'dev' version is specified. Not overwriting that."
+                            ));
+                        }
+                        change_toml_file(
+                            parsed_config.anysnake2_toml_path.as_ref().unwrap(),
+                            |_| {
+                                Ok(vec![(
+                                    vec!["anysnake2".into(), "rev".into()],
+                                    toml_edit::Value::String(toml_edit::Formatted::new(newest_tag)),
+                                )])
+                            },
+                        )?;
+                    } else {
+                        warn!("not upgrading anysnake2 entry - already at newest version",);
                     }
                 } else {
                     return Err(anyhow!(
@@ -1623,6 +1607,8 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
         Err(anyhow!("dtach reattachment failed"))
     }
 }
+
+// parse a python egg file
 fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
     let raw = fs::read_to_string(egg_link)?;
     Ok(match raw.split_once('\n') {
@@ -1661,654 +1647,4 @@ fn write_develop_python_path(
         format!("export PYTHONPATH=\"{}\"", &develop_python_paths.join(":")),
     )?;
     Ok(())
-}
-
-enum PrefetchHashResult {
-    Hash(String),
-    HaveToUseFetchGit,
-}
-
-type Updates = Vec<(Vec<String>, toml_edit::Value)>;
-
-/// if no hash_{rev} is set, discover it and update anysnake2.toml
-/// if no rev is set, discover it as well
-fn apply_trust_on_first_use(
-    //todo: Where ist the flake stuff?
-    config: &mut config::ConfigToml,
-    python_build_packages: &mut HashMap<String, BuildPythonPackageInfo>,
-    outside_nixpkgs_url: &str,
-) -> Result<()> {
-    let mut updates: Updates = Vec::new();
-    apply_trust_on_first_use_python(
-        config,
-        python_build_packages,
-        outside_nixpkgs_url,
-        &mut updates,
-    )?;
-    apply_trust_on_first_use_r(config, &mut updates)?;
-
-    if !updates.is_empty() {
-        let toml = std::fs::read_to_string(config.anysnake2_toml_path.as_ref().unwrap())
-            .expect("Could not reread config file");
-        let mut doc = toml.parse::<Document>().expect("invalid doc");
-        for (path, value) in updates {
-            let mut x = &mut doc[&path[0]];
-            for p in path[1..path.len() - 1].iter() {
-                x = &mut x[p];
-            }
-            x[&path[path.len() - 1]] = toml_edit::Item::Value(value);
-        }
-        //now apply updates
-        let out_toml = doc.to_string();
-        std::fs::write(config.anysnake2_toml_path.as_ref().unwrap(), out_toml)
-            .expect("failed to rewrite config file");
-    }
-    Ok(())
-}
-
-fn apply_trust_on_first_use_r(
-    config: &mut config::ConfigToml,
-    updates: &mut Updates,
-) -> Result<()> {
-    if let Some(r) = &mut config.r {
-        if !r.packages.is_empty() {
-            if let None = r.nixr_tag {
-                println!(
-                    "Using discover-newest on first use for nixR, updating your anysnake2.toml"
-                );
-                let rev = discover_newest_rev_git(&r.nixr_url, Some("main"))?;
-                println!("\tDiscovered nixR revision {}", &rev);
-                updates.push((
-                    vec!["R".to_string(), "nixr_tag".to_string()],
-                    rev.clone().into(),
-                ));
-                r.nixr_tag = Some(rev);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn apply_trust_on_first_use_python(
-    _config: &config::ConfigToml,
-    python_build_packages: &mut HashMap<String, BuildPythonPackageInfo>,
-    outside_nixpkgs_url: &str,
-    updates: &mut Updates,
-) -> Result<()> {
-    if !python_build_packages.is_empty() {
-        for (key, spec) in python_build_packages.iter_mut() {
-            let method = spec
-                .get("method")
-                .expect("missing method - should have been caught earlier");
-            let mut hash_key = "".to_string();
-            match &method[..] {
-                "fetchFromGitHub" => {
-                    let rev = {
-                        match spec.get("rev") {
-                            Some(x) => x.to_string(),
-                            None => {
-                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", key);
-                                let owner = spec.get("owner").expect("missing owner").to_string();
-                                let repo = spec.get("repo").expect("missing repo").to_string();
-                                let url = format!("https://github.com/{}/{}", owner, repo);
-                                let rev = discover_newest_rev_git(
-                                    &url,
-                                    spec.get("branchName").map(AsRef::as_ref),
-                                )?;
-                                store_rev(spec, updates, key.to_owned(), &rev);
-                                rev
-                            }
-                        }
-                    };
-
-                    hash_key = format!("hash_{}", rev);
-                    if !spec.contains_key(&hash_key) {
-                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-
-                        let owner = spec.get("owner").expect("missing owner").to_string();
-                        let repo = spec.get("repo").expect("missing repo").to_string();
-                        let hash = prefetch_github_hash(&owner, &repo, &rev)?;
-                        match hash {
-                            PrefetchHashResult::Hash(hash) => {
-                                println!("nix-prefetch-hash for {} is {}", key, hash);
-                                store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                            }
-                            PrefetchHashResult::HaveToUseFetchGit => {
-                                let fetchgit_url = format!("https://github.com/{}/{}", owner, repo);
-                                let hash =
-                                    prefetch_git_hash(&fetchgit_url, &rev, outside_nixpkgs_url)
-                                        .context("prefetch-git-hash failed")?;
-
-                                let mut out = Table::default();
-                                out["method"] = value("fetchgit");
-                                out["url"] =
-                                    value(format!("https://github.com/{}/{}", owner, repo));
-                                out["rev"] = value(&rev);
-                                out[&hash_key] = value(&hash);
-                                if spec.contains_key("branchName") {
-                                    out["branchName"] = value(spec.get("branchName").unwrap());
-                                }
-                                updates.push((
-                                    vec![
-                                        "python".to_string(),
-                                        "packages".to_string(),
-                                        key.to_owned(),
-                                    ],
-                                    toml_edit::Value::InlineTable(out.into_inline_table()),
-                                ));
-
-                                spec.retain(|k, _| k == "branchName");
-                                spec.insert("method".to_string(), "fetchgit".into());
-                                spec.insert(hash_key.clone(), hash);
-                                spec.insert("url".to_string(), fetchgit_url);
-                                spec.insert("rev".to_string(), rev.clone());
-
-                                println!("The github repo {}/{}/?rev={} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use fetchgit instead, which is immune to that.", owner, repo, rev);
-                            }
-                        };
-                    }
-                }
-                "fetchgit" => {
-                    let url = spec
-                        .get("url")
-                        .expect("missing url on fetchgit")
-                        .to_string();
-                    let rev = {
-                        match spec.get("rev") {
-                            Some(x) => x.to_string(),
-                            None => {
-                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", key);
-                                let rev = discover_newest_rev_git(
-                                    &url,
-                                    spec.get("branchName").map(AsRef::as_ref),
-                                )?;
-                                println!("\tDiscovered revision {}", &rev);
-                                store_rev(spec, updates, key.to_owned(), &rev);
-                                rev
-                            }
-                        }
-                    };
-
-                    hash_key = format!("hash_{}", rev);
-                    if !spec.contains_key(&hash_key) {
-                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        let hash = prefetch_git_hash(&url, &rev, outside_nixpkgs_url)
-                            .context("prefetch_git-hash failed")?;
-                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                        //bail!("bail1")
-                    }
-                }
-                "fetchhg" => {
-                    let url = spec.get("url").expect("missing url on fetchhg").to_string();
-                    let rev = {
-                        match spec.get("rev") {
-                            Some(x) => x.to_string(),
-                            None => {
-                                println!("Using discover-newest on first use for python package {}, updating your anysnake2.toml", key);
-                                let rev = discover_newest_rev_hg(&url)?;
-                                println!("\tDiscovered revision {}", &rev);
-                                store_rev(spec, updates, key.to_owned(), &rev);
-                                rev
-                            }
-                        }
-                    };
-                    hash_key = format!("hash_{}", rev);
-                    if !spec.contains_key(&hash_key) {
-                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url).with_context(
-                            || format!("prefetch_hg-hash failed for {} {}", url, rev),
-                        )?;
-                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                        //bail!("bail1")
-                    }
-                }
-                "useFlake" => {
-                    // we use the flake rev, so no-op
-                }
-
-                "fetchPyPi" => {
-                    return Err(anyhow!(
-                        "fetchPyPi is not a valid method, you meant fetchPypi"
-                    ));
-                }
-
-                "fetchPypi" => {
-                    let pname = spec.get("pname").unwrap_or(key).to_string();
-                    let version = match spec.get("version") {
-                        Some(ver) => ver.to_string(),
-                        None => {
-                            println!("Retrieving current version for {} from pypi, updating your anysnake2.toml", key);
-                            let version = get_newest_pipi_version(&pname)?;
-                            store_version(spec, updates, key.to_owned(), &version);
-                            println!("Received version {}", &version);
-                            version
-                        }
-                    };
-
-                    hash_key = format!("hash_{}", version);
-                    if !spec.contains_key(&hash_key) {
-                        println!("Using Trust-On-First-Use for python package {}, updating your anysnake2.toml", key);
-                        let hash = prefetch_pypi_hash(&pname, &version, outside_nixpkgs_url)
-                            .context("prefetch-pypi-hash")?;
-                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                        //bail!("bail1")
-                    }
-                }
-                _ => {
-                    println!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
-                }
-            };
-            if !hash_key.is_empty() {
-                spec.insert(
-                    "sha256".to_string(),
-                    spec.get(&hash_key.to_string()).unwrap().to_string(),
-                );
-                spec.retain(|key, _| !key.starts_with("hash_"));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// helper for apply_trust_on_first_use
-fn store_hash(
-    spec: &mut BuildPythonPackageInfo,
-    updates: &mut Updates,
-    key: String,
-    hash_key: &str,
-    hash: String,
-) {
-    updates.push((
-        vec![
-            "python".to_string(),
-            "packages".to_string(),
-            key,
-            hash_key.to_string(),
-        ],
-        hash.to_owned().into(),
-    ));
-
-    spec.insert(hash_key.to_string(), hash.to_owned());
-}
-
-/// helper for discover_rev_on_first_use
-fn store_rev(
-    spec: &mut BuildPythonPackageInfo,
-    updates: &mut Updates,
-    key: String, // teh package
-    rev: &String,
-) {
-    updates.push((
-        vec![
-            "python".to_string(),
-            "packages".to_string(),
-            key,
-            "rev".to_string(),
-        ],
-        rev.into(),
-    ));
-    spec.insert("rev".to_string(), rev.to_owned());
-}
-
-fn store_version(
-    spec: &mut BuildPythonPackageInfo,
-    updates: &mut Updates,
-    key: String,
-    version: &String,
-) {
-    updates.push((
-        vec![
-            "python".to_string(),
-            "packages".to_string(),
-            key,
-            "version".to_string(),
-        ],
-        version.into(),
-    ));
-    spec.insert("version".to_string(), version.to_owned());
-}
-
-fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
-    let nix_prefetch_git_url_args = &[
-        "shell",
-        &nix_prefetch_git_url,
-        "-c",
-        "nix-prefetch-git",
-        "--url",
-        url,
-        "--rev",
-        rev,
-        "--quiet",
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_git_url_args)
-        .output()
-        .context("failed on nix-prefetch-git")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?;
-    let structured: HashMap<String, serde_json::Value> =
-        serde_json::from_str(stdout).context("nix-prefetch-git output failed json parsing")?;
-    let old_format = structured
-        .get("sha256")
-        .context("No sha256 in nix-prefetch-git json output")?;
-    let old_format: &str = old_format.as_str().context("sha256 was no string")?;
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-
-fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    let nix_prefetch_hg_url = format!("{}#nix-prefetch-hg", outside_nixpkgs_url);
-    let nix_prefetch_hg_url_args = &[
-        "shell",
-        &nix_prefetch_hg_url,
-        "-c",
-        "nix-prefetch-hg",
-        url,
-        rev,
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_hg_url_args)
-        .output()
-        .context("failed on nix-prefetch-hg")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split('\n');
-    let old_format = lines
-        .last()
-        .expect("Could not parse nix-prefetch-hg output");
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-
-fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
-    let url = format!(
-        "https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",
-        owner = owner,
-        repo = repo,
-        git_hash = git_hash
-    );
-
-    let stdout = Command::new("nix-prefetch-url")
-        .args([&url, "--type", "sha256", "--unpack", "--print-path"])
-        .output()
-        .context(format!("Failed to nix-prefetch {url}", url = url))?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?;
-    let mut stdout_split = stdout.split('\n');
-    let old_format = stdout_split
-        .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 0  - should have been hash)", url))?;
-    let path = stdout_split
-        .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 1  - should have been hash)", url))?;
-
-    /* if the git repo is using .gitattributes and 'export-subst'
-     * then github tarballs are actually not stable - if the drop out of the caching
-     * expotr-subst might stamp a different timestamp into the substituted values
-     * We detectd that and redirect to use fetchgit then
-     */
-    let gitattributes_path = PathBuf::from(path).join(".gitattributes");
-    if gitattributes_path.exists() {
-        let text = ex::fs::read_to_string(&gitattributes_path).context(format!(
-            "failed to read .gitattributes from {:?}",
-            &gitattributes_path
-        ))?;
-        if text.contains("export-subst") {
-            return Ok(PrefetchHashResult::HaveToUseFetchGit);
-        }
-    }
-
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-    println!("before convert: {}, after: {}", &old_format, &new_format);
-    Ok(PrefetchHashResult::Hash(new_format))
-}
-
-fn get_newest_pipi_version(package_name: &str) -> Result<String> {
-    use flake_writer::get_proxy_req; //todo: refactor out of flake_writer
-    let json = get_proxy_req()?
-        .get(&format!("https://pypi.org/pypi/{package_name}/json"))
-        .call()?
-        .into_string()?;
-    let json: serde_json::Value = serde_json::from_str(&json)?;
-    let version = json["info"]["version"]
-        .as_str()
-        .context("no version in json")?;
-    Ok(version.to_string())
-}
-
-fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    /*
-         * nix-universal-prefetch pythonPackages.fetchPypi \
-        --pname home-assistant-frontend \
-        --version 20200519.1
-    149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
-    */
-    let nix_prefetch_scripts = format!("{}#nix-universal-prefetch", outside_nixpkgs_url);
-    let nix_prefetch_args = &[
-        "shell",
-        &nix_prefetch_scripts,
-        "-c",
-        "nix-universal-prefetch",
-        "pythonPackages.fetchPypi",
-        "--pname",
-        pname,
-        "--version",
-        version,
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_args)
-        .output()
-        .context("failed on nix-prefetch-url for pypi")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split('\n');
-    let old_format = lines
-        .last()
-        .expect("Could not parse nix-prefetch-pypi output");
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-
-fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
-    if hash.is_empty() {
-        return Err(anyhow!(
-            "convert_hash_to_subresource_format called with empty hash"
-        ));
-    }
-    let res = Command::new("nix")
-        .args(["hash", "to-sri", "--type", "sha256", hash])
-        .output()
-        .context(format!(
-            "Failed to nix hash to-sri --type sha256 '{hash}'",
-            hash = hash
-        ))?
-        .stdout;
-    let res = std::str::from_utf8(&res)
-        .context("nix hash output was not utf8")?
-        .trim()
-        .to_owned();
-    if res.is_empty() {
-        Err(anyhow!(
-            "nix hash to-sri returned empty result. Hash was {}",
-            hash
-        ))
-    } else {
-        Ok(res)
-    }
-}
-
-/// auto discover newest flake rev if you leave it off.
-fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Result<()> {
-    if let Some(flakes) = &mut parsed_config.flakes {
-        let toml = std::fs::read_to_string(parsed_config.anysnake2_toml_path.as_ref().unwrap())
-            .expect("Could not reread config file");
-        let mut doc = toml.parse::<Document>().expect("invalid doc");
-
-        let mut write = false;
-        for (flake_name, flake) in flakes.iter_mut() {
-            if flake.rev.is_none() {
-                if flake.url.starts_with("github:") {
-                    use flake_writer::{add_auth, get_proxy_req};
-                    let re = Regex::new("github:/?([^/]+)/([^/?]+)/?([^/?]+)?").unwrap();
-                    let out = re
-                        .captures_iter(&flake.url)
-                        .next()
-                        .with_context(|| format!("Could not parse github url {:?}", flake.url))?;
-                    let owner = &out[1];
-                    let repo = &out[2];
-                    let branch = out.get(3).map_or("", |m| m.as_str());
-                    let branch = if !branch.is_empty() {
-                        Cow::from(branch)
-                    } else {
-                        let url = format!("https://api.github.com/repos/{}/{}", &owner, repo);
-                        let body: String =
-                            add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-                        let json: serde_json::Value = serde_json::from_str(&body)
-                            .context("Failed to parse github repo api")?;
-                        let default_branch = json
-                            .get("default_branch")
-                            .with_context(|| {
-                                format!("no default branch in github repos api?! {}", url)
-                            })?
-                            .as_str()
-                            .with_context(|| format!("default branch not a string? {}", url))?;
-                        Cow::from(default_branch.to_string())
-                    };
-
-                    let branch_url = format!(
-                        "https://api.github.com/repos/{}/{}/branches/{}",
-                        &owner, &repo, &branch
-                    );
-                    let body: String = add_auth(get_proxy_req()?.get(&branch_url))
-                        .call()?
-                        .into_string()?;
-                    let json: serde_json::Value =
-                        serde_json::from_str(&body).with_context(|| {
-                            format!("Failed to parse github repo/branches api {}", branch_url)
-                        })?;
-                    let commit = json
-                        .get("commit")
-                        .with_context(|| {
-                            format!("no commit in github repo/branches? {}", branch_url)
-                        })?
-                        .get("sha")
-                        .with_context(|| {
-                            format!("No sha on github repo/branches/commit? {}", branch_url)
-                        })?
-                        .as_str()
-                        .context("sha not a string?")?;
-                    doc["flakes"][flake_name]["rev"] = value(commit);
-                    write = true;
-                    println!("auto detected head revision for {}", &flake_name);
-                    flake.rev = Some(commit.to_string());
-                } else if flake.url.starts_with("hg+https:") {
-                    let url = if flake.url.contains('?') {
-                        flake.url.split_once('?').unwrap().0
-                    } else {
-                        &flake.url[..]
-                    }
-                    .strip_prefix("hg+")
-                    .unwrap();
-                    let rev = discover_newest_rev_hg(url)?;
-                    doc["flakes"][flake_name]["rev"] = value(&rev);
-                    write = true;
-                    println!("auto detected head revision for {}", &flake_name);
-                    flake.rev = Some(rev);
-                } else if flake.url.starts_with("git+https:") {
-                    let url = if flake.url.contains('?') {
-                        flake.url.split_once('?').unwrap().0
-                    } else {
-                        &flake.url[..]
-                    }
-                    .strip_prefix("git+")
-                    .unwrap();
-                    let rev = discover_newest_rev_git(url, None)?;
-                    doc["flakes"][flake_name]["rev"] = value(&rev);
-                    write = true;
-                    println!("auto detected head revision for {}", &flake_name);
-                    flake.rev = Some(rev);
-                } else {
-                    bail!(format!("Flake {} must have a rev (auto lookup of newest rev only supported for 'github:' or 'hg+https://' hosted flakes", flake_name));
-                }
-            }
-        }
-        if write {
-            let out_toml = doc.to_string();
-            std::fs::write(
-                parsed_config.anysnake2_toml_path.as_ref().unwrap(),
-                out_toml,
-            )
-            .expect("failed to rewrite config file");
-            println!("rewriten anysnake2.toml");
-        }
-    };
-    Ok(())
-}
-
-fn discover_newest_rev_git(url: &str, branch: Option<&str>) -> Result<String> {
-    let rewritten_url = if url.starts_with("github:") {
-        url.replace("github:", "https://github.com/")
-    } else {
-        url.to_string()
-    };
-    let refs = match branch {
-        Some(x) => Cow::from(format!("refs/heads/{}", x)),
-        None => Cow::from("HEAD"),
-    };
-    let output = run_without_ctrl_c(|| {
-        //todo: run this is in the provided nixpkgs!
-        Ok(std::process::Command::new("git")
-            .args(["ls-remote", &rewritten_url, &refs])
-            .output()?)
-    })
-    .expect("git ls-remote failed");
-    let stdout =
-        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
-    let hash_re = Regex::new(&format!("^([0-9a-z]{{40}})\\s+{}", &refs)).unwrap(); //hash is on a line together with the ref...
-    if let Some(group) = hash_re.captures_iter(stdout).next() {
-        return Ok(group[1].to_string());
-    }
-    Err(anyhow!(
-        "Could not find revision hash in 'git ls-remote {} {}' output.{}",
-        url,
-        refs,
-        if branch.is_some() {
-            " Is your branchName correct?"
-        } else {
-            ""
-        }
-    ))
-}
-
-fn discover_newest_rev_hg(url: &str) -> Result<String> {
-    let output = run_without_ctrl_c(|| {
-        //todo: run this is in the provided nixpkgs!
-        Ok(std::process::Command::new("hg")
-            .args(["id", "--debug", url, "--id"])
-            .output()?)
-    })
-    .with_context(|| format!("hg id --debug {} failed", url))?;
-    let stdout =
-        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
-    let hash_re = Regex::new("(?m)^([0-9a-z]{40})$").unwrap(); //hash is on it's own line.
-    if let Some(group) = hash_re.captures_iter(stdout).next() {
-        return Ok(group[0].to_string());
-    }
-    Err(anyhow!(
-        "Could not find revision hash in 'hg id --debug {}' output",
-        url
-    ))
-}
-
-
-fn add_line_numbers(s: &str) -> String {
-    let mut out = String::new();
-    for (i, line) in s.lines().enumerate() {
-        out.push_str(&format!("{:>4} | {}\n", i + 1, line));
-    }
-    out
 }

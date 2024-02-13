@@ -7,6 +7,9 @@
     naersk.inputs.nixpkgs.follows = "nixpkgs";
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+
+    ancient-poetry.url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git";
+    ancient-poetry.inputs.nixpkgs.follows = "nixpkgs";
     #mozillapkgs = {
     #url = "github:mozilla/nixpkgs-mozilla";
     #flake = false;
@@ -19,6 +22,7 @@
     utils,
     naersk,
     rust-overlay,
+    ancient-poetry,
   }:
     utils.lib.eachDefaultSystem (system: let
       #pkgs = nixpkgs.legacyPackages."${system}";
@@ -59,6 +63,7 @@
           pkgs.cargo-vet
           pkgs.cargo-outdated
           pkgs.cargo-audit
+          ancient-poetry.defaultPackage.x86_64-linux
           bacon
         ];
       };

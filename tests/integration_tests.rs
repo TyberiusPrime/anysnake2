@@ -157,10 +157,7 @@ fn test_basic_python() {
 
 #[test]
 fn test_basic_pre_post_run() {
-    let ((_code, stdout, _stderr), td) = run_test_tempdir(
-        "examples/basic",
-        &["test_pre_post"]
-    );
+    let ((_code, stdout, _stderr), td) = run_test_tempdir("examples/basic", &["test_pre_post"]);
     assert!(stdout.contains("pre_run"));
     assert!(stdout.contains("run"));
     assert!(stdout.contains("post_run"));
@@ -174,7 +171,6 @@ fn test_basic_pre_post_run() {
     // now make sure that that pid's not in existance
     let pid = raw.trim().parse::<u32>().unwrap();
     assert!(!PathBuf::from(format!("/proc/{}", pid)).exists());
-
 }
 
 #[test]
@@ -323,7 +319,13 @@ fn test_just_r() {
 
     let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/just_r",
-        &["run", "--", "R", "-e", "'library(Rcpp); library('R6'); library('kedd'); sessionInfo()'"],
+        &[
+            "run",
+            "--",
+            "R",
+            "-e",
+            "'library(Rcpp); library('R6'); library('kedd'); sessionInfo()'",
+        ],
     );
     assert!(stdout.contains("Rcpp_1.0.8.3"));
     let override_test_file = PathBuf::from("examples/just_r")
