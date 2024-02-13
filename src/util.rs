@@ -48,7 +48,7 @@ pub fn change_toml_file(
     toml_path: &PathBuf,
     mod_func: impl FnOnce(&Document) -> Result<TomlUpdates>,
 ) -> Result<()> {
-    let toml = std::fs::read_to_string(toml_path).expect("Could not reread config file");
+    let toml = ex::fs::read_to_string(toml_path).expect("Could not reread config file");
     let mut doc = toml.parse::<Document>().expect("invalid doc");
     let updates = mod_func(&doc)?;
     if !updates.is_empty() {
@@ -61,7 +61,7 @@ pub fn change_toml_file(
         }
 
         let out_toml = doc.to_string();
-        std::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
+        ex::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
         info!("Wrote updated {:?}", toml_path);
     }
 

@@ -66,7 +66,7 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
     //ini dies on them as well.
     //so we do our own poor man's parsing
     debug!("Parsing {:?}", &setup_cfg_file);
-    let raw = std::fs::read_to_string(setup_cfg_file)?;
+    let raw = ex::fs::read_to_string(setup_cfg_file)?;
     let mut res = Vec::new();
     if let Some(options_start) = raw.find("[options]") {
         let mut inside_value = false;
@@ -108,3 +108,14 @@ fn parse_python_config_file(setup_cfg_file: &Path) -> Result<Vec<String>> {
     Ok(res)
     //Err(anyhow!("Could not parse"))
 }
+//
+// parse a python egg file
+pub fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
+    let raw = ex::fs::read_to_string(egg_link)?;
+    Ok(match raw.split_once('\n') {
+        Some(x) => x.0.to_string(),
+        None => raw,
+    })
+}
+
+
