@@ -33,8 +33,8 @@ pub struct ConfigToml {
     #[serde(default)]
     pub rust: Rust,
     pub python: Option<Python>,
-    #[serde(default, rename = "mach-nix")]
-    pub mach_nix: MachNix,
+    #[serde(default)]
+    pub poetry2nix: Poetry2Nix,
     #[serde(default)]
     pub container: Container,
     pub flakes: Option<HashMap<String, Flake>>,
@@ -430,30 +430,28 @@ impl Python {
     }
 }
 #[derive(Deserialize, Debug)]
-pub struct MachNix {
-    #[serde(default = "MachNix::default_rev")]
+pub struct Poetry2Nix {
+    #[serde(default = "Poetry2Nix::default_rev")]
     pub rev: String,
-    #[serde(default = "MachNix::default_url")]
+    #[serde(default = "Poetry2Nix::default_url")]
     pub url: String,
 }
 
-impl Default for MachNix {
+impl Default for Poetry2Nix {
     fn default() -> Self {
-        MachNix {
+        Poetry2Nix {
             rev: Self::default_rev(),
             url: Self::default_url(),
         }
     }
 }
 
-impl WithDefaultFlakeSource for MachNix {
+impl WithDefaultFlakeSource for Poetry2Nix {
     fn default_rev() -> String {
-        "65266b5cc867fec2cb6a25409dd7cd12251f6107".to_string() //updated 2022-12-02
-                                                               //"7e14360bde07dcae32e5e24f366c83272f52923f".to_string() // updated 2022-07-11
-                                                               // "bdc97ba6b2ecd045a467b008cff4ae337b6a7a6b".to_string() // updated 2022-24-01
+        "4eb2ac54029af42a001c9901194e9ce19cbd8a40".to_string() //updated 2024-02-13
     }
     fn default_url() -> String {
-        "github:DavHau/mach-nix".to_string()
+        "github:nix-community/poetry2nix".to_string()
     }
 }
 
