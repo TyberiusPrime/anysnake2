@@ -6,6 +6,7 @@ use ex::fs;
 use indoc::indoc;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
+use python_parsing::parse_egg;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
@@ -1353,7 +1354,7 @@ fn fill_venv(
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
     let text: Vec<u8> =
-        std::fs::read(path).with_context(|| format!("failed reading {:?}", path))?;
+        ex::fs::read(path).with_context(|| format!("failed reading {:?}", path))?;
     let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
     let hits = binary_re.captures(&text);
     let out = match hits {
@@ -1606,15 +1607,6 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     } else {
         Err(anyhow!("dtach reattachment failed"))
     }
-}
-
-// parse a python egg file
-fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
-    let raw = fs::read_to_string(egg_link)?;
-    Ok(match raw.split_once('\n') {
-        Some(x) => x.0.to_string(),
-        None => raw,
-    })
 }
 
 fn write_develop_python_path(
