@@ -277,29 +277,38 @@ old: old // {{\"_\"  = old.\"_\" // {{
 
             fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
                 let mut out = "".to_string();
-                    for (pkg_name, override_nix_func) in attrset.iter() {
-                        out
-                            .push_str(&format!("\"{}\" = ({});", pkg_name, override_nix_func));
-                    }
-                    out
-
+                for (pkg_name, override_nix_func) in attrset.iter() {
+                    out.push_str(&format!("\"{}\" = ({});", pkg_name, override_nix_func));
+                }
+                out
             }
 
-            let r_override_args = r_config.override_attrs.as_ref().map_or("".to_string(), attrset_from_hashmap);
-            let r_dependency_overrides = r_config.dependency_overrides.as_ref().map_or("".to_string(), attrset_from_hashmap);
-            let r_additional_packages = r_config.additional_packages.as_ref().map_or("".to_string(), attrset_from_hashmap);
+            let r_override_args = r_config
+                .override_attrs
+                .as_ref()
+                .map_or("".to_string(), attrset_from_hashmap);
+            let r_dependency_overrides = r_config
+                .dependency_overrides
+                .as_ref()
+                .map_or("".to_string(), attrset_from_hashmap);
+            let r_additional_packages = r_config
+                .additional_packages
+                .as_ref()
+                .map_or("".to_string(), attrset_from_hashmap);
 
-            let mut r_pkg_list: Vec<String> = r_config.packages.iter().map(|x| x.to_string()).collect();
+            let mut r_pkg_list: Vec<String> =
+                r_config.packages.iter().map(|x| x.to_string()).collect();
             if let Some(additional_packages) = &r_config.additional_packages {
                 for pkg_ver in additional_packages.keys() {
-                    let (pkg, _ver) = pkg_ver.split_once("_").expect("R.additional_packages key did not conform to 'name_version' schema");
+                    let (pkg, _ver) = pkg_ver.split_once("_").expect(
+                        "R.additional_packages key did not conform to 'name_version' schema",
+                    );
                     r_pkg_list.push(pkg.to_string());
                 }
             }
             //remove duplicates
             r_pkg_list.sort();
             r_pkg_list.dedup();
-
 
             let r_packages = format!(
                 "
@@ -312,14 +321,10 @@ old: old // {{\"_\"  = old.\"_\" // {{
                 }};
                 ",
                 &r_config.date,
-                r_pkg_list                    .iter()
-                    .map(|x| format!("\"{}\"", x))
-                    .join(" "),
-
-               r_override_args,
+                r_pkg_list.iter().map(|x| format!("\"{}\"", x)).join(" "),
+                r_override_args,
                 r_dependency_overrides,
                 r_additional_packages
-
             );
             overlays.push(
                 "(final: prev: { 
