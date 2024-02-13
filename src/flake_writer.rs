@@ -65,30 +65,51 @@ impl InputFlake {
     }
 }
 
+struct Filenames {
+    flake_filename: PathBuf,
+    poetry_lock: PathBuf,
+    pyproject_toml: PathBuf,
+}
+
+fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) -> Filenames {
+    if use_generated_file_instead {
+        Filenames {
+            flake_filename: flake_dir.as_ref().join("flake.temp.nix"),
+            poetry_lock: flake_dir.as_ref().join("poetry_temp").join("poetry.lock"),
+            pyproject_toml: flake_dir
+                .as_ref()
+                .join("poetry_temp")
+                .join("pyproject.toml"),
+        }
+    } else {
+        Filenames {
+            flake_filename: flake_dir.as_ref().join("flake.nix"),
+            poetry_lock: flake_dir.as_ref().join("poetry").join("poetry.lock"),
+            pyproject_toml: flake_dir.as_ref().join("poetry").join("pyproject.toml"),
+        }
+    }
+}
+
 #[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
     python_packages: &[(String, String)],
     python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
-    use_generated_file_instead: bool,
+    use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
 ) -> Result<bool> {
     let template = std::include_str!("flake_template.nix");
-    let flake_filename: PathBuf = if use_generated_file_instead {
-        flake_dir.as_ref().join("flake.generated.nix")
-    } else {
-        flake_dir.as_ref().join("flake.nix")
-    };
-    let old_flake_contents = {
-        if flake_filename.exists() {
-            fs::read_to_string(&flake_filename)?
-        } else {
-            "".to_string()
-        }
-    };
-    let mut flake_contents: String = template.to_string();
-    let mut inputs: Vec<InputFlake> = Vec::new();
 
+    let filenames = get_filenames(&flake_dir, use_generated_file_instead);
+    let flake_filename = filenames.flake_filename;
+    let poetry_lock = filenames.poetry_lock;
+    let pyproject_toml = filenames.pyproject_toml;
+    let old_flake_contents = fs::read_to_string(&flake_filename).unwrap_or_else(|_| "".to_string());
+    let old_poetry_lock = fs::read_to_string(&poetry_lock).unwrap_or_else(|_| "".to_string());
+
+    let mut flake_contents: String = template.to_string();
+
+    let mut inputs: Vec<InputFlake> = Vec::new();
     inputs.push(InputFlake::new(
         "nixpkgs",
         &parsed_config.nixpkgs.url,
@@ -118,6 +139,7 @@ pub fn write_flake(
     let mut rust_extensions = vec!["rustfmt", "clippy"];
     let mut flakes_used_for_python_packages = HashSet::new();
 
+    ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     flake_contents = match &parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
@@ -133,10 +155,18 @@ pub fn write_flake(
                 &parsed_config.flakes,
             )?;
             if parsed_config.r.is_some() {
-                out_python_packages.push("rpy2".to_string());
+                out_python_packages.push(("rpy2".to_string(), "".to_string()));
             }
             out_python_packages.sort();
-            let out_python_packages = out_python_packages.join("\n");
+
+            ancient_poetry(
+                &out_python_packages,
+                &pyproject_toml,
+                &poetry_lock,
+                &python.version,
+            )?;
+
+            let out_python_packages = "remove_me".to_string();
 
             let out_python_build_packages = format_python_build_packages(
                 &python_build_packages,
@@ -167,20 +197,11 @@ old: old // {{\"_\"  = old.\"_\" // {{
             let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date, &flake_dir)?;
 
             inputs.push(InputFlake::new(
-                "mach-nix",
-                &parsed_config.mach_nix.url,
-                &parsed_config.mach_nix.rev,
-                &["pypi-deps-db"],
+                "poetry2nix",
+                &parsed_config.poetry2nix.url,
+                &parsed_config.poetry2nix.rev,
+                &[],
                 &flake_dir,
-            )?);
-
-            inputs.push(InputFlake::new_with_flake_option(
-                "pypi-deps-db",
-                "github:DavHau/pypi-deps-db",
-                &pypi_debs_db_rev,
-                &["mach-nix"],
-                &flake_dir,
-                ecosystem_date > chrono::NaiveDate::from_ymd_opt(2021, 04, 30).unwrap(),
             )?);
 
             flake_contents
@@ -208,11 +229,16 @@ old: old // {{\"_\"  = old.\"_\" // {{
                     ),
                 )
         }
-        None => flake_contents
-            .replace("\"%MACHNIX%\"", "null")
-            .replace("%DEVELOP_PYTHON_PATH%", "")
-            .replace("#%PYTHON_BUILD_PACKAGES%", "")
-            .replace("#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", ""),
+        None => {
+            if poetry_lock.exists() {
+                fs::remove_file(poetry_lock)?;
+            }
+            flake_contents
+                .replace("\"%MACHNIX%\"", "null")
+                .replace("%DEVELOP_PYTHON_PATH%", "")
+                .replace("#%PYTHON_BUILD_PACKAGES%", "")
+                .replace("#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", "")
+        }
     };
 
     flake_contents = match &parsed_config.flakes {
@@ -553,8 +579,8 @@ fn extract_non_editable_python_packages(
     input: &[(String, String)],
     build_packages: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
-) -> Result<Vec<String>> {
-    let mut res = Vec::new();
+) -> Result<Vec<(String, String)>> {
+    let mut res: Vec<(String, String)> = Vec::new();
     for (name, version_constraint) in input.iter() {
         if version_constraint.starts_with("editable") {
             continue;
@@ -566,13 +592,13 @@ fn extract_non_editable_python_packages(
             || version_constraint.contains('<')
             || version_constraint.contains('!')
         {
-            res.push(format!("{}{}", name, version_constraint));
+            res.push((name.to_string(), version_constraint.to_string()));
         } else if version_constraint.contains('=') {
-            res.push(format!("{}={}", name, version_constraint));
+            res.push((name.to_string(), version_constraint.to_string()));
         } else if version_constraint.is_empty() {
-            res.push(name.to_string())
+            res.push((name.to_string(), ">0".to_string()))
         } else {
-            res.push(format!("{}=={}", name, version_constraint));
+            res.push((name.to_string(), version_constraint.to_string()));
             //bail!("invalid python version spec {}{}", name, version_constraint);
         }
     }
@@ -590,11 +616,10 @@ fn extract_non_editable_python_packages(
             }
             _ => None,
         };
-        res.push(format!(
-            "{}=={}",
-            name,
-            python_version_from_spec(spec, rev_override.as_deref())
-        ));
+        /* res.push((
+            name.to_string(),
+            python_version_from_spec(spec, rev_override.as_deref()),
+        )); */
     }
     Ok(res)
 }
@@ -1045,4 +1070,36 @@ fn nix_format(
             input
         ))
     }
+}
+
+fn ancient_poetry(
+    python_package_definitions: &Vec<(String, String)>,
+    pyproject_toml_path: &Path,
+    poetry_lock_path: &Path,
+    python_version: &str,
+) -> Result<()> {
+    let mut pyproject_contents = r#"
+[tool.poetry]
+name = "anysnake2_to_ancient_poetry"
+version = "0.1.0"
+description = ""
+authors = ["Nemo"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+
+"#
+    .to_string();
+    pyproject_contents.push_str(&format!("python= \"^{}\"\n", python_version));
+    for (name, version_constraint) in python_package_definitions.iter() {
+        pyproject_contents.push_str(&format!("{} = \"{}\"\n", name, version_constraint));
+    }
+    ex::fs::write(pyproject_toml_path, pyproject_contents)?;
+
+    //dppd = ">0.1"
+
+    todo!()
 }
