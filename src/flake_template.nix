@@ -43,62 +43,70 @@
       in {
         script_file = script_file;
 
-        derivation = pkgs.runCommand name {} ''
-          set -o pipefail
-          shopt -s nullglob
-          mkdir -p $out/rootfs/usr/lib
-          mkdir -p $out/rootfs/usr/share
-          cp ${script_file} $out/reqs.sh
+        derivation = pkgs.runCommand name {} (''
+            set -o pipefail
+            shopt -s nullglob
+            mkdir -p $out/rootfs/usr/lib
+            mkdir -p $out/rootfs/usr/share
+            cp ${script_file} $out/reqs.sh
 
-          # so singularity fills in the outside users
-          mkdir -p $out/rootfs/etc
-          touch $out/rootfs/etc/passwd
-          touch $out/rootfs/etc/group
+            # so singularity fills in the outside users
+            mkdir -p $out/rootfs/etc
+            touch $out/rootfs/etc/passwd
+            touch $out/rootfs/etc/group
 
-          mkdir -p $out/rootfs/{bin,etc,share}
-          mkdir -p $out/rootfs/usr/{lib/share}
-          mkdir -p $out/rootfs/R_libs
+            mkdir -p $out/rootfs/{bin,etc,share}
+            mkdir -p $out/rootfs/usr/{lib/share}
+            mkdir -p $out/rootfs/R_libs
 
-          # the later entries shadow the earlier ones. and the python environment beats everything else
-          set -x
-          # python packages beat the others# python packages beat the others..
-          if [ -n "${mypy2}" ]; then
-            ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
-          fi
+            # the later entries shadow the earlier ones. and the python environment beats everything else
+            set -x
+            # python packages beat the others# python packages beat the others..
+            if [ -n "${mypy2}" ]; then
+              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
+            fi
 
 
-          # symlink the direct dependencies first...
-          for path in $(tac ${script_file});
-             do
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
-          done
-          # # is it smart to symlink the dependencies as well?
-          # for path in $(cat ${pkgs.writeReferencesToFile [script_file]});
-          #    do
-          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
-          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
-          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
-          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
-          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
-          # done
+            # symlink the direct dependencies first...
+            for path in $(tac ${script_file});
+               do
+               ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
+               ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
+               ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
+               ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
+               ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
+            done
+          ''
+          + (
+            if R_tracked != null
+            then ''
+              # # is it smart to symlink the dependencies as well?
+              for path in $(cat ${pkgs.writeReferencesToFile [R_tracked]});
+                  do
+              #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
+              #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
+              #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
+              #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
+                  ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
+              done
+            ''
+            else ""
+          )
+          + ''
 
-          ln -s $out/rootfs/bin $out/rootfs/usr/bin
-          #mkdir $out/python_env
-          #ln -s $mypy2/* $out/python_env
+            ln -s $out/rootfs/bin $out/rootfs/usr/bin
+            #mkdir $out/python_env
+            #ln -s $mypy2/* $out/python_env
 
-          mkdir -p $out/rootfs/etc/profile.d
-          echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
-          echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
-          #echo "export PATH=/python_env/bin:/bin:/usr/bin/" >>$out/rootfs/etc/bashrc
-          #echo "export PYTHONPATH=$PYTHONPATH:/python_env/lib/python%PYTHON_MAJOR_DOT_MINOR%/site-packages" >>$out/rootfs/etc/bashrc
+            mkdir -p $out/rootfs/etc/profile.d
+            echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+            echo "export SSL_CERT_DIR=/etc/ssl/certs" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly
+            #echo "export PATH=/python_env/bin:/bin:/usr/bin/" >>$out/rootfs/etc/bashrc
+            #echo "export PYTHONPATH=$PYTHONPATH:/python_env/lib/python%PYTHON_MAJOR_DOT_MINOR%/site-packages" >>$out/rootfs/etc/bashrc
 
-          #%INSTALL_JUPYTER_KERNELS%
+            #%INSTALL_JUPYTER_KERNELS%
 
-        '';
+          '');
       };
 
       buildSymlinkImage = {
