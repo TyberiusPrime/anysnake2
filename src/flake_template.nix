@@ -76,15 +76,15 @@
              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
           done
-          # is it smart to symlink the dependencies as well?
-          for path in $(cat ${pkgs.writeReferencesToFile [script_file]});
-             do
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
-             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
-          done
+          # # is it smart to symlink the dependencies as well?
+          # for path in $(cat ${pkgs.writeReferencesToFile [script_file]});
+          #    do
+          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/bin $out/rootfs/bin/ || true
+          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
+          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
+          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
+          #    ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
+          # done
 
           ln -s $out/rootfs/bin $out/rootfs/usr/bin
           #mkdir $out/python_env
