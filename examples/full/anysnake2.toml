@@ -182,6 +182,10 @@ postInstall = ''
 	# in which case you can ommit this entry
 	 #packages = ["defaultPackage.x86_64-linux"]
 
+[flakes.STAR]
+	url = "github:/IMTMarburg/flakes?dir=STAR" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
+rev = "8d50ea4a3e1a1e69ba9f7c1981913e4862ab49ef"
+	
 [rust]
 # version/rust section is optional. leave of for no rust
 version = "1.55.0" # =stable. 

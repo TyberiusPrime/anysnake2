@@ -241,13 +241,13 @@ old: old // {{\"_\"  = old.\"_\" // {{
                 match &flake.packages {
                     Some(pkgs) => {
                         for pkg in pkgs {
-                            flake_packages += &format!("${{{}.{}}}", name, pkg);
+                            flake_packages += &format!("${{{}.{}}}\n", name, pkg);
                         }
                     }
                     None => {
                         if !flakes_used_for_python_packages.contains(name) {
                             flake_packages +=
-                                &format!("${{{}.{}}}", name, "defaultPackage.x86_64-linux");
+                                &format!("${{{}.{}}}\n", name, "defaultPackage.x86_64-linux");
                         } //else $default to no packages for a python package flake
                     }
                 }
