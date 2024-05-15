@@ -17,7 +17,7 @@
           allowUnfree = "%ALLOW_UNFREE%";
         };
       };
-      mach-nix_ = "%MACHNIX%";
+      "%POETRY2NIX%";
       my_rust = "%RUST%";
 
       _buildSymlinkImage = {
@@ -27,19 +27,16 @@
         additional_mkPythonArgs ? {},
       }: let
         mypy =
-          if mach-nix_ != null
+          if mkPoetryEnv != null
           then
-            (mach-nix_.mkPython ({
-                requirements = python_requirements;
-                # no r packages here - we fix the rpy2 path below.
-              }
-              // additional_mkPythonArgs))
+          (
+            mkPoetryEnv {
+              preferWheels = true;
+              projectDir = ./poetry;
+            }
+          )
           else null;
-        mypy2 =
-          if mach-nix_ != null
-          then (mypy.outPath)
-          else "";
-        script_file = pkgs.writeScript "reqs.sh" (mypy2 + "\n" + script);
+        script_file = pkgs.writeScript "reqs.sh" (mypy + "\n" + script);
       in {
         script_file = script_file;
 
@@ -62,8 +59,8 @@
             # the later entries shadow the earlier ones. and the python environment beats everything else
             set -x
             # python packages beat the others# python packages beat the others..
-            if [ -n "${mypy2}" ]; then
-              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy2}/bin $out/rootfs/bin/ || true
+            if [ -n "${mypy}" ]; then
+              ${pkgs.xorg.lndir}/bin/lndir -ignorelinks ${mypy}/bin $out/rootfs/bin/ || true
             fi
 
 
@@ -96,7 +93,7 @@
 
             ln -s $out/rootfs/bin $out/rootfs/usr/bin
             #mkdir $out/python_env
-            #ln -s $mypy2/* $out/python_env
+            #ln -s $mypy/* $out/python_env
 
             mkdir -p $out/rootfs/etc/profile.d
             echo "export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" >>$out/rootfs/etc/bashrc # singularity pulls that from the env otherwise apperantly

@@ -4,11 +4,11 @@
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "22.05" # the nixpgks version or github hash
+rev = "23.11" # the nixpgks version or github hash
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "22.05" # the nixpgks version or github hash
+rev = "23.11" # the nixpgks version or github hash
 packages = ["which"]
 
 

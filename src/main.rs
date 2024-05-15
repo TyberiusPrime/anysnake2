@@ -1387,12 +1387,22 @@ struct NixFlakePrefetchOutput {
 
 #[derive(Deserialize, Debug)]
 struct NixBuildOutputs {
+    #[serde(alias="bin", alias="out")]
     out: String,
 }
 
 #[derive(Deserialize, Debug)]
 struct NixBuildOutput {
     outputs: NixBuildOutputs,
+}
+
+#[test]
+fn test_nix_build_output_parsing() {
+    let json = r#"[
+        {"drvPath":"/nix/store/kg8wnjpwyrr7nkdl64iiakzdmz6hv6d5-nixfmt-0.6.0.drv","outputs":{"bin":"/nix/store/7mr87xfsrc2rn4pkmvrvj9a4lnrwkyks-nixfmt-0.6.0-bin"}},
+        {"drvPath":"/nix/store/kg8wnjpwyrr7nkdl64iiakzdmz6hv6d5-nixfmt-0.6.0.drv","outputs":{"out":"/nix/store/7mr87xfsrc2rn4pkmvrvj9a4lnrwkyks-nixfmt-0.6.0-bin"}}
+    ]"#;
+    let j: Vec<NixBuildOutput> = serde_json::from_str(json).unwrap();
 }
 
 fn prefetch_flake(url_without_hash: &str) -> Result<String> {
@@ -1450,7 +1460,7 @@ fn nix_build_flake(url: &str) -> Result<String> {
         } else {
             let stdout = String::from_utf8_lossy(&output.stdout);
             info!("{}", stdout);
-            let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout)?;
+            let j: Vec<NixBuildOutput> = serde_json::from_str(&stdout).context("failed to parse nix build output")?;
             let j = j.into_iter().next().unwrap();
             Ok(j.outputs.out)
         }

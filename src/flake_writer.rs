@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::run_without_ctrl_c;
+use crate::{python_parsing, run_without_ctrl_c};
 
 struct InputFlake {
     name: String,
@@ -164,6 +164,7 @@ pub fn write_flake(
                 &pyproject_toml,
                 &poetry_lock,
                 &python.version,
+                python.parsed_ecosystem_date()?,
             )?;
 
             let out_python_packages = "remove_me".to_string();
@@ -215,18 +216,8 @@ old: old // {{\"_\"  = old.\"_\" // {{
                 .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
                 .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
                 .replace(
-                    "\"%MACHNIX%\"",
-                    &format!(
-                        "
-    (import mach-nix) {{
-          inherit pkgs;
-          pypiDataRev = pypi-deps-db.rev;
-          pypiDataSha256 = pypi-deps-db.narHash;
-          python = \"{python_major_minor}\";
-        }}
-        ",
-                        python_major_minor = &python_major_minor
-                    ),
+                    "\"%POETRY2NIX%\";",
+                    "inherit (poetry2nix.lib.mkPoetry2Nix {inherit pkgs;}) mkPoetryEnv defaultPoetryOverrides;"
                 )
         }
         None => {
@@ -234,7 +225,7 @@ old: old // {{\"_\"  = old.\"_\" // {{
                 fs::remove_file(poetry_lock)?;
             }
             flake_contents
-                .replace("\"%MACHNIX%\"", "null")
+                .replace("\"%POETRY2NIX%\";", "mkPoetryEnv = null;")
                 .replace("%DEVELOP_PYTHON_PATH%", "")
                 .replace("#%PYTHON_BUILD_PACKAGES%", "")
                 .replace("#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", "")
@@ -495,6 +486,11 @@ old: old // {{\"_\"  = old.\"_\" // {{
     let mut gitargs = vec!["add", "flake.nix", ".gitignore"];
     if flake_dir.as_ref().join("flake.lock").exists() {
         gitargs.push("flake.lock");
+    }
+
+    if parsed_config.python.is_some() {
+        gitargs.push("poetry/pyproject.toml");
+        gitargs.push("poetry/poetry.lock");
     }
 
     let res = if use_generated_file_instead {
@@ -1051,6 +1047,7 @@ fn nix_format(
     let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
     super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
+    dbg!(&full_args);
     let mut child = Command::new("nix")
         .args(full_args)
         .stdin(Stdio::piped())
@@ -1077,6 +1074,7 @@ fn ancient_poetry(
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
     python_version: &str,
+    date: chrono::NaiveDate,
 ) -> Result<()> {
     let mut pyproject_contents = r#"
 [tool.poetry]
@@ -1097,9 +1095,51 @@ build-backend = "poetry.core.masonry.api"
     for (name, version_constraint) in python_package_definitions.iter() {
         pyproject_contents.push_str(&format!("{} = \"{}\"\n", name, version_constraint));
     }
-    ex::fs::write(pyproject_toml_path, pyproject_contents)?;
+    ex::fs::write(pyproject_toml_path, &pyproject_contents)?;
+    let pyproject_toml_hash = sha256::digest(pyproject_contents);
 
-    //dppd = ">0.1"
+    let last_hash = ex::fs::read_to_string(poetry_lock_path.with_extension("sha256"))
+        .unwrap_or("".to_string())
+        .trim()
+        .to_string();
+    if (pyproject_toml_hash != last_hash) || !poetry_lock_path.exists() {
+        //todo make configurable
+        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git");
+        let str_date = date.format("%Y-%m-%d").to_string();
 
-    todo!()
+        let full_args = vec![
+            "shell".to_string(),
+            full_url,
+            "-c".into(),
+            "ancient-poetry".into(),
+            "-t".into(),
+            str_date,
+            "-p".into(),
+            pyproject_toml_path.to_string_lossy().to_string(),
+        ];
+        debug!("running ancient-poetry");
+        let child = Command::new("nix")
+            .args(full_args)
+            //.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let out = child
+            .wait_with_output()
+            .context("Failed to wait on nixfmt")?; // closes stdin
+        if out.status.success() {
+            let stdout = std::str::from_utf8(&out.stdout)
+                .context("ancient-poetry lock output wan't utf8")?;
+            //write it to poetry.lock
+            ex::fs::write(poetry_lock_path, stdout)?;
+            ex::fs::write(poetry_lock_path.with_extension("sha256"), pyproject_toml_hash)?;
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "ancient-poetry error return{}\n",
+                out.status.code().unwrap(),
+            ))
+        }
+    } else {
+        Ok(())
+    }
 }
