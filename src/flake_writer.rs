@@ -116,6 +116,8 @@ pub fn write_flake(
     let mut definitions: HashMap<String, String> = HashMap::new();
     let mut overlays: Vec<String> = Vec::new();
     let mut rust_extensions: Vec<String> = Vec::new();
+    let mut flakes_used_for_python_packages = HashSet::new();
+    let mut nixpkgs_pkgs = HashSet::new();
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.
@@ -136,12 +138,12 @@ pub fn write_flake(
         &[],
         flake_dir,
     )?);
-    let mut nixpkgs_pkgs = match &parsed_config.nixpkgs.packages {
+    nixpkgs_pkgs.extend(match &parsed_config.nixpkgs.packages {
         Some(pkgs) => pkgs.clone(),
         None => Vec::new(),
-    };
-    nixpkgs_pkgs.push("cacert".to_string()); //so we have SSL certs inside
-                                             //
+    });
+    nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
+                                               //
     if let Some(rust_ver) = &parsed_config.rust.version {
         add_rust(
             &rust_ver.clone(),
@@ -251,44 +253,7 @@ pub fn write_flake(
         }; */
 
     /* flake_contents = match &parsed_config.flakes {
-        Some(flakes) => {
-            let mut flake_packages = "".to_string();
-            let mut names: Vec<&String> = flakes.keys().collect();
-            names.sort();
-            for name in names {
-                let flake = flakes.get(name).unwrap();
-                let rev_follows: Vec<&str> = match &flake.follows {
-                    Some(f) => f.iter().map(|x| &x[..]).collect(),
-                    None => Vec::new(),
-                };
-                if flake.url.starts_with("path:/") {
-                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"));
-                }
-                inputs.push(InputFlake::new(
-                    name,
-                    &flake
-                        .url
-                        .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
-                    flake.rev.as_ref().unwrap(), // at this point we must have a rev,
-                    &rev_follows[..],
-                    &flake_dir,
-                )?);
-                match &flake.packages {
-                    Some(pkgs) => {
-                        for pkg in pkgs {
-                            flake_packages += &format!("${{{}.{}}}\n", name, pkg);
-                        }
-                    }
-                    None => {
-                        if !flakes_used_for_python_packages.contains(name) {
-                            flake_packages +=
-                                &format!("${{{}.{}}}\n", name, "defaultPackage.x86_64-linux");
-                        } //else $default to no packages for a python package flake
-                    }
-                }
-            }
-            flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
-        }
+        Some(flakes) =>
         None => flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", ""),
     }; */
     /* let dev_shell_inputs = match &parsed_config.dev_shell.inputs {
@@ -531,12 +496,10 @@ fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &[String]) -> String 
 }
 
 fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
-    {
-        flake_contents.replace(
-            "\"%ALLOW_UNFREE%\"",
-            if allow_unfree { "true" } else { "false" },
-        )
-    }
+    flake_contents.replace(
+        "\"%ALLOW_UNFREE%\"",
+        if allow_unfree { "true" } else { "false" },
+    )
 }
 
 fn extract_non_editable_python_packages(
@@ -1237,4 +1200,56 @@ fn add_rust(
     );
     nixpkgs_pkgs.push("rust".to_string());
     Ok(())
+}
+
+fn add_flakes(
+    parsed_config: &mut config::ConfigToml,
+    inputs: &mut Vec<InputFlake>,
+    flake_dir: &Path,
+    flakes_used_for_python_packages: &HashSet<String>,
+    nixpkgs_pkgs: &mut HashSet<String>,
+) -> Result<()> {
+    {
+        if let Some(flakes) = &parsed_config.flakes {
+            let mut flake_packages = "".to_string();
+            let mut names: Vec<&String> = flakes.keys().collect();
+            names.sort();
+            for name in names {
+                let flake = flakes.get(name).unwrap();
+                let rev_follows: Vec<&str> = match &flake.follows {
+                    Some(f) => f.iter().map(|x| &x[..]).collect(),
+                    None => Vec::new(),
+                };
+                if flake.url.starts_with("path:/") {
+                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"));
+                }
+                inputs.push(InputFlake::new(
+                    name,
+                    &flake
+                        .url
+                        .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
+                    flake.rev.as_ref().unwrap(), // at this point we must have a rev,
+                    &rev_follows[..],
+                    &flake_dir,
+                )?);
+                match &flake.packages {
+                    Some(pkgs) => {
+                        for pkg in pkgs {
+                            nixpkgs_pkgs.insert(format!("${{{}.{}}}\n", name, pkg));
+                        }
+                    }
+                    None => {
+                        if !flakes_used_for_python_packages.contains(name) {
+                            nixpkgs_pkgs.insert(format!(
+                                "${{{}.{}}}\n",
+                                name, "defaultPackage.x86_64-linux"
+                            ));
+                        } //else $default to no packages for a python package flake
+                    }
+                }
+            }
+            //TODO: continue here
+            flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
+        }
+    }
 }

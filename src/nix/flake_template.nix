@@ -20,10 +20,10 @@
         name = "anysnake2_container";
         #later entries beat earlier entries in terms of /bin symlinks
         script = ''
-          ${coreutils}
-          ${bashInteractive_5}
-          #%NIXPKGS_PACKAGES%#
-        '';
+${coreutils}
+${bashInteractive_5}
+#%NIXPKGS_PACKAGES%#
+'';
       };
       helpers = import ./functions.nix {inherit pkgs;};
     in {
