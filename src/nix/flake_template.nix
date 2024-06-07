@@ -9,14 +9,13 @@
     #%INPUTS%
   }:
     flake-utils.lib.eachDefaultSystem (system: let
-      overlays = [];
       pkgs = import nixpkgs {
         inherit system overlays;
         config = {
           allowUnfree = "%ALLOW_UNFREE%";
         };
       };
-
+      #%DEFINITIONS%#
       _args = with pkgs; {
         name = "anysnake2_container";
         #later entries beat earlier entries in terms of /bin symlinks

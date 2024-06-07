@@ -1,0 +1,15 @@
+# the absolute minimal anysnake2.toml example
+[anysnake2]
+rev = "dev" # replace with fixed version outside of tests/examples
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+rev = "21.05"
+
+
+[nixpkgs]
+rev = "24.05" # the nixpgks version or github hash
+
+
+[rust]
+version = "1.55.0"

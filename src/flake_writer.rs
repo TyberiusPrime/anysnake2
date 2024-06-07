@@ -111,7 +111,11 @@ pub fn write_flake(
 
     let mut flake_contents: String = template.to_string();
 
+    //various 'collectors'
     let mut inputs: Vec<InputFlake> = Vec::new();
+    let mut definitions: HashMap<String, String> = HashMap::new();
+    let mut overlays: Vec<String> = Vec::new();
+    let mut rust_extensions: Vec<String> = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.
@@ -137,13 +141,21 @@ pub fn write_flake(
         None => Vec::new(),
     };
     nixpkgs_pkgs.push("cacert".to_string()); //so we have SSL certs inside
+                                             //
+    if let Some(rust_ver) = &parsed_config.rust.version {
+        add_rust(
+            &rust_ver.clone(),
+            rust_extensions,
+            &mut inputs,
+            &mut definitions,
+            &mut nixpkgs_pkgs,
+            &mut overlays,
+            &flake_dir,
+            parsed_config,
+        )?;
+    }
 
-    /* if let Some(_rust_ver) = &parsed_config.rust.version {
-        nixpkgs_pkgs.push("stdenv.cc".to_string()); // needed to actually build something with rust
-    } */
-
-    /* let mut rust_extensions = vec!["rustfmt", "clippy"];
-    let mut flakes_used_for_python_packages = HashSet::new(); */
+    /*     let mut flakes_used_for_python_packages = HashSet::new(); */
 
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     /* flake_contents = match &parsed_config.python {
@@ -402,32 +414,21 @@ pub fn write_flake(
     flake_contents = flake_contents.replace("#%INSTALL_JUPYTER_KERNELS%", &jupyter_kernels);
     */
 
-    /* flake_contents = match &parsed_config.rust.version {
-        Some(version) => {
-            inputs.push(InputFlake::new(
-                "rust-overlay",
-                &parsed_config.rust.rust_overlay_url,
-                &parsed_config.rust.rust_overlay_rev,
-                &["nixpkgs", "flake-utils"],
-                &flake_dir,
-            )?);
-            overlays.push("(import rust-overlay)".to_string());
-            let str_rust_extensions: Vec<String> = rust_extensions
-                .into_iter()
-                .map(|x| format!("\"{}\"", x))
-                .collect();
-            let str_rust_extensions: String = str_rust_extensions.join(" ");
+    definitions.insert(
+        "overlays".to_string(),
+        format!(
+            "[{}]",
+            overlays.iter().map(|ov| format!("({ov})")).join(" ")
+        ),
+    );
 
-            flake_contents.replace("\"%RUST%\"", &format!("pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {rust_extensions}]; }}", version, rust_extensions = str_rust_extensions))
-        }
-        None => flake_contents.replace("\"%RUST%\"", "\"\""),
-    }; */
     flake_contents = insert_nixpkgs_pkgs(&flake_contents, &nixpkgs_pkgs);
     flake_contents = insert_allow_unfree(&flake_contents, parsed_config.nixpkgs.allow_unfree);
 
     flake_contents = flake_contents
         .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
-        .replace("#%INPUTS%", &format_inputs_for_output_arguments(&inputs));
+        .replace("#%INPUTS%", &format_inputs_for_output_arguments(&inputs))
+        .replace("#%DEFINITIONS%#", &format_definitions(&definitions));
 
     // pretty print the generated flake
     flake_contents = nix_format(
@@ -510,6 +511,14 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
 /// format the list of input flakes for the outputs {self, <arguments>}
 fn format_inputs_for_output_arguments(inputs: &[InputFlake]) -> String {
     inputs.iter().map(|i| &i.name[..]).join(",\n    ")
+}
+
+fn format_definitions(definitions: &HashMap<String, String>) -> String {
+    let mut res = "".to_string();
+    for (k, v) in definitions {
+        res.push_str(&format!("     {} = {};\n", k, v));
+    }
+    res.trim().to_string()
 }
 
 fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &[String]) -> String {
@@ -1188,5 +1197,44 @@ fn run_git_add(tracked_files: Vec<&str>, flake_dir: &Path) -> Result<()> {
         );
         bail!(msg);
     }
+    Ok(())
+}
+fn add_rust(
+    rust_ver: &str,
+    rust_extensions: Vec<String>,
+    inputs: &mut Vec<InputFlake>,
+    definitions: &mut HashMap<String, String>,
+    nixpkgs_pkgs: &mut Vec<String>,
+    overlays: &mut Vec<String>,
+    flake_dir: &Path,
+    parsed_config: &mut config::ConfigToml,
+) -> Result<()> {
+    nixpkgs_pkgs.push("stdenv.cc".to_string()); // needed to actually build something with rust
+    let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
+    out_rust_extensions.extend(rust_extensions);
+
+    inputs.push(InputFlake::new(
+        "rust-overlay",
+        &parsed_config.rust.rust_overlay_url,
+        &parsed_config.rust.rust_overlay_rev,
+        &["nixpkgs", "flake-utils"],
+        &flake_dir,
+    )?);
+    overlays.push("import rust-overlay".to_string());
+    let str_rust_extensions: Vec<String> = out_rust_extensions
+        .into_iter()
+        .map(|x| format!("\"{}\"", x))
+        .collect();
+    let str_rust_extensions: String = str_rust_extensions.join(" ");
+
+    definitions.insert(
+        "rust".to_string(),
+        format!(
+            "pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {rust_extensions}]; }}",
+            rust_ver,
+            rust_extensions = str_rust_extensions
+        ),
+    );
+    nixpkgs_pkgs.push("rust".to_string());
     Ok(())
 }

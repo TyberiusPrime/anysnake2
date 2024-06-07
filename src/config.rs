@@ -218,7 +218,7 @@ impl Default for Rust {
 
 impl WithDefaultFlakeSource for Rust {
     fn default_rev() -> String {
-        "08de2ff90cc08e7f9523ad97e4c1653b09f703ec".to_string()
+        "7f52ac9ae95bd60c0780d6e32baea22e542e11e1".to_string()
     }
     fn default_url() -> String {
         "github:oxalica/rust-overlay".to_string()

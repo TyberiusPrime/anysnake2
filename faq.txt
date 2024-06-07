@@ -1,0 +1,2 @@
+"error: cannot coerce a set to a string" when using rust:
+Your rust-overlay is too new for the nixpkgs you have chosen. Either upgrade nixpkgs, or downgrade rust-overlay
