@@ -6,7 +6,7 @@ use itertools::Itertools;
 use log::{debug, trace};
 use regex::Regex;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -116,8 +116,8 @@ pub fn write_flake(
     let mut definitions: HashMap<String, String> = HashMap::new();
     let mut overlays: Vec<String> = Vec::new();
     let mut rust_extensions: Vec<String> = Vec::new();
-    let mut flakes_used_for_python_packages = HashSet::new();
-    let mut nixpkgs_pkgs = HashSet::new();
+    let mut flakes_used_for_python_packages: HashSet<String> = HashSet::new();
+    let mut nixpkgs_pkgs = BTreeSet::new();
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.
@@ -156,6 +156,14 @@ pub fn write_flake(
             parsed_config,
         )?;
     }
+
+    add_flakes(
+        parsed_config,
+        &mut inputs,
+        &flake_dir,
+        &flakes_used_for_python_packages,
+        &mut nixpkgs_pkgs
+        )?;
 
     /*     let mut flakes_used_for_python_packages = HashSet::new(); */
 
@@ -486,7 +494,7 @@ fn format_definitions(definitions: &HashMap<String, String>) -> String {
     res.trim().to_string()
 }
 
-fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &[String]) -> String {
+fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &BTreeSet<String>) -> String {
     let str_nixpkgs_pkgs: String = nixpkgs_pkgs
         .iter()
         .map(|x| format!("${{{}}}", x))
@@ -1167,12 +1175,12 @@ fn add_rust(
     rust_extensions: Vec<String>,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut HashMap<String, String>,
-    nixpkgs_pkgs: &mut Vec<String>,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
     overlays: &mut Vec<String>,
     flake_dir: &Path,
     parsed_config: &mut config::ConfigToml,
 ) -> Result<()> {
-    nixpkgs_pkgs.push("stdenv.cc".to_string()); // needed to actually build something with rust
+    nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
     let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
     out_rust_extensions.extend(rust_extensions);
 
@@ -1198,7 +1206,7 @@ fn add_rust(
             rust_extensions = str_rust_extensions
         ),
     );
-    nixpkgs_pkgs.push("rust".to_string());
+    nixpkgs_pkgs.insert("rust".to_string());
     Ok(())
 }
 
@@ -1207,7 +1215,7 @@ fn add_flakes(
     inputs: &mut Vec<InputFlake>,
     flake_dir: &Path,
     flakes_used_for_python_packages: &HashSet<String>,
-    nixpkgs_pkgs: &mut HashSet<String>,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
 ) -> Result<()> {
     {
         if let Some(flakes) = &parsed_config.flakes {
@@ -1235,21 +1243,20 @@ fn add_flakes(
                 match &flake.packages {
                     Some(pkgs) => {
                         for pkg in pkgs {
-                            nixpkgs_pkgs.insert(format!("${{{}.{}}}\n", name, pkg));
+                            nixpkgs_pkgs.insert(format!("{}.{}", name, pkg));
                         }
                     }
                     None => {
                         if !flakes_used_for_python_packages.contains(name) {
                             nixpkgs_pkgs.insert(format!(
-                                "${{{}.{}}}\n",
+                                "{}.{}",
                                 name, "defaultPackage.x86_64-linux"
                             ));
                         } //else $default to no packages for a python package flake
                     }
                 }
             }
-            //TODO: continue here
-            flake_contents.replace("%FURTHER_FLAKE_PACKAGES%", &flake_packages)
         }
     }
+    Ok(())
 }
