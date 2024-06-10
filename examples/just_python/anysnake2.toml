@@ -34,7 +34,7 @@ example-cli-python="file://./example-cli-python/"
 # i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 pandas="1.5.1"
 # you can refer to the repos you cloned
-example-cli-python="editable/code"
+#example-cli-python="editable/code"
 black=""
 tomli=">1.2"
 hatchling=""
