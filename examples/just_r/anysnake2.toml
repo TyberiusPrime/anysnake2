@@ -8,7 +8,7 @@ rev = "21.05"
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash
-packages = ['strace', 'python38']
+packages = []
 
 [flake-util]
 # the revision used by flake-util

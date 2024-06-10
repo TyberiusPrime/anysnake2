@@ -1,3 +1,4 @@
+#![allow(unused_imports,unused_variables, unused_mut, dead_code)] // todo: remove
 use crate::config::{self, BuildPythonPackageInfo};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
@@ -6,7 +7,7 @@ use itertools::Itertools;
 use log::{debug, trace};
 use regex::Regex;
 use serde_json::json;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -113,7 +114,7 @@ pub fn write_flake(
 
     //various 'collectors'
     let mut inputs: Vec<InputFlake> = Vec::new();
-    let mut definitions: HashMap<String, String> = HashMap::new();
+    let mut definitions: BTreeMap<String, String> = BTreeMap::new();
     let mut overlays: Vec<String> = Vec::new();
     let mut rust_extensions: Vec<String> = Vec::new();
     let mut flakes_used_for_python_packages: HashSet<String> = HashSet::new();
@@ -146,7 +147,6 @@ pub fn write_flake(
                                                //
                                                ////todo: does rust even need to be a special case?
     add_rust(
-        &parsed_config.rust.version,
         rust_extensions,
         &mut inputs,
         &mut definitions,
@@ -162,6 +162,14 @@ pub fn write_flake(
         &flake_dir,
         &flakes_used_for_python_packages,
         &mut nixpkgs_pkgs,
+    )?;
+    add_r(
+        parsed_config,
+        &mut inputs,
+        &flake_dir,
+        &mut nixpkgs_pkgs,
+        &mut definitions,
+        &mut overlays,
     )?;
 
     /*     let mut flakes_used_for_python_packages = HashSet::new(); */
@@ -485,7 +493,7 @@ fn format_inputs_for_output_arguments(inputs: &[InputFlake]) -> String {
     inputs.iter().map(|i| &i.name[..]).join(",\n    ")
 }
 
-fn format_definitions(definitions: &HashMap<String, String>) -> String {
+fn format_definitions(definitions: &BTreeMap<String, String>) -> String {
     let mut res = "".to_string();
     for (k, v) in definitions {
         res.push_str(&format!("     {} = {};\n", k, v));
@@ -999,10 +1007,16 @@ fn nix_format(
     if out.status.success() {
         Ok((std::str::from_utf8(&out.stdout).context("nixfmt output wan't utf8")?).to_string())
     } else {
+        let input_with_line_nos = input
+            .lines()
+            .enumerate()
+            .map(|(i, x)| format!("{:4}\t{}", i, x))
+            .collect::<Vec<String>>()
+            .join("\n");
         Err(anyhow!(
             "nix fmt error return{}\n{}",
             out.status.code().unwrap(),
-            input
+            input_with_line_nos
         ))
     }
 }
@@ -1170,16 +1184,15 @@ fn run_git_add(tracked_files: Vec<&str>, flake_dir: &Path) -> Result<()> {
     Ok(())
 }
 fn add_rust(
-    rust_ver: &Option<&str>,
     rust_extensions: Vec<String>,
     inputs: &mut Vec<InputFlake>,
-    definitions: &mut HashMap<String, String>,
+    definitions: &mut BTreeMap<String, String>,
     nixpkgs_pkgs: &mut BTreeSet<String>,
     overlays: &mut Vec<String>,
     flake_dir: &Path,
     parsed_config: &mut config::ConfigToml,
 ) -> Result<()> {
-    if let Some(rust_ver) = rust_ver {
+    if let Some(rust_ver) = &parsed_config.rust.version {
         nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
         let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
         out_rust_extensions.extend(rust_extensions);
@@ -1263,8 +1276,11 @@ fn add_flakes(
 fn add_r(
     parsed_config: &config::ConfigToml,
     inputs: &mut Vec<InputFlake>,
+    flake_dir: &Path,
     nixpkgs_pkgs: &mut BTreeSet<String>,
-) {
+    definitions: &mut BTreeMap<String, String>,
+    overlays: &mut Vec<String>,
+) ->Result<()> {
     if let Some(r_config) = &parsed_config.r {
         inputs.push(InputFlake::new(
             "nixR",
@@ -1313,13 +1329,13 @@ fn add_r(
 
         let r_packages = format!(
             "
-                R_tracked = nixR.R_by_date {{
+                nixR.R_by_date {{
                     date = \"{}\" ;
                     r_pkg_names = [{}];
                     packageOverrideAttrs = {{ {} }};
                     r_dependency_overrides = {{ {} }};
                     additional_packages = {{ {} }};
-                }};
+                }}
                 ",
             &r_config.date,
             r_pkg_list.iter().map(|x| format!("\"{}\"", x)).join(" "),
@@ -1327,6 +1343,7 @@ fn add_r(
             r_dependency_overrides,
             r_additional_packages
         );
+        definitions.insert("R_tracked".to_string(), r_packages);
         overlays.push(
             "(final: prev: {
                 R = R_tracked // {meta = { platforms=prev.R.meta.platforms;};};
@@ -1335,7 +1352,7 @@ fn add_r(
             .to_string(),
         );
 
-        nixpkgs_pkgs.push("R".to_string()); // that's the overlayed R.
-        flake_contents.replace("#%RPACKAGES%", &r_packages)
+        nixpkgs_pkgs.insert("R".to_string()); // that's the overlayed R.
     }
+    Ok(())
 }
