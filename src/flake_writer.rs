@@ -144,26 +144,25 @@ pub fn write_flake(
     });
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
-    if let Some(rust_ver) = &parsed_config.rust.version {
-        add_rust(
-            &rust_ver.clone(),
-            rust_extensions,
-            &mut inputs,
-            &mut definitions,
-            &mut nixpkgs_pkgs,
-            &mut overlays,
-            &flake_dir,
-            parsed_config,
-        )?;
-    }
+                                               ////todo: does rust even need to be a special case?
+    add_rust(
+        &parsed_config.rust.version,
+        rust_extensions,
+        &mut inputs,
+        &mut definitions,
+        &mut nixpkgs_pkgs,
+        &mut overlays,
+        &flake_dir,
+        parsed_config,
+    )?;
 
     add_flakes(
         parsed_config,
         &mut inputs,
         &flake_dir,
         &flakes_used_for_python_packages,
-        &mut nixpkgs_pkgs
-        )?;
+        &mut nixpkgs_pkgs,
+    )?;
 
     /*     let mut flakes_used_for_python_packages = HashSet::new(); */
 
@@ -1171,7 +1170,7 @@ fn run_git_add(tracked_files: Vec<&str>, flake_dir: &Path) -> Result<()> {
     Ok(())
 }
 fn add_rust(
-    rust_ver: &str,
+    rust_ver: &Option<&str>,
     rust_extensions: Vec<String>,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut HashMap<String, String>,
@@ -1180,33 +1179,35 @@ fn add_rust(
     flake_dir: &Path,
     parsed_config: &mut config::ConfigToml,
 ) -> Result<()> {
-    nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
-    let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
-    out_rust_extensions.extend(rust_extensions);
+    if let Some(rust_ver) = rust_ver {
+        nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
+        let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
+        out_rust_extensions.extend(rust_extensions);
 
-    inputs.push(InputFlake::new(
-        "rust-overlay",
-        &parsed_config.rust.rust_overlay_url,
-        &parsed_config.rust.rust_overlay_rev,
-        &["nixpkgs", "flake-utils"],
-        &flake_dir,
-    )?);
-    overlays.push("import rust-overlay".to_string());
-    let str_rust_extensions: Vec<String> = out_rust_extensions
-        .into_iter()
-        .map(|x| format!("\"{}\"", x))
-        .collect();
-    let str_rust_extensions: String = str_rust_extensions.join(" ");
+        inputs.push(InputFlake::new(
+            "rust-overlay",
+            &parsed_config.rust.rust_overlay_url,
+            &parsed_config.rust.rust_overlay_rev,
+            &["nixpkgs", "flake-utils"],
+            &flake_dir,
+        )?);
+        overlays.push("import rust-overlay".to_string());
+        let str_rust_extensions: Vec<String> = out_rust_extensions
+            .into_iter()
+            .map(|x| format!("\"{}\"", x))
+            .collect();
+        let str_rust_extensions: String = str_rust_extensions.join(" ");
 
-    definitions.insert(
-        "rust".to_string(),
-        format!(
+        definitions.insert(
+            "rust".to_string(),
+            format!(
             "pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {rust_extensions}]; }}",
             rust_ver,
             rust_extensions = str_rust_extensions
         ),
-    );
-    nixpkgs_pkgs.insert("rust".to_string());
+        );
+        nixpkgs_pkgs.insert("rust".to_string());
+    };
     Ok(())
 }
 
@@ -1248,10 +1249,8 @@ fn add_flakes(
                     }
                     None => {
                         if !flakes_used_for_python_packages.contains(name) {
-                            nixpkgs_pkgs.insert(format!(
-                                "{}.{}",
-                                name, "defaultPackage.x86_64-linux"
-                            ));
+                            nixpkgs_pkgs
+                                .insert(format!("{}.{}", name, "defaultPackage.x86_64-linux"));
                         } //else $default to no packages for a python package flake
                     }
                 }
@@ -1259,4 +1258,84 @@ fn add_flakes(
         }
     }
     Ok(())
+}
+
+fn add_r(
+    parsed_config: &config::ConfigToml,
+    inputs: &mut Vec<InputFlake>,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
+) {
+    if let Some(r_config) = &parsed_config.r {
+        inputs.push(InputFlake::new(
+            "nixR",
+            &r_config.nixr_url,
+            &r_config
+                .nixr_tag
+                .as_ref()
+                .expect("No nixR tag? Should have been lookup up automatically. Anysnake2 bug"),
+            &[],
+            &flake_dir,
+        )?);
+
+        fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
+            let mut out = "".to_string();
+            for (pkg_name, override_nix_func) in attrset.iter() {
+                out.push_str(&format!("\"{}\" = ({});", pkg_name, override_nix_func));
+            }
+            out
+        }
+
+        let r_override_args = r_config
+            .override_attrs
+            .as_ref()
+            .map_or("".to_string(), attrset_from_hashmap);
+        let r_dependency_overrides = r_config
+            .dependency_overrides
+            .as_ref()
+            .map_or("".to_string(), attrset_from_hashmap);
+        let r_additional_packages = r_config
+            .additional_packages
+            .as_ref()
+            .map_or("".to_string(), attrset_from_hashmap);
+
+        let mut r_pkg_list: Vec<String> = r_config.packages.iter().map(|x| x.to_string()).collect();
+        if let Some(additional_packages) = &r_config.additional_packages {
+            for pkg_ver in additional_packages.keys() {
+                let (pkg, _ver) = pkg_ver
+                    .split_once("_")
+                    .expect("R.additional_packages key did not conform to 'name_version' schema");
+                r_pkg_list.push(pkg.to_string());
+            }
+        }
+        //remove duplicates
+        r_pkg_list.sort();
+        r_pkg_list.dedup();
+
+        let r_packages = format!(
+            "
+                R_tracked = nixR.R_by_date {{
+                    date = \"{}\" ;
+                    r_pkg_names = [{}];
+                    packageOverrideAttrs = {{ {} }};
+                    r_dependency_overrides = {{ {} }};
+                    additional_packages = {{ {} }};
+                }};
+                ",
+            &r_config.date,
+            r_pkg_list.iter().map(|x| format!("\"{}\"", x)).join(" "),
+            r_override_args,
+            r_dependency_overrides,
+            r_additional_packages
+        );
+        overlays.push(
+            "(final: prev: {
+                R = R_tracked // {meta = { platforms=prev.R.meta.platforms;};};
+                rPackages = R_tracked.rPackages;
+                }) "
+            .to_string(),
+        );
+
+        nixpkgs_pkgs.push("R".to_string()); // that's the overlayed R.
+        flake_contents.replace("#%RPACKAGES%", &r_packages)
+    }
 }
