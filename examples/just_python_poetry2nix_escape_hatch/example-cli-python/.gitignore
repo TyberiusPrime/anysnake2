@@ -1,0 +1,5 @@
+venv/*
+.DS_Store
+dist/*
+example_cli_python.egg-info/*
+build/*
