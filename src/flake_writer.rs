@@ -1,10 +1,10 @@
-#![allow(unused_imports,unused_variables, unused_mut, dead_code)] // todo: remove
-use crate::config::{self, BuildPythonPackageInfo};
+#![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
+use crate::config::{self, BuildPythonPackageInfo, GetRecursive, PythonPackageDefinition};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
 use itertools::Itertools;
-use log::{debug, trace};
+use log::{debug, info, trace};
 use regex::Regex;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -96,7 +96,7 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
-    python_packages: &[(String, String)],
+    python_packages: &[(String, PythonPackageDefinition)],
     python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
 ) -> Result<bool> {
@@ -105,8 +105,6 @@ pub fn write_flake(
 
     let filenames = get_filenames(&flake_dir, use_generated_file_instead);
     let flake_filename = filenames.flake_filename;
-    //let poetry_lock = filenames.poetry_lock;
-    //let pyproject_toml = filenames.pyproject_toml;
     let old_flake_contents = fs::read_to_string(&flake_filename).unwrap_or_else(|_| "".to_string());
     //let old_poetry_lock = fs::read_to_string(&poetry_lock).unwrap_or_else(|_| "".to_string());
 
@@ -117,8 +115,9 @@ pub fn write_flake(
     let mut definitions: BTreeMap<String, String> = BTreeMap::new();
     let mut overlays: Vec<String> = Vec::new();
     let mut rust_extensions: Vec<String> = Vec::new();
-    let mut flakes_used_for_python_packages: HashSet<String> = HashSet::new();
+    let mut flakes_used_for_python_packages: BTreeSet<String> = BTreeSet::new();
     let mut nixpkgs_pkgs = BTreeSet::new();
+    let mut git_tracked_files = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.
@@ -147,125 +146,46 @@ pub fn write_flake(
                                                //
                                                ////todo: does rust even need to be a special case?
     add_rust(
-        rust_extensions,
+        parsed_config,
+        &flake_dir,
         &mut inputs,
         &mut definitions,
-        &mut nixpkgs_pkgs,
         &mut overlays,
-        &flake_dir,
-        parsed_config,
+        &mut nixpkgs_pkgs,
+        rust_extensions,
     )?;
 
     add_flakes(
         parsed_config,
-        &mut inputs,
         &flake_dir,
+        &mut inputs,
         &flakes_used_for_python_packages,
         &mut nixpkgs_pkgs,
     )?;
+
     add_r(
         parsed_config,
-        &mut inputs,
         &flake_dir,
-        &mut nixpkgs_pkgs,
+        &mut inputs,
         &mut definitions,
         &mut overlays,
+        &mut nixpkgs_pkgs,
     )?;
 
-    /*     let mut flakes_used_for_python_packages = HashSet::new(); */
-
-    //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
-    /* flake_contents = match &parsed_config.python {
-            Some(python) => {
-                if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
-                    bail!(
-                            format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
-                }
-                let python_major_dot_minor = &python.version;
-                let python_major_minor = format!("python{}", python.version.replace(".", ""));
-
-                let mut out_python_packages = extract_non_editable_python_packages(
-                    python_packages,
-                    python_build_packages,
-                    &parsed_config.flakes,
-                )?;
-                if parsed_config.r.is_some() {
-                    out_python_packages.push(("rpy2".to_string(), "".to_string()));
-                }
-                out_python_packages.sort();
-
-                ancient_poetry(
-                    &out_python_packages,
-                    &pyproject_toml,
-                    &poetry_lock,
-                    &python.version,
-                    python.parsed_ecosystem_date()?,
-                )?;
-
-                let out_python_packages = "remove_me".to_string();
-
-                let out_python_build_packages = format_python_build_packages(
-                    &python_build_packages,
-                    &parsed_config.flakes,
-                    &mut flakes_used_for_python_packages,
-                )?;
-
-                if let Some(_org) = &python.additional_mkpython_arguments {
-                    bail!("python.additional_mkpython_arguments requirements is not supported anymore (merge issues with '_'). \nUse addition_mk_python_arguments_func like this '''
-    old: old // {{\"_\"  = old.\"_\" // {{
-        pandas.postInstall = ''
-            touch $out/lib/python* /site-packages/pandas_mkpython_worked
-
-        '';
-        }};
-        }}
-    '''");
-                }
-
-                let out_additional_mkpython_arguments_func = &python
-                    .additional_mkpython_arguments_func
-                    .as_deref()
-                    .unwrap_or("old: old");
-
-                let ecosystem_date = python
-                    .parsed_ecosystem_date()
-                    .context("Failed to parse python.ecosystem-date")?;
-                let pypi_debs_db_rev = pypi_deps_date_to_rev(ecosystem_date, &flake_dir)?;
-
-                inputs.push(InputFlake::new(
-                    "poetry2nix",
-                    &parsed_config.poetry2nix.url,
-                    &parsed_config.poetry2nix.rev,
-                    &[],
-                    &flake_dir,
-                )?);
-
-                flake_contents
-                    //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
-                    .replace("%PYTHON_PACKAGES%", &out_python_packages)
-                    .replace("PYTHON_BUILD_PACKAGES", &out_python_build_packages)
-                    .replace(
-                        "PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS_FUNC",
-                        out_additional_mkpython_arguments_func,
-                    )
-                    .replace("%PYTHON_MAJOR_DOT_MINOR%", &python_major_dot_minor)
-                    .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev)
-                    .replace(
-                        "\"%POETRY2NIX%\";",
-                        "inherit (poetry2nix.lib.mkPoetry2Nix {inherit pkgs;}) mkPoetryEnv defaultPoetryOverrides;"
-                    )
-            }
-            None => {
-                if poetry_lock.exists() {
-                    fs::remove_file(poetry_lock)?;
-                }
-                flake_contents
-                    .replace("\"%POETRY2NIX%\";", "mkPoetryEnv = null;")
-                    .replace("%DEVELOP_PYTHON_PATH%", "")
-                    .replace("#%PYTHON_BUILD_PACKAGES%", "")
-                    .replace("#%PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS%", "")
-            }
-        }; */
+    add_python(
+        parsed_config,
+        &flake_dir,
+        &mut inputs,
+        &mut definitions,
+        &mut overlays,
+        &mut nixpkgs_pkgs,
+        &mut flakes_used_for_python_packages,
+        &mut git_tracked_files,
+        &filenames.pyproject_toml,
+        &filenames.poetry_lock,
+        &python_packages,
+        &python_build_packages,
+    )?;
 
     /* flake_contents = match &parsed_config.flakes {
         Some(flakes) =>
@@ -278,83 +198,6 @@ pub fn write_flake(
     flake_contents = flake_contents.replace("#%DEVSHELL_INPUTS%", &dev_shell_inputs);
     */
 
-    /* flake_contents = match &parsed_config.r {
-        Some(r_config) => {
-            inputs.push(InputFlake::new(
-                "nixR",
-                &r_config.nixr_url,
-                &r_config
-                    .nixr_tag
-                    .as_ref()
-                    .expect("No nixR tag? Should have been lookup up automatically. Anysnake2 bug"),
-                &[],
-                &flake_dir,
-            )?);
-
-            fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
-                let mut out = "".to_string();
-                for (pkg_name, override_nix_func) in attrset.iter() {
-                    out.push_str(&format!("\"{}\" = ({});", pkg_name, override_nix_func));
-                }
-                out
-            }
-
-            let r_override_args = r_config
-                .override_attrs
-                .as_ref()
-                .map_or("".to_string(), attrset_from_hashmap);
-            let r_dependency_overrides = r_config
-                .dependency_overrides
-                .as_ref()
-                .map_or("".to_string(), attrset_from_hashmap);
-            let r_additional_packages = r_config
-                .additional_packages
-                .as_ref()
-                .map_or("".to_string(), attrset_from_hashmap);
-
-            let mut r_pkg_list: Vec<String> =
-                r_config.packages.iter().map(|x| x.to_string()).collect();
-            if let Some(additional_packages) = &r_config.additional_packages {
-                for pkg_ver in additional_packages.keys() {
-                    let (pkg, _ver) = pkg_ver.split_once("_").expect(
-                        "R.additional_packages key did not conform to 'name_version' schema",
-                    );
-                    r_pkg_list.push(pkg.to_string());
-                }
-            }
-            //remove duplicates
-            r_pkg_list.sort();
-            r_pkg_list.dedup();
-
-            let r_packages = format!(
-                "
-                R_tracked = nixR.R_by_date {{
-                    date = \"{}\" ;
-                    r_pkg_names = [{}];
-                    packageOverrideAttrs = {{ {} }};
-                    r_dependency_overrides = {{ {} }};
-                    additional_packages = {{ {} }};
-                }};
-                ",
-                &r_config.date,
-                r_pkg_list.iter().map(|x| format!("\"{}\"", x)).join(" "),
-                r_override_args,
-                r_dependency_overrides,
-                r_additional_packages
-            );
-            overlays.push(
-                "(final: prev: {
-                R = R_tracked // {meta = { platforms=prev.R.meta.platforms;};};
-                rPackages = R_tracked.rPackages;
-                }) "
-                .to_string(),
-            );
-
-            nixpkgs_pkgs.push("R".to_string()); // that's the overlayed R.
-            flake_contents.replace("#%RPACKAGES%", &r_packages)
-        }
-        None => flake_contents.replace("#%RPACKAGES%", "R_tracked = null;"),
-    }; */
     /*
     let mut jupyter_kernels = String::new();
     let jupyter_included = python_packages.iter().any(|(k, _)| k == "jupyter");
@@ -432,7 +275,7 @@ pub fn write_flake(
     } */
 
     //print!("{}", flake_contents);
-    let git_tracked_files = create_flake_git(flake_dir.as_ref())?;
+    create_flake_git(flake_dir.as_ref(), &mut git_tracked_files)?;
     /*
     if parsed_config.python.is_some() {
         gitargs.push("poetry/pyproject.toml");
@@ -518,30 +361,54 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 }
 
 fn extract_non_editable_python_packages(
-    input: &[(String, String)],
+    input: &[(String, PythonPackageDefinition)],
     build_packages: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
-) -> Result<Vec<(String, String)>> {
-    let mut res: Vec<(String, String)> = Vec::new();
-    for (name, version_constraint) in input.iter() {
-        if version_constraint.starts_with("editable") {
-            continue;
-        }
-        if build_packages.contains_key(name) {
-            continue; // added below
-        } else if version_constraint.contains("==")
-            || version_constraint.contains('>')
-            || version_constraint.contains('<')
-            || version_constraint.contains('!')
-        {
-            res.push((name.to_string(), version_constraint.to_string()));
-        } else if version_constraint.contains('=') {
-            res.push((name.to_string(), version_constraint.to_string()));
-        } else if version_constraint.is_empty() {
-            res.push((name.to_string(), ">0".to_string()))
-        } else {
-            res.push((name.to_string(), version_constraint.to_string()));
-            //bail!("invalid python version spec {}{}", name, version_constraint);
+) -> Result<toml::Table> {
+    let mut res = toml::Table::new();
+    for (name, spec) in input.iter() {
+        match spec {
+            PythonPackageDefinition::Simple(version_constraint) => {
+                if build_packages.contains_key(name) {
+                    continue; // added below
+                } else if version_constraint.contains("==")
+                    || version_constraint.contains('>')
+                    || version_constraint.contains('<')
+                    || version_constraint.contains('!')
+                {
+                    res.insert(
+                        name.to_string(),
+                        toml::Value::String(version_constraint.to_string()),
+                    );
+                } else if version_constraint.contains('=') {
+                    res.insert(
+                        name.to_string(),
+                        toml::Value::String(version_constraint.to_string()),
+                    );
+                } else if version_constraint.is_empty() {
+                    res.insert(name.to_string(), toml::Value::String(">0".to_string()));
+                } else {
+                    res.insert(
+                        name.to_string(),
+                        toml::Value::String(version_constraint.to_string()),
+                    );
+                    //bail!("invalid python version spec {}{}", name, version_constraint);
+                }
+            }
+            PythonPackageDefinition::Complex(map) => {
+                let out_map: toml::Table = map
+                    .iter()
+                    .filter_map(|(k, v)| -> Option<(String, toml::Value)> {
+                        if k != "poetry2nix" {
+                            Some((k.to_string(), v.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                res.insert(name.to_string(), out_map.into());
+            }
+            PythonPackageDefinition::Editable(_) => {}
         }
     }
     for (name, spec) in build_packages.iter() {
@@ -597,7 +464,7 @@ fn get_flake_rev(
 fn format_python_build_packages(
     input: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
-    flakes_used_for_python_packages: &mut HashSet<String>,
+    flakes_used_for_python_packages: &mut BTreeSet<String>,
 ) -> Result<String> {
     let mut res: String = "".into();
     let mut providers: String = "".into();
@@ -693,42 +560,6 @@ fn format_python_build_packages(
     Ok(out)
 }
 
-fn pypi_deps_date_to_rev(date: NaiveDate, flake_dir: impl AsRef<Path>) -> Result<String> {
-    let query_date = date.and_hms_opt(0, 0, 0).unwrap();
-    //chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00", date), "%Y-%m-%d %H:%M")
-    //.context("Failed to parse pypi-deb-db date")?;
-    let lowest =
-        chrono::NaiveDateTime::parse_from_str("2020-04-22T08:54:49Z", "%Y-%m-%dT%H:%M:%SZ")
-            .unwrap();
-    if query_date < lowest {
-        bail!("Pypi-deps-db date too early. Starts at 2020-04-22T08:54:49Z");
-    }
-    let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-    if query_date > now {
-        bail!("Pypi-deps-db date is in the future!");
-    }
-
-    let store_path: PathBuf = flake_dir
-        .as_ref()
-        .join(".pypi-debs-db.lookup.json")
-        .iter()
-        .collect();
-    let query_date_str = query_date.format("%Y%m%d").to_string();
-    fetch_cached(
-        store_path,
-        &query_date_str,
-        PyPiDepsDBRetriever {
-            query_date,
-            query_date_str: query_date_str.to_string(),
-        },
-    )
-}
-
-struct PyPiDepsDBRetriever {
-    query_date: NaiveDateTime,
-    query_date_str: String,
-}
-
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
     let usrpw = String::from(user) + ":" + pass;
     use base64::Engine;
@@ -746,79 +577,6 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
         }
     }
     request
-}
-
-impl PyPiDepsDBRetriever {
-    fn pypi_deps_db_retrieve(page: i64) -> Result<HashMap<String, String>> {
-        let url = format!(
-            "https://api.github.com/repos/DavHau/pypi-deps-db/commits?per_page=100&page={}",
-            page
-        );
-        debug!("Retrieving {}", &url);
-        let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-        let json: serde_json::Value =
-            serde_json::from_str(&body).context("Failed to parse github commits api")?;
-        let json = json
-            .as_array()
-            .context("No entries in github commits api?")?;
-        let mut res = HashMap::new();
-        for entry in json.iter() {
-            let date = chrono::DateTime::parse_from_rfc3339(
-                entry["commit"]["committer"]["date"]
-                    .as_str()
-                    .context("Empty committer date?")?,
-            )?;
-            let sha = entry["sha"].as_str().context("no sha on commit?")?;
-            let str_date = date.format("%Y%m%d").to_string();
-            //println!("{}, {}", &str_date, &sha);
-            res.insert(str_date, sha.to_string());
-        }
-        debug!("Retrieved {} entries", res.len());
-        Ok(res)
-    }
-}
-
-impl Retriever for PyPiDepsDBRetriever {
-    fn retrieve(&self) -> Result<HashMap<String, String>> {
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let mut page = now.signed_duration_since(self.query_date).num_days() / 35; //empirically..., just has to be close, not exact
-        let mut known_mappings = HashMap::new();
-        loop {
-            let mut new_mappings = Self::pypi_deps_db_retrieve(page)?;
-            if new_mappings.is_empty() {
-                bail!("Could not find entry in pypi-deps-db (no more pages)");
-            }
-            let newest = newest_date(&new_mappings)?;
-            let oldest = oldest_date(&new_mappings)?;
-            for (k, v) in new_mappings.drain() {
-                known_mappings.insert(k, v);
-            }
-            if known_mappings.contains_key(&self.query_date_str) {
-                return Ok(known_mappings);
-            } else {
-                //it is not in there...
-                if newest < self.query_date {
-                    trace!("{:?} too old", &self.query_date);
-                    page -= 1;
-                    if page < 0 {
-                        bail!("Could not find entry in pypi-deps-db (arrived at latest entry)");
-                    }
-                } else if oldest > self.query_date {
-                    trace!(
-                        "Could not find entry in pypi-deps-db ({:?} too new)",
-                        &self.query_date
-                    );
-                    page += 1;
-                } else {
-                    bail!(
-                        "Could not find entry in pypi-deps-db (date not present. Closest: {} {}).",
-                        pretty_opt_date(&next_smaller_date(&known_mappings, &self.query_date)),
-                        pretty_opt_date(&next_larger_date(&known_mappings, &self.query_date)),
-                    );
-                }
-            }
-        }
-    }
 }
 
 fn pretty_opt_date(date: &Option<chrono::NaiveDateTime>) -> String {
@@ -993,7 +751,6 @@ fn nix_format(
     let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
     super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
-    dbg!(&full_args);
     let mut child = Command::new("nix")
         .args(full_args)
         .stdin(Stdio::piped())
@@ -1022,13 +779,17 @@ fn nix_format(
 }
 
 fn ancient_poetry(
-    python_package_definitions: &Vec<(String, String)>,
+    parsed_config: &config::ConfigToml,
+    python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
     python_version: &str,
+    python_major_minor: &str,
     date: chrono::NaiveDate,
 ) -> Result<()> {
-    let mut pyproject_contents = r#"
+    //let mut pyproject_toml_contents = toml::Table::new();
+    //pyproject_toml_contents["tool.poetry"] = toml::Value::Table(toml::Table::new());
+    let mut pyproject_toml_contents: toml::Table = r#"
 [tool.poetry]
 name = "anysnake2_to_ancient_poetry"
 version = "0.1.0"
@@ -1039,28 +800,53 @@ authors = ["Nemo"]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.dependencies]
 
 "#
-    .to_string();
-    pyproject_contents.push_str(&format!("python= \"^{}\"\n", python_version));
+    .parse()
+    .unwrap();
+    let mut dependencies = toml::Table::new();
+    //[tool.poetry.dependencies]
+    dependencies.insert(
+        "python".to_string(),
+        toml::Value::String(format!("~={}.0", python_version.to_string())),
+    );
     for (name, version_constraint) in python_package_definitions.iter() {
-        pyproject_contents.push_str(&format!("{} = \"{}\"\n", name, version_constraint));
+        dependencies.insert(name.to_string(), version_constraint.clone());
     }
+    pyproject_toml_contents["tool"]["poetry"]
+        .as_table_mut()
+        .unwrap()
+        .insert("dependencies".to_string(), toml::Value::Table(dependencies));
+    ex::fs::create_dir_all(pyproject_toml_path.parent().unwrap())?;
+    let pyproject_contents = pyproject_toml_contents.to_string();
     ex::fs::write(pyproject_toml_path, &pyproject_contents)?;
     let pyproject_toml_hash = sha256::digest(pyproject_contents);
 
-    let last_hash = ex::fs::read_to_string(poetry_lock_path.with_extension("sha256"))
+    let last_hash = ex::fs::read_to_string(pyproject_toml_path.with_extension("sha256"))
         .unwrap_or("".to_string())
         .trim()
         .to_string();
-    if (pyproject_toml_hash != last_hash) || !poetry_lock_path.exists() {
+    if (pyproject_toml_hash != last_hash)
+        || !poetry_lock_path.exists()
+        || poetry_lock_path.metadata()?.len() == 0
+    {
         //todo make configurable
-        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git");
+        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?rev=c89a63a80ff7ea70d61562698dd616c3ed13440a"); //TODO
         let str_date = date.format("%Y-%m-%d").to_string();
 
         let full_args = vec![
-            "shell".to_string(),
+            "shell".into(),
+            format!(
+                "{}?ref={}#poetry",
+                parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev
+            ),
+            /* "-c".into(),
+            "nix".into(),
+            "shell".into(),
+            format!("{}?ref={}#{}", parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev, python_major_minor ), */
+            "-c".into(),
+            "nix".into(),
+            "shell".into(),
             full_url,
             "-c".into(),
             "ancient-poetry".into(),
@@ -1069,7 +855,7 @@ build-backend = "poetry.core.masonry.api"
             "-p".into(),
             pyproject_toml_path.to_string_lossy().to_string(),
         ];
-        debug!("running ancient-poetry");
+        debug!("running ancient-poetry: {:?}", &full_args);
         let child = Command::new("nix")
             .args(full_args)
             //.stdin(Stdio::piped())
@@ -1077,29 +863,30 @@ build-backend = "poetry.core.masonry.api"
             .spawn()?;
         let out = child
             .wait_with_output()
-            .context("Failed to wait on nixfmt")?; // closes stdin
+            .context("Failed to wait on ancient poetry")?; // closes stdin
         if out.status.success() {
             let stdout = std::str::from_utf8(&out.stdout)
                 .context("ancient-poetry lock output wan't utf8")?;
             //write it to poetry.lock
             ex::fs::write(poetry_lock_path, stdout)?;
             ex::fs::write(
-                poetry_lock_path.with_extension("sha256"),
+                pyproject_toml_path.with_extension("sha256"),
                 pyproject_toml_hash,
             )?;
             Ok(())
         } else {
             Err(anyhow!(
-                "ancient-poetry error return{}\n",
+                "ancient-poetry error returncode: {}\n",
                 out.status.code().unwrap(),
             ))
         }
     } else {
+        debug!("Skipping call to ancient poetry - pyproject.toml matches last run");
         Ok(())
     }
 }
 
-fn create_flake_git(flake_dir: &Path) -> Result<Vec<&str>> {
+fn create_flake_git(flake_dir: &Path, tracked_files: &mut Vec<String>) -> Result<()> {
     let mut git_path = flake_dir.to_path_buf();
     git_path.push(".git");
     if !git_path.exists() {
@@ -1119,9 +906,13 @@ fn create_flake_git(flake_dir: &Path) -> Result<Vec<&str>> {
         }
     }
 
-    let mut gitargs = vec!["flake.nix", "functions.nix", ".gitignore"];
+    tracked_files.extend(
+        ["flake.nix", "functions.nix", ".gitignore"]
+            .iter()
+            .map(ToString::to_string),
+    );
     if flake_dir.join("flake.lock").exists() {
-        gitargs.push("flake.lock");
+        tracked_files.push("flake.lock".to_string());
     }
     fs::write(
         flake_dir.join(".gitignore"),
@@ -1132,7 +923,7 @@ fn create_flake_git(flake_dir: &Path) -> Result<Vec<&str>> {
     ",
     )?;
 
-    Ok(gitargs)
+    Ok(())
 }
 
 fn write_flake_contents(
@@ -1163,7 +954,7 @@ fn write_flake_contents(
     res
 }
 
-fn run_git_add(tracked_files: Vec<&str>, flake_dir: &Path) -> Result<()> {
+fn run_git_add(tracked_files: Vec<String>, flake_dir: &Path) -> Result<()> {
     let output = run_without_ctrl_c(|| {
         Command::new("git")
             .arg("add")
@@ -1184,13 +975,13 @@ fn run_git_add(tracked_files: Vec<&str>, flake_dir: &Path) -> Result<()> {
     Ok(())
 }
 fn add_rust(
-    rust_extensions: Vec<String>,
+    parsed_config: &mut config::ConfigToml,
+    flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
-    nixpkgs_pkgs: &mut BTreeSet<String>,
     overlays: &mut Vec<String>,
-    flake_dir: &Path,
-    parsed_config: &mut config::ConfigToml,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
+    rust_extensions: Vec<String>,
 ) -> Result<()> {
     if let Some(rust_ver) = &parsed_config.rust.version {
         nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
@@ -1226,9 +1017,9 @@ fn add_rust(
 
 fn add_flakes(
     parsed_config: &mut config::ConfigToml,
-    inputs: &mut Vec<InputFlake>,
     flake_dir: &Path,
-    flakes_used_for_python_packages: &HashSet<String>,
+    inputs: &mut Vec<InputFlake>,
+    flakes_used_for_python_packages: &BTreeSet<String>,
     nixpkgs_pkgs: &mut BTreeSet<String>,
 ) -> Result<()> {
     {
@@ -1275,12 +1066,12 @@ fn add_flakes(
 
 fn add_r(
     parsed_config: &config::ConfigToml,
-    inputs: &mut Vec<InputFlake>,
     flake_dir: &Path,
-    nixpkgs_pkgs: &mut BTreeSet<String>,
+    inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
     overlays: &mut Vec<String>,
-) ->Result<()> {
+    nixpkgs_pkgs: &mut BTreeSet<String>,
+) -> Result<()> {
     if let Some(r_config) = &parsed_config.r {
         inputs.push(InputFlake::new(
             "nixR",
@@ -1354,5 +1145,166 @@ fn add_r(
 
         nixpkgs_pkgs.insert("R".to_string()); // that's the overlayed R.
     }
+    Ok(())
+}
+
+fn format_poetry_override_entries(
+    python_packages: &[(String, PythonPackageDefinition)],
+) -> Result<Vec<String>> {
+    let mut poetry_overide_entries = Vec::new();
+    for (name, spec) in python_packages.iter() {
+        match spec {
+            PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
+            PythonPackageDefinition::Complex(spec) => {
+                if let Some(build_inputs) = spec.get_recursive(&["poetry2nix", "buildInputs"]) {
+                    let str_build_inputs = build_inputs
+                        .as_array().with_context(||format!("Build input was not a list of strings package definition for {}", name))?
+                        .iter()
+                        .map(|v| Ok({
+                            let v= v
+                                .as_str()
+                                .with_context(||format!("Build input was not a list of strings package definition for {}", name))?;
+                            format!("prev.{}", v)
+                        }))
+                        .collect::<Result<Vec<String>>>()
+                        ?
+                        .join(" ");
+                    poetry_overide_entries.push(format!("{name} = prev.{name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
+                }
+            }
+        }
+    }
+    Ok(poetry_overide_entries)
+}
+
+fn add_python(
+    parsed_config: &config::ConfigToml,
+    flake_dir: &Path,
+    inputs: &mut Vec<InputFlake>,
+    definitions: &mut BTreeMap<String, String>,
+    overlays: &mut Vec<String>,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
+    flakes_used_for_python_packages: &mut BTreeSet<String>,
+    git_tracked_files: &mut Vec<String>,
+    pyproject_toml_path: &Path,
+    poetry_lock_path: &Path,
+    python_packages: &[(String, PythonPackageDefinition)],
+    python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
+) -> Result<()> {
+    //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
+    match &parsed_config.python {
+        Some(python) => {
+            if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
+                bail!(
+                            format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
+            }
+            let python_major_dot_minor = &python.version;
+            let python_major_minor = format!("python{}", python.version.replace(".", ""));
+
+            let mut out_python_packages = extract_non_editable_python_packages(
+                python_packages,
+                python_build_packages,
+                &parsed_config.flakes,
+            )?;
+            if parsed_config.r.is_some() {
+                out_python_packages.insert("rpy2".to_string(), toml::Value::String("".to_string()));
+            }
+            //out_python_packages.sort();
+
+            ancient_poetry(
+                &parsed_config,
+                &out_python_packages,
+                &pyproject_toml_path,
+                &poetry_lock_path,
+                &python.version,
+                &python_major_minor,
+                python.parsed_ecosystem_date()?,
+            )?;
+
+            let out_python_build_packages = format_python_build_packages(
+                &python_build_packages,
+                &parsed_config.flakes,
+                flakes_used_for_python_packages,
+            )?;
+            info!("{}", out_python_build_packages);
+
+            if let Some(_org) = &python.additional_mkpython_arguments {
+                bail!("python.additional_mkpython_arguments requirements is not supported anymore (merge issues with '_'). \nUse addition_mk_python_arguments_func like this '''
+    old: old // {{\"_\"  = old.\"_\" // {{
+        pandas.postInstall = ''
+            touch $out/lib/python* /site-packages/pandas_mkpython_worked
+
+        '';
+        }};
+        }}
+    '''");
+            }
+
+            let poetry_overide_entries = format_poetry_override_entries(&python_packages)?;
+
+            inputs.push(InputFlake::new(
+                "poetry2nix",
+                &parsed_config.poetry2nix.url,
+                &parsed_config.poetry2nix.rev,
+                &[],
+                &flake_dir,
+            )?);
+
+            definitions.insert(
+                "_poetry2nix".to_string(),
+                "poetry2nix.lib.mkPoetry2Nix {inherit pkgs;}".to_string(),
+            );
+            definitions.insert(
+                "mkPoetryEnv".to_string(),
+                "_poetry2nix.mkPoetryEnv".to_string(),
+            );
+            definitions.insert(
+                "defaultPoetryOverrides".to_string(),
+                "_poetry2nix.defaultPoetryOverrides".to_string(),
+            );
+            //            definitions.insert("python_packages".to_string(), out_python_packages);
+            definitions.insert(
+                "python_version".to_string(),
+                format!("pkgs.{python_major_minor}"),
+            );
+
+            definitions.insert(
+                "poetry_overrides".to_string(),
+                format!(
+                    "defaultPoetryOverrides.extend(final: prev: {{{}}})",
+                    poetry_overide_entries.join("\n")
+                ),
+            );
+            definitions.insert(
+                "python_package".to_string(),
+                "mkPoetryEnv {
+                                  projectDir = ./poetry;
+                                  python = python_version;
+                                  preferWheels = true;
+                                  overrides = poetry_overrides;
+                              }"
+                .to_string(),
+            );
+            nixpkgs_pkgs.insert("python_package".to_string());
+
+            //flake_contents
+            //.replace("%PYTHON_MAJOR_MINOR%", &python_major_minor)
+            /* .replace("%PYTHON_PACKAGES%", &out_python_packages)
+            .replace("PYTHON_BUILD_PACKAGES", &out_python_build_packages)
+            /* .replace(
+                "PYTHON_ADDITIONAL_MKPYTHON_ARGUMENTS_FUNC",
+                out_additional_mkpython_arguments_func,
+            ) */
+            .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev) */
+            git_tracked_files.push("poetry/poetry.lock".to_string());
+            git_tracked_files.push("poetry/pyproject.toml".to_string());
+        }
+        None => {
+            if poetry_lock_path.exists() {
+                ex::fs::remove_file(poetry_lock_path)?;
+            }
+        }
+    };
+
     Ok(())
 }

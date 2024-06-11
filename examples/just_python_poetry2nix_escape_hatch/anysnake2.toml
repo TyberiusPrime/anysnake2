@@ -1,0 +1,44 @@
+# basic anysnake2.toml example using python
+[anysnake2]
+rev = "dev"
+
+[outside_nixpkgs]
+rev = "23.11" 
+
+[nixpkgs]
+rev = "23.11" 
+packages = ["which"]
+
+
+[python] 
+version="3.10" 
+ecosystem_date="2022-11-23" 
+preferWheels = true
+
+[clones.code]
+# clones a repo to ./code, which you can then refer in python.
+example-cli-python="file://./example-cli-python/"
+
+[python.packages]
+# you can use standard python requirements.txt version specification syntax
+# i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+pandas="1.5.1"
+# you can refer to the repos you cloned
+#example-cli-python="editable/code"
+black=""
+tomli=">1.2"
+hatchling=""
+pyscaffold="3.1" # dppd_plotnine need this
+dppd-plotnine={version="0.2", poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
+
+[python.packages.dppd]
+url = "https://files.pythonhosted.org/packages/4b/43/0d1b0135841e4f2b9a3208df24abef52dd368be166bb150369d2cd6c9bed/dppd-0.24.tar.gz"
+poetry2nix.buildInputs = ["setuptools"]
+
+
+# and you can fetch from github, git and mercurial (any nix fetcher actually, see
+# https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
+# if using fetchFromGitHub, the necessary hash will be added to this file
+# on a trust-on-first-use-basis
+
+

@@ -1,50 +1,29 @@
-# basic anysnake2.toml example
-# package settings
+# basic anysnake2.toml example using python
 [anysnake2]
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "23.11" # the nixpgks version or github hash
+rev = "23.11" 
 
 [nixpkgs]
-# the nixpkgs used inside the container
-rev = "23.11" # the nixpgks version or github hash
+rev = "23.11" 
 packages = ["which"]
 
 
-[python] # python section is optional
-version="3.10" # does not go down to 3.x.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
-
-# additional_mkpython_arguments_func = """
-# old: old // {"_"  = old."_" // {
-# 	pandas.postInstall = ''
-#         touch $out//lib/python3.10/site-packages/pandas/mkpython_args_worked
-# 	'';
-# 	};
-# }
-# """ # must be verbatim nix code defing a function old -> new (attrSets)
+[python] 
+version="3.10" 
+ecosystem_date="2022-11-23" 
+preferWheels = true
 
 [clones.code]
-# example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
+# clones a repo to ./code, which you can then refer in python.
 example-cli-python="file://./example-cli-python/"
 
 [python.packages]
-# you can use standard python requirements.txt version specification syntax
-# i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 pandas="1.5.1"
-# you can refer to the repos you cloned
-#example-cli-python="editable/code"
 black=""
 tomli=">1.2"
 hatchling=""
-dppd={method="fetchPypi", version = "0.24", "hash_0.24" = "sha256-kHZi58W1OJF/69hF72Sg+svRpsJfA+JZVbmEt63HNRg=" }
-
-
-
-# and you can fetch from github, git and mercurial (any nix fetcher actually, see
-# https://nixos.org/manual/nixpkgs/stable/#chap-pkgs-fetchers)
-# if using fetchFromGitHub, the necessary hash will be added to this file
-# on a trust-on-first-use-basis
+requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
 
 

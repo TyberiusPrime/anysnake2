@@ -1,10 +1,53 @@
-#![allow(unused_imports,unused_variables, unused_mut, dead_code)] // todo: remove
-use anyhow::{Context, Result};
-use itertools::Itertools;
+#![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
+use anyhow::{bail, Context, Result};
+use itertools::{all, Itertools};
+use log::info;
 use serde::de::Deserializer;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+pub trait GetRecursive {
+    fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value>;
+}
+
+impl GetRecursive for toml::Value {
+    fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value> {
+        let mut current = self;
+        for k in key {
+            current = current.get(k)?;
+        }
+        Some(current)
+    }
+}
+impl GetRecursive for toml::Table {
+    fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value> {
+        if let Some(hit) = self.get(key[0]) {
+            if key.len() > 1 {
+                match hit {
+                    toml::Value::Table(t) => t.get_recursive(&key[1..]),
+                    _ => None,
+                }
+            } else {
+                Some(hit)
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl GetRecursive for Option<&toml::Value> {
+    fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value> {
+        self.and_then(|start| {
+            let mut current = start;
+            for k in key {
+                current = current.get(k)?;
+            }
+            Some(current)
+        })
+    }
+}
 
 trait WithDefaultFlakeSource {
     fn default_rev() -> String;
@@ -229,8 +272,8 @@ impl WithDefaultFlakeSource for Rust {
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ParsedPythonPackageDefinition {
-    Requirement(String),
-    BuildPythonPackage(HashMap<String, toml::Value>),
+    Simple(String),
+    Complex(HashMap<String, toml::Value>),
 }
 
 #[derive(Debug, Clone)]
@@ -276,8 +319,9 @@ impl BuildPythonPackageInfo {
 
 #[derive(Debug, Clone)]
 pub enum PythonPackageDefinition {
-    Requirement(String),
-    BuildPythonPackage(BuildPythonPackageInfo),
+    Simple(String),
+    Editable(String),
+    Complex(toml::map::Map<String, toml::Value>),
 }
 
 //todo: trust on first use, or at least complain if never seen before rev and
@@ -301,12 +345,56 @@ where
                     }
 
             match v {
-                ParsedPythonPackageDefinition::Requirement(x) => {
-                    Ok((pkg_name, PythonPackageDefinition::Requirement(x)))
+                ParsedPythonPackageDefinition::Simple(x) => {
+
+                    Ok((pkg_name,
+                        if x.starts_with("editable/") { PythonPackageDefinition::Editable(x) } else { PythonPackageDefinition::Simple(x) }))
                 }
-                ParsedPythonPackageDefinition::BuildPythonPackage(def) => {
-                    let mut errors: Vec<&str> = Vec::new();
-                    let method = def
+                ParsedPythonPackageDefinition::Complex(def) => {
+                    let mut errors = Vec::new();
+                    let mut parsed_def = toml::map::Map::new();
+                    let allowed_keys =["url", "poetry2nix", "version"];
+                    let mut url_used = false;
+                    let mut version_used = false;
+                    for (key, value) in def.into_iter() {
+                        match value {
+                            toml::Value::String(_)| toml::Value::Array(_) | toml::Value::Table(_) => {
+                                if key == "url" {
+                                    url_used = true;
+                                }
+                                else if key == "version" {
+                                    version_used = true;
+                                }
+
+                                if allowed_keys.contains(&key.as_str()) {
+                                    parsed_def.insert(key, value);
+                                } else {
+                                    errors.push(format!("Unexpected key: {}", key));
+                                }
+                            }
+                            _ => {
+                                errors.push("All python package definition values must be strings, or list of strings.".to_string());
+                            }
+                        }
+                        if url_used && version_used {
+                            errors.push("Both url and version are used, but only one is allowed.".to_string());
+                        }
+                    }
+                    if errors.is_empty() {
+                        Ok((
+                            pkg_name,
+                            PythonPackageDefinition::Complex(parsed_def)))
+                    } else {
+                        Err(serde::de::Error::custom(format!(
+                            "Python.packages.{}: {}",
+                            pkg_name,
+                            errors.join("\n")
+                        )))
+                    }
+                }
+
+
+                    /* let method = def
                         .get("method")
                         .ok_or_else(|| {
                             serde::de::Error::custom(format!(
@@ -401,15 +489,7 @@ where
                                 ))))
                             }
                         })
-                        .collect();
-                    Ok((
-                        pkg_name,
-                        PythonPackageDefinition::BuildPythonPackage(BuildPythonPackageInfo {
-                            options: string_defs?,
-                            overrides,
-                        }),
-                    ))
-                }
+                        .collect(); */
             }})
         .collect();
     res
@@ -449,7 +529,8 @@ impl Default for Poetry2Nix {
 
 impl WithDefaultFlakeSource for Poetry2Nix {
     fn default_rev() -> String {
-        "4eb2ac54029af42a001c9901194e9ce19cbd8a40".to_string() //updated 2024-02-13
+        "51f5d09e95277eaa99e957cef46946e747cb4a3e".to_string() //updated 2024-06-11 //TODO: Auto
+                                                               //update and write to anysnake2.toml
     }
     fn default_url() -> String {
         "github:nix-community/poetry2nix".to_string()

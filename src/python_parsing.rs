@@ -117,5 +117,3 @@ pub fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
         None => raw,
     })
 }
-
-

@@ -236,10 +236,10 @@ fn test_full() {
     let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/pandas/mkpython_args_worked");
     assert!(should_be_there.exists());
 
-    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/bin/hello");
+    let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/hello");
     assert!(should_be_there.exists());
 
-    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/bin/STAR");
+    let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/STAR");
     assert!(should_be_there.exists());
 
     let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/rpy2/rinterface_lib/embedded.py");
