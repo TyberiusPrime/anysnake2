@@ -12,13 +12,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::{python_parsing, run_without_ctrl_c};
+use crate::{python_parsing, run_without_ctrl_c, vcs};
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
     name: String,
     url: String,
-    rev: String,
     follows: Vec<String>,
     is_flake: bool,
 }
@@ -26,20 +25,13 @@ struct InputFlake {
 impl InputFlake {
     fn new(
         name: &str,
-        url: &str,
-        rev: &str,
+        url: &vcs::TofuVCS,
         follows: &[&str],
         flake_dir: impl AsRef<Path>,
     ) -> Result<Self> {
-        let url = if url.ends_with('/') {
-            url.strip_suffix('/').unwrap()
-        } else {
-            url
-        };
         Ok(InputFlake {
             name: name.to_string(),
             url: url.to_string(),
-            rev: lookup_github_tag(url, rev, flake_dir)?,
             follows: follows.iter().map(|x| x.to_string()).collect(),
             is_flake: true,
         })
@@ -47,20 +39,13 @@ impl InputFlake {
     fn new_with_flake_option(
         name: &str,
         url: &str,
-        rev: &str,
         follows: &[&str],
         flake_dir: impl AsRef<Path>,
         is_flake: bool,
     ) -> Result<Self> {
-        let url = if url.ends_with('/') {
-            url.strip_suffix('/').unwrap()
-        } else {
-            url
-        };
         Ok(InputFlake {
             name: name.to_string(),
             url: url.to_string(),
-            rev: lookup_github_tag(url, rev, flake_dir)?,
             follows: follows.iter().map(|x| x.to_string()).collect(),
             is_flake,
         })
@@ -95,7 +80,7 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
 #[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
-    parsed_config: &mut config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
 ) -> Result<bool> {
     let template = std::include_str!("nix/flake_template.nix");
@@ -121,8 +106,7 @@ pub fn write_flake(
     // we always need the flake utils.
     inputs.push(InputFlake::new(
         "flake-utils",
-        &parsed_config.flake_util.url,
-        &parsed_config.flake_util.rev,
+        &parsed_config.flake_util,
         &[],
         flake_dir,
     )?);
@@ -132,14 +116,10 @@ pub fn write_flake(
     inputs.push(InputFlake::new(
         "nixpkgs",
         &parsed_config.nixpkgs.url,
-        &parsed_config.nixpkgs.rev,
         &[],
         flake_dir,
     )?);
-    nixpkgs_pkgs.extend(match &parsed_config.nixpkgs.packages {
-        Some(pkgs) => pkgs.clone(),
-        None => Vec::new(),
-    });
+    nixpkgs_pkgs.extend(parsed_config.nixpkgs.packages.clone());
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
                                                ////todo: does rust even need to be a special case?
@@ -252,12 +232,7 @@ pub fn write_flake(
     // pretty print the generated flake
     flake_contents = nix_format(
         &flake_contents,
-        &parsed_config.outside_nixpkgs.url,
-        &lookup_github_tag(
-            &parsed_config.outside_nixpkgs.url,
-            &parsed_config.outside_nixpkgs.rev,
-            &flake_dir,
-        )?,
+        &parsed_config.outside_nixpkgs.to_nix_string(),
         &flake_dir,
     )?;
 
@@ -312,14 +287,12 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
         out.push_str(&format!(
             "
     {} = {{
-        url = \"{}{}rev={}\";
+        url = \"{}\";
 {}
 {}
     }};",
             fl.name,
             url,
-            if !fl.url.contains("?") { "?" } else { "&" },
-            fl.rev,
             &str_follows,
             if fl.is_flake { "" } else { "flake = false;" }
         ))
@@ -358,7 +331,7 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 
 fn extract_non_editable_python_packages(
     input: &HashMap<String, PythonPackageDefinition>,
-    flakes_config: &Option<HashMap<String, config::Flake>>,
+    flakes_config: &HashMap<String, config::TofuFlake>,
 ) -> Result<toml::Table> {
     let mut res = toml::Table::new();
     for (name, spec) in input.iter() {
@@ -440,22 +413,6 @@ fn python_version_from_spec(
         )
     )
 }
-
-fn get_flake_rev(
-    flake_name: &str,
-    flakes_config: &Option<HashMap<String, config::Flake>>,
-) -> Result<String> {
-    Ok(flakes_config
-        .as_ref()
-        .context("no flakes defined")?
-        .get(flake_name)
-        .with_context(|| format!("No flake {} in flake definitions", flake_name))?
-        .rev
-        .as_ref()
-        .with_context(|| format!("No rev for flake {} in flake definitions", flake_name))?
-        .to_string())
-}
-
 fn format_python_build_packages(
     input: &HashMap<String, BuildPythonPackageInfo>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
@@ -483,6 +440,8 @@ fn format_python_build_packages(
             .as_str()
         {
             "useFlake" => {
+                todo!();
+                /*
                 let flake_name = spec.get("flake_name").unwrap_or(key);
                 let flake_rev = get_flake_rev(flake_name, flakes_config)
                     .with_context(|| format!("python.packages.{}", key))?;
@@ -495,6 +454,7 @@ fn format_python_build_packages(
                 ));
                 flakes_used_for_python_packages.insert(flake_name.to_string());
                 packages_extra.push(flake_name.to_string());
+                */
             }
             _ => {
                 res.push_str(&format!(
@@ -644,38 +604,12 @@ pub fn get_proxy_req() -> Result<ureq::Agent> {
     Ok(agent.build())
 }
 
-pub fn lookup_github_tag(
-    url: &str,
-    tag_or_rev: &str,
-    flake_dir: impl AsRef<Path>,
-) -> Result<String> {
-    if tag_or_rev.len() == 40 || !url.starts_with("github:") {
-        Ok(tag_or_rev.to_string())
-    } else {
-        let repo = url.strip_prefix("github:").unwrap();
-        fetch_cached(
-            &flake_dir
-                .as_ref()
-                .join(format!(".github_{}.json", repo.replace("/", "_"))),
-            tag_or_rev,
-            GitHubTagRetriever {
-                repo: repo.to_string(),
-            },
-        )
-        .with_context(|| format!("Looking up tag on {}", &url))
-    }
-}
-
 trait Retriever {
     fn retrieve(&self) -> Result<HashMap<String, String>>;
 }
 
-fn fetch_cached(
-    cache_filename: impl AsRef<Path>,
-    query: &str,
-    retriever: impl Retriever,
-) -> Result<String> {
-    let mut known: HashMap<String, String> = match cache_filename.as_ref().exists() {
+fn fetch_cached(cache_filename: &Path, query: &str, retriever: impl Retriever) -> Result<String> {
+    let mut known: HashMap<String, String> = match cache_filename.exists() {
         true => serde_json::from_str(&fs::read_to_string(&cache_filename)?)?,
         false => HashMap::new(),
     };
@@ -686,6 +620,7 @@ fn fetch_cached(
         for (k, v) in new.drain() {
             known.insert(k, v);
         }
+        debug!("Known tags: {:?} {cache_filename:?}", known);
         fs::write(cache_filename, serde_json::to_string_pretty(&json!(known))?)?;
         return Ok(known
             .get(query)
@@ -694,56 +629,13 @@ fn fetch_cached(
     }
 }
 
-struct GitHubTagRetriever {
-    repo: String,
-}
-
-pub(crate) fn get_github_tags(repo: &str, page: i32) -> Result<Vec<serde_json::Value>> {
-    let url = format!(
-        "https://api.github.com/repos/{}/tags?per_page=100&page={}",
-        repo, page
-    );
-    debug!("Retrieving {}", &url);
-    let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-    let json: serde_json::Value =
-        serde_json::from_str(&body).context("Failed to parse github tags api")?;
-    Ok(json
-        .as_array()
-        .context("No entries in github tags api?")?
-        .to_owned())
-}
-
-impl Retriever for GitHubTagRetriever {
-    fn retrieve(&self) -> Result<HashMap<String, String>> {
-        let mut res = HashMap::new();
-        for page in 0..30 {
-            let json = get_github_tags(&self.repo, page)?;
-            if json.is_empty() {
-                break;
-            }
-            for entry in json {
-                let name: String = entry["name"]
-                    .as_str()
-                    .context("No name found in github tags")?
-                    .to_string();
-                let sha: String = entry["commit"]["sha"]
-                    .as_str()
-                    .context("No sha found in github tags")?
-                    .to_string();
-                res.insert(name, sha);
-            }
-        }
-        Ok(res)
-    }
-}
-
 fn nix_format(
     input: &str,
-    nixpkgs_url: &str,
-    nixpkgs_rev: &str,
+    outside_nixpkgs_url: &str,
     flake_dir: impl AsRef<Path>,
 ) -> Result<String> {
-    let full_url = format!("{}?rev={}#nixfmt", nixpkgs_url, nixpkgs_rev);
+    let full_url = format!("{}#nixfmt", outside_nixpkgs_url);
+    // debug!("registering nixfmt with {}", &full_url);
     super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
     let mut child = Command::new("nix")
@@ -774,7 +666,7 @@ fn nix_format(
 }
 
 fn ancient_poetry(
-    parsed_config: &config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
@@ -831,13 +723,11 @@ build-backend = "poetry.core.masonry.api"
 
         let full_args = vec![
             "shell".into(),
+            format!("{}#poetry", parsed_config.outside_nixpkgs.to_nix_string(),),
             format!(
-                "{}?ref={}#poetry",
-                parsed_config.outside_nixpkgs.url, parsed_config.outside_nixpkgs.rev
-            ),
-            format!(
-                "{}?ref={}#{}",
-                parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev, python_major_minor
+                "{}#{}",
+                parsed_config.nixpkgs.url.to_string(),
+                python_major_minor
             ),
             full_url,
             "-c".into(),
@@ -971,7 +861,7 @@ fn run_git_add(tracked_files: Vec<String>, flake_dir: &Path) -> Result<()> {
     Ok(())
 }
 fn add_rust(
-    parsed_config: &mut config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
@@ -979,80 +869,68 @@ fn add_rust(
     nixpkgs_pkgs: &mut BTreeSet<String>,
     rust_extensions: Vec<String>,
 ) -> Result<()> {
-    if let Some(rust_ver) = &parsed_config.rust.version {
-        nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
-        let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
-        out_rust_extensions.extend(rust_extensions);
+    if let Some(rust) = &parsed_config.rust {
+        if let Some(rust_ver) = &rust.version {
+            nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
+            let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
+            out_rust_extensions.extend(rust_extensions);
 
-        inputs.push(InputFlake::new(
-            "rust-overlay",
-            &parsed_config.rust.rust_overlay_url,
-            &parsed_config.rust.rust_overlay_rev,
-            &["nixpkgs", "flake-utils"],
-            &flake_dir,
-        )?);
-        overlays.push("import rust-overlay".to_string());
-        let str_rust_extensions: Vec<String> = out_rust_extensions
-            .into_iter()
-            .map(|x| format!("\"{}\"", x))
-            .collect();
-        let str_rust_extensions: String = str_rust_extensions.join(" ");
+            inputs.push(InputFlake::new(
+                "rust-overlay",
+                &rust.url,
+                &["nixpkgs", "flake-utils"],
+                &flake_dir,
+            )?);
+            overlays.push("import rust-overlay".to_string());
+            let str_rust_extensions: Vec<String> = out_rust_extensions
+                .into_iter()
+                .map(|x| format!("\"{}\"", x))
+                .collect();
+            let str_rust_extensions: String = str_rust_extensions.join(" ");
 
-        definitions.insert(
-            "rust".to_string(),
-            format!(
+            definitions.insert(
+                "rust".to_string(),
+                format!(
             "pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {rust_extensions}]; }}",
             rust_ver,
             rust_extensions = str_rust_extensions
         ),
-        );
-        nixpkgs_pkgs.insert("rust".to_string());
-    };
+            );
+            nixpkgs_pkgs.insert("rust".to_string());
+        };
+    }
     Ok(())
 }
 
 fn add_flakes(
-    parsed_config: &mut config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     flakes_used_for_python_packages: &BTreeSet<String>,
     nixpkgs_pkgs: &mut BTreeSet<String>,
 ) -> Result<()> {
     {
-        if let Some(flakes) = &parsed_config.flakes {
-            let mut flake_packages = "".to_string();
-            let mut names: Vec<&String> = flakes.keys().collect();
-            names.sort();
-            for name in names {
-                let flake = flakes.get(name).unwrap();
-                let rev_follows: Vec<&str> = match &flake.follows {
-                    Some(f) => f.iter().map(|x| &x[..]).collect(),
-                    None => Vec::new(),
-                };
-                if flake.url.starts_with("path:/") {
-                    return Err(anyhow!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead"));
-                }
-                inputs.push(InputFlake::new(
-                    name,
-                    &flake
-                        .url
-                        .replace("$ANYSNAKE_ROOT", &parsed_config.get_root_path_str()?),
-                    flake.rev.as_ref().unwrap(), // at this point we must have a rev,
-                    &rev_follows[..],
-                    &flake_dir,
-                )?);
-                match &flake.packages {
-                    Some(pkgs) => {
-                        for pkg in pkgs {
-                            nixpkgs_pkgs.insert(format!("{}.{}", name, pkg));
-                        }
-                    }
-                    None => {
-                        if !flakes_used_for_python_packages.contains(name) {
-                            nixpkgs_pkgs
-                                .insert(format!("{}.{}", name, "defaultPackage.x86_64-linux"));
-                        } //else $default to no packages for a python package flake
-                    }
+        let flakes = &parsed_config.flakes;
+        let mut flake_packages = "".to_string();
+        let mut names: Vec<&String> = flakes.keys().collect();
+        names.sort();
+        for name in names {
+            let flake = flakes.get(name).unwrap();
+            let rev_follows: Vec<&str> = match &flake.follows {
+                Some(f) => f.iter().map(|x| &x[..]).collect(),
+                None => Vec::new(),
+            };
+            inputs.push(InputFlake::new(
+                name,
+                &flake.url, // at this point we must have a rev,
+                &rev_follows[..],
+                &flake_dir,
+            )?);
+            if flake.packages.is_empty() {
+                nixpkgs_pkgs.insert(format!("{}.{}", name, "defaultPackage.x86_64-linux"));
+            } else {
+                for pkg in flake.packages.iter() {
+                    nixpkgs_pkgs.insert(format!("{}.{}", name, pkg));
                 }
             }
         }
@@ -1061,7 +939,7 @@ fn add_flakes(
 }
 
 fn add_r(
-    parsed_config: &config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
@@ -1071,11 +949,7 @@ fn add_r(
     if let Some(r_config) = &parsed_config.r {
         inputs.push(InputFlake::new(
             "nixR",
-            &r_config.nixr_url,
-            &r_config
-                .nixr_tag
-                .as_ref()
-                .expect("No nixR tag? Should have been lookup up automatically. Anysnake2 bug"),
+            &r_config.url,
             &[],
             &flake_dir,
         )?);
@@ -1175,7 +1049,7 @@ fn format_poetry_build_input_overrides(
 }
 
 fn add_python(
-    parsed_config: &config::ConfigToml,
+    parsed_config: &config::TofuConfigToml,
     flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
@@ -1219,20 +1093,7 @@ fn add_python(
 
             inputs.push(InputFlake::new(
                 "poetry2nix",
-                parsed_config
-                    .poetry2nix
-                    .as_ref()
-                    .unwrap()
-                    .url
-                    .as_ref()
-                    .unwrap(),
-                parsed_config
-                    .poetry2nix
-                    .as_ref()
-                    .unwrap()
-                    .rev
-                    .as_ref()
-                    .unwrap(),
+                &parsed_config.poetry2nix,
                 &[],
                 &flake_dir,
             )?);
@@ -1246,7 +1107,7 @@ fn add_python(
           )
         else poetry2nix.legacyPackages.${system}"
                     .to_string(), // that's support for older poetry2nix, but I don't think they
-                                  // actually work. 
+                                  // actually work.
             );
             definitions.insert(
                 "mkPoetryEnv".to_string(),

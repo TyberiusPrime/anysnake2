@@ -18,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
-use tofu::{apply_trust_on_first_use, lookup_missing_flake_revs};
+use tofu::apply_trust_on_first_use;
 use url::Url;
 use util::{add_line_numbers, change_toml_file, dir_empty, CloneStringLossy};
 
@@ -47,8 +47,7 @@ mod maps_duplicate_key_is_error;
 mod python_parsing;
 mod tofu;
 mod util;
-
-use flake_writer::lookup_github_tag;
+mod vcs;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -230,49 +229,56 @@ fn configure_logging(matches: &ArgMatches) -> Result<()> {
 /// We switch to a different version of anysnake2 if the version in the config file is different from the one we are currently running.
 /// (unless that's 'dev', or --no-version-switch was passed)
 fn switch_to_configured_version(
-    parsed_config: &config::MinimalConfigToml,
+    parsed_config: &config::TofuMinimalConfigToml,
     matches: &ArgMatches,
     flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
-    if parsed_config.anysnake2.rev == "dev" {
-        info!("Using development version of anysnake");
-    } else if matches.contains_id("no-version-switch") {
-        info!("--no-version-switch was passed, not switching versions");
-    } else if parsed_config.anysnake2.rev
-        != *matches
-            .get_one::<String>("_running_version")
-            .cloned()
-            .unwrap_or_else(|| "noversionspecified".to_string())
-    {
-        info!("restarting with version {}", &parsed_config.anysnake2.rev);
-        let repo = format!(
-            "{}?rev={}",
-            &parsed_config.anysnake2.url.as_ref().unwrap(),
-            lookup_github_tag(
-                parsed_config.anysnake2.url.as_ref().unwrap(),
-                &parsed_config.anysnake2.rev,
-                flake_dir
-            )?
-        );
+    match &parsed_config.anysnake2.url {
+        config::TofuVCSorDev::Dev => {
+            info!("Using development version of anysnake");
+        }
+        config::TofuVCSorDev::VCS(url) => {
+            if matches.contains_id("no-version-switch") {
+                info!("--no-version-switch was passed, not switching versions");
+            } else {
+                let rev = match url {
+                    vcs::TofuVCS::Git { url: _, branch: _, rev } => rev,
+                    vcs::TofuVCS::GitHub { owner: _, repo: _, branch: _, rev } => rev,
+                };
+                if rev.as_str()
+                    != matches
+                        .get_one::<String>("_running_version")
+                        .cloned()
+                        .unwrap_or_else(|| "noversionspecified".to_string())
+                {
+                    info!(
+                        "restarting with version from {}",
+                        url.to_string()
+                    );
+                    let repo = url.to_string();
 
-        let mut args = vec![
-            "shell",
-            &repo,
-            "-c",
-            "anysnake2",
-            "--_running_version",
-            &parsed_config.anysnake2.rev,
-        ];
-        let input_args: Vec<String> = std::env::args().collect();
-        {
-            for argument in input_args.iter().skip(1) {
-                args.push(argument);
+                    let mut args = vec![
+                        "shell",
+                        &repo,
+                        "-c",
+                        "anysnake2",
+                        "--_running_version",
+                        rev,
+                    ];
+                    let input_args: Vec<String> = std::env::args().collect();
+                    {
+                        for argument in input_args.iter().skip(1) {
+                            args.push(argument);
+                        }
+                        trace!("new args {:?}", args);
+                        debug!("running nix {}", &args.join(" "));
+                        let status =
+                            run_without_ctrl_c(|| Ok(Command::new("nix").args(&args).status()?))?;
+                        //now push
+                        std::process::exit(status.code().unwrap());
+                    }
+                }
             }
-            trace!("new args {:?}", args);
-            debug!("running nix {}", &args.join(" "));
-            let status = run_without_ctrl_c(|| Ok(Command::new("nix").args(&args).status()?))?;
-            //now push
-            std::process::exit(status.code().unwrap());
         }
     }
     Ok(())
@@ -327,47 +333,26 @@ fn inner_main() -> Result<()> {
 
     let minimal_parsed_config: config::MinimalConfigToml =
         config::MinimalConfigToml::from_file(&config_file)?;
-    if cmd != "upgrade" {
-        //otherwise you could never upgrade < 1.10 versions
-        switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
-    }
+    let minimal_parsed_config: config::TofuMinimalConfigToml =
+        tofu::tofu_anysnake2_itself(minimal_parsed_config)?;
+
+    switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
 
     let mut parsed_config: config::ConfigToml = config::ConfigToml::from_file(&config_file)?;
     if cmd == "version" {
         //output the version you'd actually be using!
         print_version_and_exit();
     }
+    let tofued_config = apply_trust_on_first_use(parsed_config)?;
 
     if cmd == "attach" {
-        let outside_nixpkgs_url = format!(
-            "{}?rev={}",
-            &parsed_config.outside_nixpkgs.url,
-            lookup_github_tag(
-                &parsed_config.outside_nixpkgs.url,
-                &parsed_config.outside_nixpkgs.rev,
-                &flake_dir
-            )?,
-        );
-
+        let outside_nixpkgs_url = tofued_config.outside_nixpkgs.to_string();
         return attach_to_previous_container(&flake_dir, &outside_nixpkgs_url);
     }
 
-    let use_generated_file_instead = parsed_config.anysnake2.do_not_modify_flake.unwrap_or(false);
+    let use_generated_file_instead = tofued_config.anysnake2.do_not_modify_flake;
 
-    if cmd == "upgrade" {
-        return upgrade(
-            matches
-                .subcommand()
-                .unwrap()
-                .1
-                .get_many::<String>("what")
-                .map(|x| x.cloned().collect()),
-            &parsed_config,
-            use_generated_file_instead,
-        );
-    }
-
-    if !(parsed_config.cmd.contains_key(cmd) || cmd == "build" || cmd == "run" || cmd == "develop")
+    if !(tofued_config.cmd.contains_key(cmd) || cmd == "build" || cmd == "run" || cmd == "develop")
     {
         bail!(
             "Cmd {} not found.
@@ -375,28 +360,17 @@ fn inner_main() -> Result<()> {
             Available from anysnake2: build, run, example-config, version
             ",
             cmd,
-            parsed_config.cmd.keys()
+            tofued_config.cmd.keys()
         );
     }
 
-    lookup_missing_flake_revs(&mut parsed_config)?;
-
-    lookup_clones(&mut parsed_config)?;
-    perform_clones(&parsed_config)?;
-
-    let nixpkgs_url = format!(
-        "{}?rev={}",
-        &parsed_config.outside_nixpkgs.url,
-        lookup_github_tag(
-            &parsed_config.outside_nixpkgs.url,
-            &parsed_config.outside_nixpkgs.rev,
-            &flake_dir
-        )?,
-    );
-    apply_trust_on_first_use(&mut parsed_config, &nixpkgs_url)?;
+    let mut tofued_config = tofued_config;
+    lookup_clones(&mut tofued_config)?;
+    let tofued_config = tofued_config;
+    perform_clones(&tofued_config)?;
 
     let flake_changed =
-        flake_writer::write_flake(&flake_dir, &mut parsed_config, use_generated_file_instead)?;
+        flake_writer::write_flake(&flake_dir, &tofued_config, use_generated_file_instead)?;
 
     if let Some(("build", sc)) = matches.subcommand() {
         {
@@ -432,7 +406,7 @@ fn inner_main() -> Result<()> {
             &run_sh_str,
             format!(
                 "#/bin/bash\ncd ..&& echo 'starting nix develop shell'\n {}\n",
-                &parsed_config.dev_shell.shell
+                &tofued_config.dev_shell.shell
             ),
         )
         .context("Failed to write run.sh")?; // the -i makes it read /etc/bashrc
@@ -446,13 +420,13 @@ fn inner_main() -> Result<()> {
             rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
         }
 
-        if let Some(python) = &parsed_config.python {
+        if let Some(python) = &tofued_config.python {
             //todo
             //fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
         };
 
         if cmd == "develop" {
-            if let Some(python) = &parsed_config.python {
+            if let Some(python) = &tofued_config.python {
                 //todo
                 //write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
             }
@@ -467,7 +441,7 @@ fn inner_main() -> Result<()> {
             })?;
         } else {
             let home_dir = PathBuf::from(replace_env_vars(
-                parsed_config.container.home.as_deref().unwrap_or("$HOME"),
+                tofued_config.container.home.as_deref().unwrap_or("$HOME"),
             ));
             let home_dir_str: String = fs::canonicalize(&home_dir)
                 .context("home dir not found")?
@@ -500,7 +474,7 @@ fn inner_main() -> Result<()> {
                 fs::write(&run_sh, slop.join(" "))?;
                 fs::write(&post_run_sh, "")?;
             } else {
-                let cmd_info = parsed_config.cmd.get(cmd).context("Command not found")?;
+                let cmd_info = tofued_config.cmd.get(cmd).context("Command not found")?;
                 match &cmd_info.pre_run_outside {
                     Some(bash_script) => {
                         info!("Running pre_run_outside for cmd - cmd {}", cmd);
@@ -566,7 +540,7 @@ fn inner_main() -> Result<()> {
                 "/anysnake2/outer_run.sh".to_string(),
                 "ro".to_string(),
             ));
-            if let Some(python) = parsed_config.python {
+            if let Some(python) = &tofued_config.python {
                 let venv_dir: PathBuf = flake_dir.join("venv").join(&python.version);
                 error!("{:?}", venv_dir);
                 /* binds.push(( //TODO: Remove or keep, depending on what we do about the editable
@@ -597,7 +571,7 @@ fn inner_main() -> Result<()> {
                 paths.push("/anysnake2/venv/bin");
             };
 
-            match &parsed_config.container.volumes_ro {
+            match &tofued_config.container.volumes_ro {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
                         let from: PathBuf = fs::canonicalize(from)
@@ -608,7 +582,7 @@ fn inner_main() -> Result<()> {
                 }
                 None => {}
             };
-            match &parsed_config.container.volumes_rw {
+            match &tofued_config.container.volumes_rw {
                 Some(volumes_ro) => {
                     for (from, to) in volumes_ro {
                         let from: PathBuf = fs::canonicalize(from)
@@ -632,7 +606,7 @@ fn inner_main() -> Result<()> {
                 ));
             }
 
-            if let Some(container_envs) = &parsed_config.container.env {
+            if let Some(container_envs) = &tofued_config.container.env {
                 for (k, v) in container_envs.iter() {
                     envs.push(format!("{}={}", k, replace_env_vars(v)));
                 }
@@ -651,7 +625,7 @@ fn inner_main() -> Result<()> {
             for s in top_level_slop.iter().skip(1) {
                 singularity_args.push(s.to_string());
             }
-            let dtach_socket = match &parsed_config.anysnake2.dtach {
+            let dtach_socket = match &tofued_config.anysnake2.dtach {
                 true => {
                     if std::env::var("STY").is_err() && std::env::var("TMUX").is_err() {
                         Some(format!(
@@ -668,7 +642,7 @@ fn inner_main() -> Result<()> {
 
             let singularity_result = run_singularity(
                 &singularity_args[..],
-                &nixpkgs_url,
+                &tofued_config.outside_nixpkgs.to_nix_string(),
                 Some(&run_dir.join("singularity.bash")),
                 dtach_socket,
                 &flake_dir,
@@ -707,12 +681,12 @@ fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
 /// run a process inside a singularity container.
 fn run_singularity(
     args: &[String],
-    outside_nix_repo: &str,
+    outside_nix_repo_url: &str,
     log_file: Option<&PathBuf>,
     dtach_socket: Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{}#singularity", outside_nix_repo);
+    let singularity_url = format!("{}#singularity", outside_nix_repo_url);
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
@@ -804,7 +778,7 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
 }
 
 /// expand clones by clone_regular_expressions, verify url schema
-fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
+fn lookup_clones(parsed_config: &mut config::TofuConfigToml) -> Result<()> {
     let clone_regexps: Vec<(Regex, &String)> = match &parsed_config.clone_regexps {
         Some(replacements) => {
             let mut res = Vec::new();
@@ -851,7 +825,7 @@ fn lookup_clones(parsed_config: &mut config::ConfigToml) -> Result<()> {
     Ok(())
 }
 
-fn perform_clones(parsed_config: &config::ConfigToml) -> Result<()> {
+fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
     match &parsed_config.clones {
         Some(clones) => {
             for (target_dir, name_urls) in clones.iter() {
@@ -1340,7 +1314,7 @@ fn test_nix_build_output_parsing() {
         {"drvPath":"/nix/store/kg8wnjpwyrr7nkdl64iiakzdmz6hv6d5-nixfmt-0.6.0.drv","outputs":{"bin":"/nix/store/7mr87xfsrc2rn4pkmvrvj9a4lnrwkyks-nixfmt-0.6.0-bin"}},
         {"drvPath":"/nix/store/kg8wnjpwyrr7nkdl64iiakzdmz6hv6d5-nixfmt-0.6.0.drv","outputs":{"out":"/nix/store/7mr87xfsrc2rn4pkmvrvj9a4lnrwkyks-nixfmt-0.6.0-bin"}}
     ]"#;
-    let j: Vec<NixBuildOutput> = serde_json::from_str(json).unwrap();
+    let _: Vec<NixBuildOutput> = serde_json::from_str(json).unwrap();
 }
 
 fn prefetch_flake(url_without_hash: &str) -> Result<String> {
@@ -1350,7 +1324,9 @@ fn prefetch_flake(url_without_hash: &str) -> Result<String> {
             .args(["flake", "prefetch", url_without_hash, "--json"])
             .output()?;
         if !output.status.success() {
-            Err(anyhow!("nix build failed"))
+            error!("nix prefetch failed");
+            error!("stderr was: {}", String::from_utf8_lossy(&output.stderr));
+            Err(anyhow!("nix prefetch failed"))
         } else {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
@@ -1454,90 +1430,6 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
             println!("sorry I did not understand that. \n")
         }
     }
-}
-
-fn get_newest_anysnake2_tag(parsed_config: &config::ConfigToml) -> Result<String> {
-    debug!("querying github for newest anysnake2 version");
-    let repo = parsed_config
-        .anysnake2
-        .url
-        .as_ref()
-        .context("no anysnake2 url???")?
-        .strip_prefix("github:");
-    match repo {
-        Some(repo) => {
-            let gh_tags = flake_writer::get_github_tags(repo, 1)?;
-            if !gh_tags.is_empty() {
-                let newest = gh_tags.first().expect("No tags though vec was not empty!?");
-                let newest_tag = newest["name"]
-                    .as_str()
-                    .context("Could not find name for tag in github api output")?
-                    .to_string();
-                debug!("found newest tag: {}", newest_tag);
-                debug!("current tag: {}", parsed_config.anysnake2.rev);
-                return Ok(newest_tag);
-            } else {
-                return Err(anyhow!("Could not find any version in {}", &repo));
-            }
-        }
-        None => {
-            return Err(anyhow!(
-                "Can only upgrade anysnake2 if it's being sourced from github"
-            ))
-        }
-    }
-}
-
-fn upgrade(
-    what: Option<Vec<String>>,
-    parsed_config: &config::ConfigToml,
-    use_generated_file_instead: bool,
-) -> Result<()> {
-    match what {
-        None => {
-            error!("no upgrade specified");
-            error!("Available for upgrade");
-            error!("\tanysnake2");
-            return Ok(());
-        }
-        Some(what_) => {
-            for w in what_ {
-                if w == "anysnake2" {
-                    let newest_tag = get_newest_anysnake2_tag(parsed_config)?;
-
-                    if newest_tag != parsed_config.anysnake2.rev {
-                        if use_generated_file_instead {
-                            return Err(anyhow!(
-                                "do_not_modify_flake is set. Not upgrading anything"
-                            ));
-                        }
-                        if parsed_config.anysnake2.rev == "dev" {
-                            return Err(anyhow!(
-                                "Currently the 'dev' version is specified. Not overwriting that."
-                            ));
-                        }
-                        change_toml_file(
-                            parsed_config.anysnake2_toml_path.as_ref().unwrap(),
-                            |_| {
-                                Ok(vec![(
-                                    vec!["anysnake2".into(), "rev".into()],
-                                    toml_edit::Item::Value(newest_tag.into()),
-                                )])
-                            },
-                        )?;
-                    } else {
-                        warn!("not upgrading anysnake2 entry - already at newest version",);
-                    }
-                } else {
-                    return Err(anyhow!(
-                        "Could not handle upgrade for {}, don't know what to do",
-                        w
-                    ));
-                }
-            }
-        }
-    };
-    Ok(())
 }
 
 fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {

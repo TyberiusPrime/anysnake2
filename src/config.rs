@@ -1,11 +1,12 @@
 #![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
+use crate::vcs::{ParsedVCS, TofuVCS};
 use anyhow::{bail, Context, Result};
 use itertools::{all, Itertools};
-use log::info;
+use log::{debug, info};
 use serde::de::Deserializer;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub trait GetRecursive {
     fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value>;
@@ -49,16 +50,17 @@ impl GetRecursive for Option<&toml::Value> {
     }
 }
 
-trait WithDefaultFlakeSource {
-    fn default_rev() -> String;
-    fn default_url() -> String;
-}
-
 //just enough to read the requested version
 #[derive(Deserialize, Debug)]
 pub struct MinimalConfigToml {
     pub anysnake2_toml_path: Option<PathBuf>,
-    pub anysnake2: Anysnake2,
+    pub anysnake2: Option<Anysnake2>,
+}
+
+#[derive(Debug)]
+pub struct TofuMinimalConfigToml {
+    pub anysnake2_toml_path: Option<PathBuf>,
+    pub anysnake2: TofuAnysnake2,
 }
 
 #[derive(Deserialize, Debug)]
@@ -66,18 +68,17 @@ pub struct ConfigToml {
     #[serde(skip)]
     pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: Anysnake2,
-    pub nixpkgs: NixPkgs,
-    pub outside_nixpkgs: NixPkgs,
-    pub ancient_poetry: Option<URLAndRev>,
-    pub poetry2nix: Option<URLAndRev>,
+    pub nixpkgs: Option<NixPkgs>,
+    pub outside_nixpkgs: Option<ParsedVCS>,
+    pub ancient_poetry: Option<ParsedVCS>,
+    pub poetry2nix: Option<ParsedVCS>,
     #[serde(default, rename = "flake-util")]
-    pub flake_util: FlakeUtil,
+    pub flake_util: Option<ParsedVCS>,
     pub clone_regexps: Option<HashMap<String, String>>,
     pub clones: Option<HashMap<String, HashMap<String, String>>>,
     #[serde(default)]
     pub cmd: HashMap<String, Cmd>,
-    #[serde(default)]
-    pub rust: Rust,
+    pub rust: Option<Rust>,
     pub python: Option<Python>,
     #[serde(default)]
     pub container: Container,
@@ -88,18 +89,31 @@ pub struct ConfigToml {
     pub r: Option<R>,
 }
 
+#[derive(Debug)]
+pub struct TofuConfigToml {
+    pub anysnake2_toml_path: Option<PathBuf>,
+    pub anysnake2: TofuAnysnake2,
+    pub nixpkgs: TofuNixpkgs,
+    pub outside_nixpkgs: TofuVCS,
+    pub ancient_poetry: TofuVCS,
+    pub poetry2nix: TofuVCS,
+    pub flake_util: TofuVCS,
+    pub clone_regexps: Option<HashMap<String, String>>,
+    pub clones: Option<HashMap<String, HashMap<String, String>>>,
+    pub cmd: HashMap<String, Cmd>,
+    pub rust: Option<TofuRust>,
+    pub python: Option<Python>,
+    pub container: Container,
+    pub flakes: HashMap<String, TofuFlake>,
+    pub dev_shell: DevShell,
+    pub r: Option<TofuR>,
+}
+
 //todo: refactor
 
 impl ConfigToml {
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
         let mut res: ConfigToml = toml::from_str(raw_config)?;
-        res.anysnake2.url = match res.anysnake2.url {
-            Some(url) => Some(url),
-            None => match res.anysnake2.use_binary {
-                true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
-                false => Some("github:TyberiusPrime/anysnake2".to_string()),
-            },
-        };
         Ok(res)
     }
     pub fn from_file(config_file: &str) -> Result<ConfigToml> {
@@ -119,13 +133,6 @@ impl ConfigToml {
 impl MinimalConfigToml {
     pub fn from_str(raw_config: &str) -> Result<MinimalConfigToml> {
         let mut res: MinimalConfigToml = toml::from_str(raw_config)?;
-        res.anysnake2.url = match res.anysnake2.url {
-            Some(url) => Some(url),
-            None => match res.anysnake2.use_binary {
-                true => Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
-                false => Some("github:TyberiusPrime/anysnake2".to_string()),
-            },
-        };
         Ok(res)
     }
 
@@ -144,22 +151,82 @@ impl MinimalConfigToml {
     }
 }
 
+impl<'de> Deserialize<'de> for ParsedVCS {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Use `serde::from_str` to attempt conversion from string slice to `MyType`
+        //let s = String::deserialize(deserializer)?;
+        let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
+        let url = map.get("url");
+        match url {
+            Some(s) => ParsedVCS::try_from(s.as_str()).map_err(serde::de::Error::custom),
+            None => Err(serde::de::Error::custom("Expected url in field")),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ParsedVCSorDev {
+    VCS(ParsedVCS),
+    Dev,
+}
+
+impl<'de> Deserialize<'de> for ParsedVCSorDev {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Use `serde::from_str` to attempt conversion from string slice to `MyType`
+        let s = String::deserialize(deserializer)?;
+        Ok(if s == "dev" {
+            ParsedVCSorDev::Dev
+        } else {
+            ParsedVCSorDev::VCS(ParsedVCS::try_from(s.as_str()).map_err(serde::de::Error::custom)?)
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum TofuVCSorDev {
+    VCS(TofuVCS),
+    Dev,
+}
+
+impl TryFrom<ParsedVCSorDev> for TofuVCSorDev {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ParsedVCSorDev) -> std::prelude::v1::Result<Self, Self::Error> {
+        match value {
+            ParsedVCSorDev::VCS(v) => Ok(TofuVCSorDev::VCS(TofuVCS::try_from(v)?)),
+            ParsedVCSorDev::Dev => Ok(TofuVCSorDev::Dev),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Anysnake2 {
-    pub rev: String,
+    pub url: Option<ParsedVCSorDev>,
     #[serde(default = "Anysnake2::default_use_binary")]
     pub use_binary: bool,
-    pub url: Option<String>,
     pub do_not_modify_flake: Option<bool>,
     #[serde(default = "Anysnake2::default_dtach")]
     pub dtach: bool,
 }
+#[derive(Debug)]
+pub struct TofuAnysnake2 {
+    pub url: TofuVCSorDev,
+    pub use_binary: bool,
+    pub do_not_modify_flake: bool,
+    pub dtach: bool,
+}
 
 impl Anysnake2 {
-    fn default_use_binary() -> bool {
+    pub fn default_use_binary() -> bool {
         true
     }
-    fn default_dtach() -> bool {
+    pub fn default_dtach() -> bool {
         true
     }
 }
@@ -188,54 +255,32 @@ impl Default for DevShell {
 
 #[derive(Deserialize, Debug)]
 pub struct NixPkgs {
-    pub rev: String,
-    #[serde(default = "NixPkgs::default_url")]
-    pub url: String,
+    //tell serde to read it from url/rev instead
+    #[serde(flatten)]
+    pub url: Option<ParsedVCS>,
     pub packages: Option<Vec<String>>,
     #[serde(default = "NixPkgs::default_allow_unfree")]
     pub allow_unfree: bool,
 }
 
 impl NixPkgs {
-    fn default_url() -> String {
-        "github:NixOS/nixpkgs".to_string()
+    pub fn new() -> Self {
+        NixPkgs {
+            url: None,
+            packages: None,
+            allow_unfree: Self::default_allow_unfree(),
+        }
     }
-    fn default_allow_unfree() -> bool {
+    pub fn default_allow_unfree() -> bool {
         false
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct URLAndRev {
-    pub rev: Option<String>,
-    pub url: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct FlakeUtil {
-    #[serde(default = "FlakeUtil::default_rev")]
-    pub rev: String,
-    #[serde(default = "FlakeUtil::default_url")]
-    pub url: String,
-}
-
-impl WithDefaultFlakeSource for FlakeUtil {
-    fn default_rev() -> String {
-        "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19".to_string()
-    }
-
-    fn default_url() -> String {
-        "github:numtide/flake-utils".to_string()
-    }
-}
-
-impl Default for FlakeUtil {
-    fn default() -> Self {
-        FlakeUtil {
-            rev: Self::default_rev(),
-            url: Self::default_url(),
-        }
-    }
+#[derive(Debug)]
+pub struct TofuNixpkgs {
+    pub url: TofuVCS,
+    pub packages: Vec<String>,
+    pub allow_unfree: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -250,29 +295,13 @@ pub struct Cmd {
 #[derive(Deserialize, Debug)]
 pub struct Rust {
     pub version: Option<String>,
-    #[serde(default = "Rust::default_rev")]
-    pub rust_overlay_rev: String,
-    #[serde(default = "Rust::default_url")]
-    pub rust_overlay_url: String,
+    pub url: Option<ParsedVCS>,
 }
 
-impl Default for Rust {
-    fn default() -> Self {
-        Rust {
-            version: None,
-            rust_overlay_rev: Self::default_rev(),
-            rust_overlay_url: Self::default_url(),
-        }
-    }
-}
-
-impl WithDefaultFlakeSource for Rust {
-    fn default_rev() -> String {
-        "7f52ac9ae95bd60c0780d6e32baea22e542e11e1".to_string()
-    }
-    fn default_url() -> String {
-        "github:oxalica/rust-overlay".to_string()
-    }
+#[derive(Debug)]
+pub struct TofuRust {
+    pub version: Option<String>,
+    pub url: TofuVCS,
 }
 
 #[derive(Deserialize, Debug)]
@@ -330,9 +359,6 @@ pub enum PythonPackageDefinition {
     Complex(toml::map::Map<String, toml::Value>),
 }
 
-//todo: trust on first use, or at least complain if never seen before rev and
-//mismatch on sha:
-//nix-prefetch-url https://github.com/TyberiusPrime/dppd/archive/b55ac32ef322a8edfc7fa1b6e4553f66da26a156.tar.gz --type sha256 --unpack
 fn de_python_package_definition<'de, D>(
     deserializer: D,
 ) -> Result<HashMap<String, PythonPackageDefinition>, D::Error>
@@ -524,10 +550,16 @@ impl Python {
 
 #[derive(Deserialize, Debug)]
 pub struct Flake {
-    pub url: String,
-    pub rev: Option<String>,
+    pub url: ParsedVCS,
     pub follows: Option<Vec<String>>,
     pub packages: Option<Vec<String>>,
+}
+
+#[derive(Debug)]
+pub struct TofuFlake {
+    pub url: TofuVCS,
+    pub follows: Option<Vec<String>>,
+    pub packages: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -542,21 +574,22 @@ pub struct Container {
 pub struct R {
     pub date: String,
     pub packages: Vec<String>,
-    #[serde(default = "R::default_url")]
-    pub nixr_url: String,
-    pub nixr_tag: Option<String>,
-
-    pub ecosystem_tag: Option<String>,
+    pub url: Option<ParsedVCS>,
 
     pub override_attrs: Option<HashMap<String, String>>,
     pub dependency_overrides: Option<HashMap<String, String>>,
     pub additional_packages: Option<HashMap<String, String>>,
 }
 
-impl R {
-    fn default_url() -> String {
-        "github:TyberiusPrime/nixR".to_string()
-    }
+#[derive(Debug)]
+pub struct TofuR {
+    pub date: String,
+    pub packages: Vec<String>,
+    pub url: TofuVCS,
+
+    pub override_attrs: Option<HashMap<String, String>>,
+    pub dependency_overrides: Option<HashMap<String, String>>,
+    pub additional_packages: Option<HashMap<String, String>>,
 }
 
 fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
@@ -569,6 +602,23 @@ fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
 }
 
 impl ConfigToml {
+    pub fn get_root_path_str(&self) -> Result<String> {
+        let abs_config_path = self
+            .anysnake2_toml_path
+            .as_ref()
+            .context("Config path not set???")?;
+        let root = abs_config_path
+            .parent()
+            .context("config file had no parent path")?;
+        Ok(root
+            .to_owned()
+            .into_os_string()
+            .to_string_lossy()
+            .to_string())
+    }
+}
+
+impl TofuConfigToml {
     pub fn get_root_path_str(&self) -> Result<String> {
         let abs_config_path = self
             .anysnake2_toml_path

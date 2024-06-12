@@ -1,12 +1,17 @@
-# the absolute minimal anysnake2.toml example
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
+url = "github:TyberiusPrime/anysnake2_release_flakes/main/1.15.4"
 
 [outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
+url = "github:NixOS/nixpkgs/master/24.05"
 
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 [nixpkgs]
-rev = "21.05" # the nixpgks version or github hash
+url = "github:NixOS/nixpkgs/master/24.05"
 
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/a5be1bbbe0af0266147a88e0ec43b18c722f2bb9"

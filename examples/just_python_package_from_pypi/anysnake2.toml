@@ -10,14 +10,8 @@
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "23.11" # needs a poetry >= 23.11's version
-
-[ancient_poetry]
-url = "https://codeberg.org/TyberiusPrime/ancient-poetry.git"
-rev = "a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 [nixpkgs]
-rev = "23.11" # the nixpgks version or github hash
 packages = ["which"]
 
 
@@ -40,6 +34,4 @@ run = """python
 run="bash"
 
 [poetry2nix]
-url = "github:TyberiusPrime/poetry2nix?ref=tar_hash"
-rev = "51f5d09e95277eaa99e957cef46946e747cb4a3e"
 
