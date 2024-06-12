@@ -96,8 +96,6 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::ConfigToml,
-    python_packages: &[(String, PythonPackageDefinition)],
-    python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
 ) -> Result<bool> {
     let template = std::include_str!("nix/flake_template.nix");
@@ -183,8 +181,6 @@ pub fn write_flake(
         &mut git_tracked_files,
         &filenames.pyproject_toml,
         &filenames.poetry_lock,
-        &python_packages,
-        &python_build_packages,
     )?;
 
     /* flake_contents = match &parsed_config.flakes {
@@ -361,17 +357,14 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 }
 
 fn extract_non_editable_python_packages(
-    input: &[(String, PythonPackageDefinition)],
-    build_packages: &HashMap<String, BuildPythonPackageInfo>,
+    input: &HashMap<String, PythonPackageDefinition>,
     flakes_config: &Option<HashMap<String, config::Flake>>,
 ) -> Result<toml::Table> {
     let mut res = toml::Table::new();
     for (name, spec) in input.iter() {
         match spec {
             PythonPackageDefinition::Simple(version_constraint) => {
-                if build_packages.contains_key(name) {
-                    continue; // added below
-                } else if version_constraint.contains("==")
+                if version_constraint.contains("==")
                     || version_constraint.contains('>')
                     || version_constraint.contains('<')
                     || version_constraint.contains('!')
@@ -396,6 +389,7 @@ fn extract_non_editable_python_packages(
                 }
             }
             PythonPackageDefinition::Complex(map) => {
+                debug!("complex python package: {}: {:?}", name, map);
                 let out_map: toml::Table = map
                     .iter()
                     .filter_map(|(k, v)| -> Option<(String, toml::Value)> {
@@ -406,12 +400,13 @@ fn extract_non_editable_python_packages(
                         }
                     })
                     .collect();
+                debug!("complex python package out: {}: {:?}", name, out_map);
                 res.insert(name.to_string(), out_map.into());
             }
             PythonPackageDefinition::Editable(_) => {}
         }
     }
-    for (name, spec) in build_packages.iter() {
+    /* for (name, spec) in build_packages.iter() {
         let rev_override = match spec.get("method") {
             Some(method) => {
                 if method == "useFlake" {
@@ -429,7 +424,7 @@ fn extract_non_editable_python_packages(
             name.to_string(),
             python_version_from_spec(spec, rev_override.as_deref()),
         )); */
-    }
+    } */
     Ok(res)
 }
 
@@ -831,7 +826,7 @@ build-backend = "poetry.core.masonry.api"
         || poetry_lock_path.metadata()?.len() == 0
     {
         //todo make configurable
-        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?rev=c89a63a80ff7ea70d61562698dd616c3ed13440a"); //TODO
+        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?rev=c7b315e22c6c1396cee938fa1162553222aa9098"); //TODO
         let str_date = date.format("%Y-%m-%d").to_string();
 
         let full_args = vec![
@@ -854,6 +849,8 @@ build-backend = "poetry.core.masonry.api"
             str_date,
             "-p".into(),
             pyproject_toml_path.to_string_lossy().to_string(),
+            "-o".into(),
+            poetry_lock_path.to_string_lossy().to_string(),
         ];
         debug!("running ancient-poetry: {:?}", &full_args);
         let child = Command::new("nix")
@@ -868,7 +865,7 @@ build-backend = "poetry.core.masonry.api"
             let stdout = std::str::from_utf8(&out.stdout)
                 .context("ancient-poetry lock output wan't utf8")?;
             //write it to poetry.lock
-            ex::fs::write(poetry_lock_path, stdout)?;
+            //ex::fs::write(poetry_lock_path, stdout)?;
             ex::fs::write(
                 pyproject_toml_path.with_extension("sha256"),
                 pyproject_toml_hash,
@@ -1148,8 +1145,8 @@ fn add_r(
     Ok(())
 }
 
-fn format_poetry_override_entries(
-    python_packages: &[(String, PythonPackageDefinition)],
+fn format_poetry_build_input_overrides(
+    python_packages: &HashMap<String, PythonPackageDefinition>,
 ) -> Result<Vec<String>> {
     let mut poetry_overide_entries = Vec::new();
     for (name, spec) in python_packages.iter() {
@@ -1188,8 +1185,6 @@ fn add_python(
     git_tracked_files: &mut Vec<String>,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
-    python_packages: &[(String, PythonPackageDefinition)],
-    python_build_packages: &HashMap<String, BuildPythonPackageInfo>, // those end up as buildPythonPackages
 ) -> Result<()> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     match &parsed_config.python {
@@ -1201,11 +1196,9 @@ fn add_python(
             let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
-            let mut out_python_packages = extract_non_editable_python_packages(
-                python_packages,
-                python_build_packages,
-                &parsed_config.flakes,
-            )?;
+            let python_packages = &python.packages;
+            let mut out_python_packages =
+                extract_non_editable_python_packages(python_packages, &parsed_config.flakes)?;
             if parsed_config.r.is_some() {
                 out_python_packages.insert("rpy2".to_string(), toml::Value::String("".to_string()));
             }
@@ -1221,26 +1214,10 @@ fn add_python(
                 python.parsed_ecosystem_date()?,
             )?;
 
-            let out_python_build_packages = format_python_build_packages(
-                &python_build_packages,
-                &parsed_config.flakes,
-                flakes_used_for_python_packages,
-            )?;
-            info!("{}", out_python_build_packages);
 
-            if let Some(_org) = &python.additional_mkpython_arguments {
-                bail!("python.additional_mkpython_arguments requirements is not supported anymore (merge issues with '_'). \nUse addition_mk_python_arguments_func like this '''
-    old: old // {{\"_\"  = old.\"_\" // {{
-        pandas.postInstall = ''
-            touch $out/lib/python* /site-packages/pandas_mkpython_worked
 
-        '';
-        }};
-        }}
-    '''");
-            }
-
-            let poetry_overide_entries = format_poetry_override_entries(&python_packages)?;
+            let poetry_build_input_overrides =
+                format_poetry_build_input_overrides(&python_packages)?;
 
             inputs.push(InputFlake::new(
                 "poetry2nix",
@@ -1271,8 +1248,8 @@ fn add_python(
             definitions.insert(
                 "poetry_overrides".to_string(),
                 format!(
-                    "defaultPoetryOverrides.extend(final: prev: {{{}}})",
-                    poetry_overide_entries.join("\n")
+                    "(defaultPoetryOverrides.extend (final: prev: {{{}}}))",
+                    poetry_build_input_overrides.join("\n"),
                 ),
             );
             definitions.insert(

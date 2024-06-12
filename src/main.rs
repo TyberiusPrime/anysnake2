@@ -283,61 +283,6 @@ struct CollectedPythonPackages {
     build_packages: HashMap<String, BuildPythonPackageInfo>,
 }
 
-/// take our python.packages section
-/// and extract straight requirements, nixified requirements
-/// and editable packages
-/// The straight requirements are augmented with those from the editable packages
-fn collect_python_packages(
-    parsed_config: &mut config::ConfigToml,
-) -> Result<CollectedPythonPackages> {
-    Ok(match &mut parsed_config.python {
-        Some(python) => {
-            let mut requirement_packages: Vec<(String, PythonPackageDefinition)> = Vec::new();
-            let mut build_packages: HashMap<String, BuildPythonPackageInfo> = HashMap::new();
-            //TODO: fix this up when you get to the more complex
-            //python-package-in-nix-extraPackages defitions?
-            for (name, pp) in python.packages.drain() {
-                requirement_packages.push((name, pp));
-            }
-            debug!("found python packages {:?}", &requirement_packages);
-            if !requirement_packages.is_empty() {
-                //don't need pip if we ain't got no packages (and therefore no editable packages
-                requirement_packages
-                    .push(("pip".into(), PythonPackageDefinition::Simple("".into()))); // we use pip to build editable packages
-                requirement_packages.push((
-                    "setuptools".into(),
-                    PythonPackageDefinition::Simple("".into()),
-                )); // we use pip to build editable packages
-
-                let editable_paths: Vec<String> = requirement_packages
-                    .iter()
-                    .filter_map(|(pkg, spec)| match spec {
-                        PythonPackageDefinition::Editable(spec) => spec
-                            .strip_prefix("editable/")
-                            .map(|editable_path| editable_path.to_string() + "/" + pkg),
-                        _ => None,
-                    })
-                    .collect();
-                debug!("found editable_paths: {:?}", &editable_paths);
-
-                let python_requirements_from_editable =
-                    python_parsing::find_python_requirements_for_editable(&editable_paths)?;
-                for (pkg, version_spec) in python_requirements_from_editable.into_iter() {
-                    requirement_packages.push((pkg, PythonPackageDefinition::Simple(version_spec)));
-                }
-            }
-            CollectedPythonPackages {
-                requirement_packages,
-                build_packages,
-            }
-        }
-        None => CollectedPythonPackages {
-            requirement_packages: Vec::new(),
-            build_packages: HashMap::new(),
-        },
-    })
-}
-
 #[allow(clippy::vec_init_then_push)]
 fn inner_main() -> Result<()> {
     install_ctrl_c_handler()?;
@@ -439,14 +384,6 @@ fn inner_main() -> Result<()> {
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
-    let temp = collect_python_packages(&mut parsed_config)?;
-    let (python_packages, mut python_build_packages) =
-        (temp.requirement_packages, temp.build_packages);
-    trace!(
-        "python packages: {:?} {:?}",
-        python_packages,
-        python_build_packages
-    );
 
     let nixpkgs_url = format!(
         "{}?rev={}",
@@ -457,13 +394,11 @@ fn inner_main() -> Result<()> {
             &flake_dir
         )?,
     );
-    apply_trust_on_first_use(&mut parsed_config, &mut python_build_packages, &nixpkgs_url)?;
+    apply_trust_on_first_use(&mut parsed_config, &nixpkgs_url)?;
 
     let flake_changed = flake_writer::write_flake(
         &flake_dir,
         &mut parsed_config,
-        &python_packages,
-        &python_build_packages,
         use_generated_file_instead,
     )?;
 
@@ -516,12 +451,14 @@ fn inner_main() -> Result<()> {
         }
 
         if let Some(python) = &parsed_config.python {
-            fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
+            //todo
+            //fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
         };
 
         if cmd == "develop" {
             if let Some(python) = &parsed_config.python {
-                write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
+                //todo
+                //write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
             }
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
@@ -643,7 +580,7 @@ fn inner_main() -> Result<()> {
                     "ro".to_string(),
                 )); */
                 let mut python_paths = Vec::new();
-                for (pkg, spec) in python_packages.iter().filter_map(|(pkg, spec)| match spec {
+                for (pkg, spec) in python.packages.iter().filter_map(|(pkg, spec)| match spec {
                     PythonPackageDefinition::Editable(spec) => Some((pkg, spec)),
                     _ => None,
                 }) {
