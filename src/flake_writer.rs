@@ -835,13 +835,10 @@ build-backend = "poetry.core.masonry.api"
                 "{}?ref={}#poetry",
                 parsed_config.outside_nixpkgs.url, parsed_config.outside_nixpkgs.rev
             ),
-            /* "-c".into(),
-            "nix".into(),
-            "shell".into(),
-            format!("{}?ref={}#{}", parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev, python_major_minor ), */
-            "-c".into(),
-            "nix".into(),
-            "shell".into(),
+            format!(
+                "{}?ref={}#{}",
+                parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev, python_major_minor
+            ),
             full_url,
             "-c".into(),
             "ancient-poetry".into(),
@@ -1155,6 +1152,7 @@ fn format_poetry_build_input_overrides(
         match spec {
             PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
             PythonPackageDefinition::Complex(spec) => {
+                debug!("complex python package: {}: {:?}", name, spec);
                 if let Some(build_inputs) = spec.get_recursive(&["poetry2nix", "buildInputs"]) {
                     let str_build_inputs = build_inputs
                         .as_array().with_context(||format!("Build input was not a list of strings package definition for {}", name))?
@@ -1221,15 +1219,34 @@ fn add_python(
 
             inputs.push(InputFlake::new(
                 "poetry2nix",
-                &parsed_config.poetry2nix.url,
-                &parsed_config.poetry2nix.rev,
+                parsed_config
+                    .poetry2nix
+                    .as_ref()
+                    .unwrap()
+                    .url
+                    .as_ref()
+                    .unwrap(),
+                parsed_config
+                    .poetry2nix
+                    .as_ref()
+                    .unwrap()
+                    .rev
+                    .as_ref()
+                    .unwrap(),
                 &[],
                 &flake_dir,
             )?);
 
             definitions.insert(
                 "_poetry2nix".to_string(),
-                "poetry2nix.lib.mkPoetry2Nix {inherit pkgs;}".to_string(),
+                "if (builtins.hasAttr \"lib\" poetry2nix)
+        then
+          (
+            poetry2nix.lib.mkPoetry2Nix {inherit pkgs;}
+          )
+        else poetry2nix.legacyPackages.${system}"
+                    .to_string(), // that's support for older poetry2nix, but I don't think they
+                                  // actually work. 
             );
             definitions.insert(
                 "mkPoetryEnv".to_string(),

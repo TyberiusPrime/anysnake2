@@ -50,7 +50,6 @@ pub type TomlUpdates = Vec<(Vec<String>, toml_edit::Item)>;
 ///
 fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
     for (k, v) in document.iter_mut() {
-        info!("setting position for {:?}", k.get());
         match v {
             toml_edit::Item::Table(t) => {
                 let position = order
@@ -87,8 +86,6 @@ pub fn change_toml_file(
     let updates = mod_func(&doc)?;
     if !updates.is_empty() {
         for (path, value) in updates {
-            dbg!(&path);
-            dbg!(&value);
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
                 for p in path[1..path.len() - 1].iter() {
@@ -123,7 +120,6 @@ pub fn change_toml_file(
         let out_toml = doc.to_string();
         std::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
         info!("Wrote updated {:?}", toml_path);
-        panic!();
     }
 
     Ok(())
