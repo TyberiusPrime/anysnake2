@@ -826,14 +826,14 @@ build-backend = "poetry.core.masonry.api"
         || poetry_lock_path.metadata()?.len() == 0
     {
         //todo make configurable
-        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?rev=c7b315e22c6c1396cee938fa1162553222aa9098"); //TODO
+        let full_url = format!("git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"); //TODO
         let str_date = date.format("%Y-%m-%d").to_string();
 
         let full_args = vec![
             "shell".into(),
             format!(
                 "{}?ref={}#poetry",
-                parsed_config.nixpkgs.url, parsed_config.nixpkgs.rev
+                parsed_config.outside_nixpkgs.url, parsed_config.outside_nixpkgs.rev
             ),
             /* "-c".into(),
             "nix".into(),
@@ -873,8 +873,10 @@ build-backend = "poetry.core.masonry.api"
             Ok(())
         } else {
             Err(anyhow!(
-                "ancient-poetry error returncode: {}\n",
+                "ancient-poetry error returncode: {}\nstdout: {}",
                 out.status.code().unwrap(),
+                std::str::from_utf8(&out.stdout)
+                    .context("ancient-poetry lock output wan't utf8")?
             ))
         }
     } else {
@@ -1213,8 +1215,6 @@ fn add_python(
                 &python_major_minor,
                 python.parsed_ecosystem_date()?,
             )?;
-
-
 
             let poetry_build_input_overrides =
                 format_poetry_build_input_overrides(&python_packages)?;

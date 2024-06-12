@@ -354,7 +354,7 @@ where
                         match value {
                             toml::Value::String(_)| toml::Value::Array(_) | toml::Value::Table(_) => {
                                 if key == "method" {
-                                    errors.push("Method has been superseeded by fetchgit=git, fetchFromGitHub = github=. fetchhg=no longer supported (sorry). See the examples".to_string());
+                                    errors.push("Method has been superseeded by fetchgit=git=<url>, rev=<rev>, fetchFromGitHub: git=<https://github.com...}=. fetchhg: no longer supported (sorry). See the examples".to_string());
                                     continue;
                                 }
                                 if key == "url" {
