@@ -10,7 +10,7 @@
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "22.05" # the nixpgks version or github hash
+rev = "23.05" # needs a newish poetry
 
 [nixpkgs]
 rev = "22.05" # the nixpgks version or github hash
@@ -21,48 +21,17 @@ packages = ["which"]
 version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
 
-[mach-nix]
-#rev="4b9e5e087a154c9903c533848907ea077007d6ee"
 
 [python.packages]
 # just tell it to use 'useFlake' and define the flake below
-dppd={method="fetchPypi"} # version is auto detected
+dppd={pypi="0.26", "pypi_url_0.26" = "https://files.pythonhosted.org/packages/02/58/a56e8d1a3c246ec37120522b0093f0a4ff4d19998aa58996338bb3785235/dppd-0.26.tar.gz" } # version is auto detected
+scanpy={pypi="1.9.3", "pypi_url_1.9.3" = "https://files.pythonhosted.org/packages/47/d5/7e580b69ac0279688c4739a508c8fa734998bfce984efba2d0755e4f0068/scanpy-1.9.3.tar.gz" } # version is auto detected
 
-[python.packages.scanpy] 
-method = "fetchPypi"
-version="1.9.3"
-#pname = "scanpy"
-buildPythonPackage_arguments="""
-{
-format="pyproject";
-requirements=''
-anndata>=0.7.4
-numpy>=1.17.0
-matplotlib>=3.4
-pandas>=1.0
-scipy>=1.4
-seaborn
-h5py>=3
-tqdm
-scikit-learn>=0.24
-statsmodels>=0.10.0rc2
-patsy
-networkx>=2.3
-natsort
-joblib
-numba>=0.41.0
-umap-learn>=0.3.10
-packaging
-session-info
-setuptools_scm # don't forget this one.
-flit
-'';
-}
-"""
-"hash_1.9.3" = "sha256-3+Zfms2fTBdAB5oJn4n6akS28O917K+FJHrUr4WRRNc="
+
+[cmd.xxx]
+run="bash"
 
 [cmd.python]
 run = """python
 """
-
 

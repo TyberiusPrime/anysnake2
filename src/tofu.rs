@@ -1,12 +1,12 @@
 use anyhow::{anyhow, bail, Context, Result};
 use regex::Regex;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, process::Command};
-use toml_edit::{value, Table};
+use toml_edit::{value, Item, Table};
 
 use log::{debug, info, warn};
 
 use crate::{
-    config::{self, BuildPythonPackageInfo, PythonPackageDefinition},
+    config::{self, AncientPoetry, BuildPythonPackageInfo, PythonPackageDefinition},
     flake_writer::{self, get_proxy_req},
     python_parsing, run_without_ctrl_c,
     util::{change_toml_file, TomlUpdates},
@@ -27,7 +27,9 @@ pub fn apply_trust_on_first_use(
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     change_toml_file(&config_file, |_doc| {
         let mut updates: TomlUpdates = Vec::new();
-        if let Some(python) = config.python.as_mut() {
+        if let (Some(python), ancient_poetry) = (config.python.as_mut(), &mut config.ancient_poetry)
+        {
+            apply_trust_on_first_use_ancient_poetry(ancient_poetry, &mut updates)?;
             apply_trust_on_first_use_python(
                 &mut python.packages,
                 outside_nixpkgs_url,
@@ -53,7 +55,7 @@ fn apply_trust_on_first_use_r(
                 info!("\tDiscovered nixR revision {}", &rev);
                 updates.push((
                     vec!["R".to_string(), "nixr_tag".to_string()],
-                    rev.clone().into(),
+                    toml_edit::Item::Value(rev.clone().into()),
                 ));
                 r.nixr_tag = Some(rev);
             }
@@ -62,200 +64,246 @@ fn apply_trust_on_first_use_r(
     Ok(())
 }
 
+fn apply_trust_on_first_use_ancient_poetry(
+    ancient_poetry: &mut Option<AncientPoetry>,
+    updates: &mut TomlUpdates,
+) -> Result<()> {
+    let mut changed = false;
+    if ancient_poetry.is_none() {
+        ancient_poetry.replace(AncientPoetry {
+            url: None,
+            rev: None,
+        });
+    }
+    let url = ancient_poetry
+        .as_ref()
+        .and_then(|x| x.url.as_ref())
+        .map(|x| x.as_str());
+    let url = match url {
+        None => {
+            let new_url = "https://codeberg.org/TyberiusPrime/ancient-poetry.git";
+            ancient_poetry.as_mut().unwrap().url = Some(new_url.to_string());
+            changed = true;
+            new_url.to_string()
+        }
+        Some(url) => url.to_string(),
+    };
+    let rev = ancient_poetry.as_ref().and_then(|x| x.rev.as_ref());
+    let rev = if let None = rev {
+        info!("Using discover-newest on first use for ancient-poetry");
+        let rev = discover_newest_rev_git(&url, Some("main"))?;
+        info!("\tDiscovered ancient-poetry revision {}", &rev);
+        ancient_poetry.as_mut().unwrap().rev = Some(rev.clone());
+        changed = true;
+        rev
+    } else {
+        rev.unwrap().to_string()
+    };
+    if changed {
+        let mut table = toml_edit::table();
+        table["url"] = value(url);
+        table["rev"] = value(rev);
+        updates.push((["ancient_poetry".to_string()].into(), table));
+    }
+
+    Ok(())
+}
+
 fn apply_trust_on_first_use_python(
     python_packages: &mut HashMap<String, PythonPackageDefinition>,
     outside_nixpkgs_url: &str,
     updates: &mut TomlUpdates,
 ) -> Result<()> {
-    if !python_packages.is_empty() {
-        for (key, spec) in python_packages.iter_mut() {
-            match spec {
-                PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
-                PythonPackageDefinition::Complex(spec) => {
-                    handle_python_git(key, spec, updates).with_context(|| format!("failed on package {key}"))?;
-                    handle_python_pypi(key, spec, updates).with_context(|| format!("failed on package {key}"))?;
+    for (key, spec) in python_packages.iter_mut() {
+        match spec {
+            PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
+            PythonPackageDefinition::Complex(spec) => {
+                handle_python_git(key, spec, updates)
+                    .with_context(|| format!("failed on package {key}"))?;
+                handle_python_pypi(key, spec, updates)
+                    .with_context(|| format!("failed on package {key}"))?;
 
-                    /* let method = spec
-                        .get("method")
-                        .expect("missing method - should have been caught earlier");
-                    let mut hash_key = "".to_string();
-                    match &method[..] {
-                        "fetchFromGitHub" => {
-                            let rev = {
-                                match spec.get("rev") {
-                                    Some(x) => x.to_string(),
-                                    None => {
-                                        info!(
-                                            "Using discover-newest on first use for python package {}",
-                                            key
-                                        );
-                                        let owner = spec.get("owner").expect("missing owner").to_string();
-                                        let repo = spec.get("repo").expect("missing repo").to_string();
-                                        let url = format!("https://github.com/{}/{}", owner, repo);
-                                        let rev = discover_newest_rev_git(
-                                            &url,
-                                            spec.get("branchName").map(AsRef::as_ref),
-                                        )?;
-                                        store_rev(spec, updates, key.to_owned(), &rev);
-                                        rev
-                                    }
-                                }
-                            };
-
-                            hash_key = format!("hash_{}", rev);
-                            if !spec.contains_key(&hash_key) {
-                                info!("Using Trust-On-First-Use for python package {}", key);
-
-                                let owner = spec.get("owner").expect("missing owner").to_string();
-                                let repo = spec.get("repo").expect("missing repo").to_string();
-                                let hash = prefetch_github_hash(&owner, &repo, &rev)?;
-                                match hash {
-                                    PrefetchHashResult::Hash(hash) => {
-                                        debug!("nix-prefetch-hash for {} is {}", key, hash);
-                                        store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                                    }
-                                    PrefetchHashResult::HaveToUseFetchGit => {
-                                        let fetchgit_url = format!("https://github.com/{}/{}", owner, repo);
-                                        let hash =
-                                            prefetch_git_hash(&fetchgit_url, &rev, outside_nixpkgs_url)
-                                                .context("prefetch-git-hash failed")?;
-
-                                        let mut out = Table::default();
-                                        out["method"] = value("fetchgit");
-                                        out["url"] =
-                                            value(format!("https://github.com/{}/{}", owner, repo));
-                                        out["rev"] = value(&rev);
-                                        out[&hash_key] = value(&hash);
-                                        if spec.contains_key("branchName") {
-                                            out["branchName"] = value(spec.get("branchName").unwrap());
-                                        }
-                                        updates.push((
-                                            vec![
-                                                "python".to_string(),
-                                                "packages".to_string(),
-                                                key.to_owned(),
-                                            ],
-                                            toml_edit::Value::InlineTable(out.into_inline_table()),
-                                        ));
-
-                                        spec.retain(|k, _| k == "branchName");
-                                        spec.insert("method".to_string(), "fetchgit".into());
-                                        spec.insert(hash_key.clone(), hash);
-                                        spec.insert("url".to_string(), fetchgit_url);
-                                        spec.insert("rev".to_string(), rev.clone());
-
-                                        warn!("The github repo {}/{}/?rev={} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use fetchgit instead, which is immune to that.", owner, repo, rev);
-                                    }
-                                };
-                            }
-                        }
-                        "fetchgit" => {
-                            let url = spec
-                                .get("url")
-                                .expect("missing url on fetchgit")
-                                .to_string();
-                            let rev = {
-                                match spec.get("rev") {
-                                    Some(x) => x.to_string(),
-                                    None => {
-                                        info!(
-                                            "Using discover-newest on first use for python package {}",
-                                            key
-                                        );
-                                        let rev = discover_newest_rev_git(
-                                            &url,
-                                            spec.get("branchName").map(AsRef::as_ref),
-                                        )?;
-                                        info!("\tDiscovered revision {}", &rev);
-                                        store_rev(spec, updates, key.to_owned(), &rev);
-                                        rev
-                                    }
-                                }
-                            };
-
-                            hash_key = format!("hash_{}", rev);
-                            if !spec.contains_key(&hash_key) {
-                                info!("Using Trust-On-First-Use for python package {}", key);
-                                let hash = prefetch_git_hash(&url, &rev, outside_nixpkgs_url)
-                                    .context("prefetch_git-hash failed")?;
-                                store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                                //bail!("bail1")
-                            }
-                        }
-                        "fetchhg" => {
-                            let url = spec.get("url").expect("missing url on fetchhg").to_string();
-                            let rev = {
-                                match spec.get("rev") {
-                                    Some(x) => x.to_string(),
-                                    None => {
-                                        info!(
-                                            "Using discover-newest on first use for python package {}",
-                                            key
-                                        );
-                                        let rev = discover_newest_rev_hg(&url)?;
-                                        info!("\tDiscovered revision {}", &rev);
-                                        store_rev(spec, updates, key.to_owned(), &rev);
-                                        rev
-                                    }
-                                }
-                            };
-                            hash_key = format!("hash_{}", rev);
-                            if !spec.contains_key(&hash_key) {
-                                info!("Using Trust-On-First-Use for python package {}", key);
-                                let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url).with_context(
-                                    || format!("prefetch_hg-hash failed for {} {}", url, rev),
-                                )?;
-                                store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                                //bail!("bail1")
-                            }
-                        }
-                        "useFlake" => {
-                            // we use the flake rev, so no-op
-                        }
-
-                        "fetchPyPi" => {
-                            return Err(anyhow!(
-                                "fetchPyPi is not a valid method, you meant fetchPypi"
-                            ));
-                        }
-
-                        "fetchPypi" => {
-                            let pname = spec.get("pname").unwrap_or(key).to_string();
-                            let version = match spec.get("version") {
-                                Some(ver) => ver.to_string(),
+                /* let method = spec
+                    .get("method")
+                    .expect("missing method - should have been caught earlier");
+                let mut hash_key = "".to_string();
+                match &method[..] {
+                    "fetchFromGitHub" => {
+                        let rev = {
+                            match spec.get("rev") {
+                                Some(x) => x.to_string(),
                                 None => {
-                                    info!("Retrieving current version for {} from pypi", key);
-                                    let version = get_newest_pipi_version(&pname)?;
-                                    store_version(spec, updates, key.to_owned(), &version);
-                                    info!("Found version {}", &version);
-                                    version
+                                    info!(
+                                        "Using discover-newest on first use for python package {}",
+                                        key
+                                    );
+                                    let owner = spec.get("owner").expect("missing owner").to_string();
+                                    let repo = spec.get("repo").expect("missing repo").to_string();
+                                    let url = format!("https://github.com/{}/{}", owner, repo);
+                                    let rev = discover_newest_rev_git(
+                                        &url,
+                                        spec.get("branchName").map(AsRef::as_ref),
+                                    )?;
+                                    store_rev(spec, updates, key.to_owned(), &rev);
+                                    rev
+                                }
+                            }
+                        };
+
+                        hash_key = format!("hash_{}", rev);
+                        if !spec.contains_key(&hash_key) {
+                            info!("Using Trust-On-First-Use for python package {}", key);
+
+                            let owner = spec.get("owner").expect("missing owner").to_string();
+                            let repo = spec.get("repo").expect("missing repo").to_string();
+                            let hash = prefetch_github_hash(&owner, &repo, &rev)?;
+                            match hash {
+                                PrefetchHashResult::Hash(hash) => {
+                                    debug!("nix-prefetch-hash for {} is {}", key, hash);
+                                    store_hash(spec, updates, key.to_owned(), &hash_key, hash);
+                                }
+                                PrefetchHashResult::HaveToUseFetchGit => {
+                                    let fetchgit_url = format!("https://github.com/{}/{}", owner, repo);
+                                    let hash =
+                                        prefetch_git_hash(&fetchgit_url, &rev, outside_nixpkgs_url)
+                                            .context("prefetch-git-hash failed")?;
+
+                                    let mut out = Table::default();
+                                    out["method"] = value("fetchgit");
+                                    out["url"] =
+                                        value(format!("https://github.com/{}/{}", owner, repo));
+                                    out["rev"] = value(&rev);
+                                    out[&hash_key] = value(&hash);
+                                    if spec.contains_key("branchName") {
+                                        out["branchName"] = value(spec.get("branchName").unwrap());
+                                    }
+                                    updates.push((
+                                        vec![
+                                            "python".to_string(),
+                                            "packages".to_string(),
+                                            key.to_owned(),
+                                        ],
+                                        toml_edit::Value::InlineTable(out.into_inline_table()),
+                                    ));
+
+                                    spec.retain(|k, _| k == "branchName");
+                                    spec.insert("method".to_string(), "fetchgit".into());
+                                    spec.insert(hash_key.clone(), hash);
+                                    spec.insert("url".to_string(), fetchgit_url);
+                                    spec.insert("rev".to_string(), rev.clone());
+
+                                    warn!("The github repo {}/{}/?rev={} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use fetchgit instead, which is immune to that.", owner, repo, rev);
                                 }
                             };
-
-                            hash_key = format!("hash_{}", version);
-                            if !spec.contains_key(&hash_key) {
-                                info!("Using Trust-On-First-Use for python package {}", key);
-                                let hash = prefetch_pypi_hash(&pname, &version, outside_nixpkgs_url)
-                                    .context("prefetch-pypi-hash")?;
-                                store_hash(spec, updates, key.to_owned(), &hash_key, hash);
-                                //bail!("bail1")
+                        }
+                    }
+                    "fetchgit" => {
+                        let url = spec
+                            .get("url")
+                            .expect("missing url on fetchgit")
+                            .to_string();
+                        let rev = {
+                            match spec.get("rev") {
+                                Some(x) => x.to_string(),
+                                None => {
+                                    info!(
+                                        "Using discover-newest on first use for python package {}",
+                                        key
+                                    );
+                                    let rev = discover_newest_rev_git(
+                                        &url,
+                                        spec.get("branchName").map(AsRef::as_ref),
+                                    )?;
+                                    info!("\tDiscovered revision {}", &rev);
+                                    store_rev(spec, updates, key.to_owned(), &rev);
+                                    rev
+                                }
                             }
+                        };
+
+                        hash_key = format!("hash_{}", rev);
+                        if !spec.contains_key(&hash_key) {
+                            info!("Using Trust-On-First-Use for python package {}", key);
+                            let hash = prefetch_git_hash(&url, &rev, outside_nixpkgs_url)
+                                .context("prefetch_git-hash failed")?;
+                            store_hash(spec, updates, key.to_owned(), &hash_key, hash);
+                            //bail!("bail1")
                         }
-                        _ => {
-                            warn!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
+                    }
+                    "fetchhg" => {
+                        let url = spec.get("url").expect("missing url on fetchhg").to_string();
+                        let rev = {
+                            match spec.get("rev") {
+                                Some(x) => x.to_string(),
+                                None => {
+                                    info!(
+                                        "Using discover-newest on first use for python package {}",
+                                        key
+                                    );
+                                    let rev = discover_newest_rev_hg(&url)?;
+                                    info!("\tDiscovered revision {}", &rev);
+                                    store_rev(spec, updates, key.to_owned(), &rev);
+                                    rev
+                                }
+                            }
+                        };
+                        hash_key = format!("hash_{}", rev);
+                        if !spec.contains_key(&hash_key) {
+                            info!("Using Trust-On-First-Use for python package {}", key);
+                            let hash = prefetch_hg_hash(&url, &rev, outside_nixpkgs_url).with_context(
+                                || format!("prefetch_hg-hash failed for {} {}", url, rev),
+                            )?;
+                            store_hash(spec, updates, key.to_owned(), &hash_key, hash);
+                            //bail!("bail1")
                         }
-                    };
-                    if !hash_key.is_empty() {
-                        spec.insert(
-                            "sha256".to_string(),
-                            spec.get(&hash_key.to_string()).unwrap().to_string(),
-                        );
-                        spec.retain(|key, _| !key.starts_with("hash_"));
-                    } */
-                }
+                    }
+                    "useFlake" => {
+                        // we use the flake rev, so no-op
+                    }
+
+                    "fetchPyPi" => {
+                        return Err(anyhow!(
+                            "fetchPyPi is not a valid method, you meant fetchPypi"
+                        ));
+                    }
+
+                    "fetchPypi" => {
+                        let pname = spec.get("pname").unwrap_or(key).to_string();
+                        let version = match spec.get("version") {
+                            Some(ver) => ver.to_string(),
+                            None => {
+                                info!("Retrieving current version for {} from pypi", key);
+                                let version = get_newest_pipi_version(&pname)?;
+                                store_version(spec, updates, key.to_owned(), &version);
+                                info!("Found version {}", &version);
+                                version
+                            }
+                        };
+
+                        hash_key = format!("hash_{}", version);
+                        if !spec.contains_key(&hash_key) {
+                            info!("Using Trust-On-First-Use for python package {}", key);
+                            let hash = prefetch_pypi_hash(&pname, &version, outside_nixpkgs_url)
+                                .context("prefetch-pypi-hash")?;
+                            store_hash(spec, updates, key.to_owned(), &hash_key, hash);
+                            //bail!("bail1")
+                        }
+                    }
+                    _ => {
+                        warn!("No trust-on-first-use for method {}, will likely fail with nix hash error!", &method);
+                    }
+                };
+                if !hash_key.is_empty() {
+                    spec.insert(
+                        "sha256".to_string(),
+                        spec.get(&hash_key.to_string()).unwrap().to_string(),
+                    );
+                    spec.retain(|key, _| !key.starts_with("hash_"));
+                } */
             }
         }
     }
+
     Ok(())
 }
 
@@ -305,22 +353,18 @@ fn handle_python_pypi(
             let newest = get_newest_pypi_version(key)?;
             store_python_key(spec, updates, key.to_owned(), "pypi", newest.clone());
             newest
-
-        }    else {
+        } else {
             pypi_version.to_string()
         };
-
-
 
         let url_key = format!("pypi_url_{}", pypi_version);
         if let None = spec.get(&url_key) {
             info!(
-                "Using discover-newest on first use for python pypi package {}",
+                "Using discover-newest on first use for python pypi package {} {spec:?}",
                 key
             );
-            let url = get_pypi_package_source_url(key, &pypi_version).context(
-                "Could not find pypi sdist url",
-            )?;
+            let url = get_pypi_package_source_url(key, &pypi_version)
+                .context("Could not find pypi sdist url")?;
             //spec.insert(url_key.to_string(), toml::Value::String(url));
             store_python_key(spec, updates, key.to_owned(), &url_key, url);
 
@@ -353,10 +397,10 @@ fn store_python_key(
             key,
             hash_key.to_string(),
         ],
-        hash.to_owned().into(),
+        Item::Value(hash.clone().into()),
     ));
 
-    spec.insert(hash_key.to_string(), toml::Value::String(hash.to_owned()));
+    spec.insert(hash_key.to_string(), toml::Value::String(hash.into()));
 }
 
 fn store_version(
@@ -372,7 +416,7 @@ fn store_version(
             key,
             "version".to_string(),
         ],
-        version.into(),
+        Item::Value(version.into()),
     ));
     spec.insert("version".to_string(), version.to_owned());
 }
@@ -634,7 +678,7 @@ pub fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Resu
                                 flake_name.to_string(),
                                 "rev".to_string(),
                             ],
-                            commit.to_string().into(),
+                            Item::Value(commit.into()),
                         ));
                         flake.rev = Some(commit.to_string());
                     } else if flake.url.starts_with("hg+https:") {
@@ -657,7 +701,7 @@ pub fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Resu
                                 flake_name.to_string(),
                                 "rev".to_string(),
                             ],
-                            rev.to_string().into(),
+                            Item::Value(rev.to_string().into()),
                         ));
                         flake.rev = Some(rev);
                     } else if flake.url.starts_with("git+https:") {
@@ -680,7 +724,7 @@ pub fn lookup_missing_flake_revs(parsed_config: &mut config::ConfigToml) -> Resu
                                 flake_name.to_string(),
                                 "rev".to_string(),
                             ],
-                            rev.to_string().into(),
+                            Item::Value(rev.to_string().into()),
                         ));
                         flake.rev = Some(rev);
                     } else {

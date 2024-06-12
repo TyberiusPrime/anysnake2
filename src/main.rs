@@ -384,7 +384,6 @@ fn inner_main() -> Result<()> {
     lookup_clones(&mut parsed_config)?;
     perform_clones(&parsed_config)?;
 
-
     let nixpkgs_url = format!(
         "{}?rev={}",
         &parsed_config.outside_nixpkgs.url,
@@ -396,11 +395,8 @@ fn inner_main() -> Result<()> {
     );
     apply_trust_on_first_use(&mut parsed_config, &nixpkgs_url)?;
 
-    let flake_changed = flake_writer::write_flake(
-        &flake_dir,
-        &mut parsed_config,
-        use_generated_file_instead,
-    )?;
+    let flake_changed =
+        flake_writer::write_flake(&flake_dir, &mut parsed_config, use_generated_file_instead)?;
 
     if let Some(("build", sc)) = matches.subcommand() {
         {
@@ -1525,7 +1521,7 @@ fn upgrade(
                             |_| {
                                 Ok(vec![(
                                     vec!["anysnake2".into(), "rev".into()],
-                                    toml_edit::Value::String(toml_edit::Formatted::new(newest_tag)),
+                                    toml_edit::Item::Value(newest_tag.into()),
                                 )])
                             },
                         )?;
