@@ -68,7 +68,8 @@ pub struct ConfigToml {
     pub anysnake2: Anysnake2,
     pub nixpkgs: NixPkgs,
     pub outside_nixpkgs: NixPkgs,
-    pub ancient_poetry: Option<AncientPoetry>,
+    pub ancient_poetry: Option<URLAndRev>,
+    pub poetry2nix: Option<URLAndRev>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: FlakeUtil,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -78,8 +79,6 @@ pub struct ConfigToml {
     #[serde(default)]
     pub rust: Rust,
     pub python: Option<Python>,
-    #[serde(default)]
-    pub poetry2nix: Poetry2Nix,
     #[serde(default)]
     pub container: Container,
     pub flakes: Option<HashMap<String, Flake>>,
@@ -207,7 +206,7 @@ impl NixPkgs {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct AncientPoetry {
+pub struct URLAndRev {
     pub rev: Option<String>,
     pub url: Option<String>,
 }
@@ -520,32 +519,6 @@ pub struct Python {
 impl Python {
     pub fn parsed_ecosystem_date(&self) -> Result<chrono::NaiveDate> {
         parse_my_date(&self.ecosystem_date)
-    }
-}
-#[derive(Deserialize, Debug)]
-pub struct Poetry2Nix {
-    #[serde(default = "Poetry2Nix::default_rev")]
-    pub rev: String,
-    #[serde(default = "Poetry2Nix::default_url")]
-    pub url: String,
-}
-
-impl Default for Poetry2Nix {
-    fn default() -> Self {
-        Poetry2Nix {
-            rev: Self::default_rev(),
-            url: Self::default_url(),
-        }
-    }
-}
-
-impl WithDefaultFlakeSource for Poetry2Nix {
-    fn default_rev() -> String {
-        "51f5d09e95277eaa99e957cef46946e747cb4a3e".to_string() //updated 2024-06-11 //TODO: Auto
-                                                               //update and write to anysnake2.toml
-    }
-    fn default_url() -> String {
-        "github:nix-community/poetry2nix".to_string()
     }
 }
 

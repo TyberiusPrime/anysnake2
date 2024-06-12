@@ -6,7 +6,7 @@ use toml_edit::{value, Item, Table};
 use log::{debug, info, warn};
 
 use crate::{
-    config::{self, AncientPoetry, BuildPythonPackageInfo, PythonPackageDefinition},
+    config::{self, BuildPythonPackageInfo, PythonPackageDefinition, URLAndRev},
     flake_writer::{self, get_proxy_req},
     python_parsing, run_without_ctrl_c,
     util::{change_toml_file, TomlUpdates},
@@ -27,9 +27,13 @@ pub fn apply_trust_on_first_use(
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     change_toml_file(&config_file, |_doc| {
         let mut updates: TomlUpdates = Vec::new();
-        if let (Some(python), ancient_poetry) = (config.python.as_mut(), &mut config.ancient_poetry)
-        {
+        if let (Some(python), ancient_poetry, poetry2nix) = (
+            config.python.as_mut(),
+            &mut config.ancient_poetry,
+            &mut config.poetry2nix,
+        ) {
             apply_trust_on_first_use_ancient_poetry(ancient_poetry, &mut updates)?;
+            apply_trust_on_first_use_poetry2nix(poetry2nix, &mut updates)?;
             apply_trust_on_first_use_python(
                 &mut python.packages,
                 outside_nixpkgs_url,
@@ -51,7 +55,7 @@ fn apply_trust_on_first_use_r(
         if !r.packages.is_empty() {
             if let None = r.nixr_tag {
                 info!("Using discover-newest on first use for nixR");
-                let rev = discover_newest_rev_git(&r.nixr_url, Some("main"))?;
+                let rev = discover_newest_rev_git(&r.nixr_url, None)?;
                 info!("\tDiscovered nixR revision {}", &rev);
                 updates.push((
                     vec!["R".to_string(), "nixr_tag".to_string()],
@@ -63,47 +67,76 @@ fn apply_trust_on_first_use_r(
     }
     Ok(())
 }
-
 fn apply_trust_on_first_use_ancient_poetry(
-    ancient_poetry: &mut Option<AncientPoetry>,
+    ancient_poetry: &mut Option<URLAndRev>,
+    updates: &mut TomlUpdates,
+) -> Result<()> {
+    apply_trust_on_first_use_url_and_rev(
+        ancient_poetry,
+        "ancient_poetry",
+        "https://codeberg.org/TyberiusPrime/ancient-poetry.git",
+        updates,
+    )
+    .context("failed to apply trust on first use for ancient_poetry")
+}
+fn apply_trust_on_first_use_poetry2nix(
+    url_and_rev: &mut Option<URLAndRev>,
+    updates: &mut TomlUpdates,
+) -> Result<()> {
+    apply_trust_on_first_use_url_and_rev(
+        url_and_rev,
+        "poetry2nix",
+        "github:nix-community/poetry2nix",
+        updates,
+    )
+    .context("failed to apply trust on first use for poetry2nix")
+}
+
+fn apply_trust_on_first_use_url_and_rev(
+    url_and_rev: &mut Option<URLAndRev>,
+    toml_name: &str,
+    default_url: &str,
     updates: &mut TomlUpdates,
 ) -> Result<()> {
     let mut changed = false;
-    if ancient_poetry.is_none() {
-        ancient_poetry.replace(AncientPoetry {
+    if url_and_rev.is_none() {
+        url_and_rev.replace(URLAndRev {
             url: None,
             rev: None,
         });
     }
-    let url = ancient_poetry
+    let url = url_and_rev
         .as_ref()
         .and_then(|x| x.url.as_ref())
         .map(|x| x.as_str());
     let url = match url {
         None => {
-            let new_url = "https://codeberg.org/TyberiusPrime/ancient-poetry.git";
-            ancient_poetry.as_mut().unwrap().url = Some(new_url.to_string());
+            let new_url = default_url;
+            url_and_rev.as_mut().unwrap().url = Some(new_url.to_string());
             changed = true;
             new_url.to_string()
         }
         Some(url) => url.to_string(),
     };
-    let rev = ancient_poetry.as_ref().and_then(|x| x.rev.as_ref());
+    let rev = url_and_rev.as_ref().and_then(|x| x.rev.as_ref());
     let rev = if let None = rev {
-        info!("Using discover-newest on first use for ancient-poetry");
-        let rev = discover_newest_rev_git(&url, Some("main"))?;
-        info!("\tDiscovered ancient-poetry revision {}", &rev);
-        ancient_poetry.as_mut().unwrap().rev = Some(rev.clone());
+        info!("Using discover-newest on first use for {toml_name}");
+        let rev = discover_newest_rev_git(&url, None)?;
+        info!("\tDiscovered {toml_name} revision {}", &rev);
+        url_and_rev.as_mut().unwrap().rev = Some(rev.clone());
         changed = true;
         rev
     } else {
         rev.unwrap().to_string()
     };
+    if url.contains("?") {
+        url_and_rev.as_mut().unwrap().url = Some(url.split_once('?').unwrap().0.to_string());
+    } 
     if changed {
         let mut table = toml_edit::table();
         table["url"] = value(url);
         table["rev"] = value(rev);
-        updates.push((["ancient_poetry".to_string()].into(), table));
+        updates.push(([toml_name.to_string()].into(), table));
     }
 
     Ok(())
@@ -376,8 +409,17 @@ fn handle_python_pypi(
             .and_then(|x| x.as_str())
             .unwrap()
             .to_string();
-        spec.clear();
-        spec.insert("url".to_string(), pypi_file_url.into());
+        spec.retain(|k, _| !k.starts_with("pypi"));
+        spec.insert("url".to_string(), pypi_file_url.clone().into());
+        updates.push((
+            vec![
+                "python".to_string(),
+                "packages".to_string(),
+                key.to_owned(),
+                url_key,
+            ],
+            Item::Value(pypi_file_url.into()),
+        ));
     }
     Ok(())
 }
@@ -744,7 +786,23 @@ fn discover_newest_rev_git(url: &str, branch: Option<&str>) -> Result<String> {
     } else {
         url.to_string()
     };
-    let refs = match branch {
+    let (rewritten_url, branch): (String, Option<String>) = match branch {
+        Some(branch) => (rewritten_url, Some(branch.to_string())),
+        None => {
+            if rewritten_url.contains("?ref=") {
+                let (rewritten_url, new_branch) = rewritten_url.rsplit_once("?ref=").unwrap();
+                info!(
+                    "auto detected branch {} from url: {}",
+                    new_branch, rewritten_url
+                );
+                (rewritten_url.to_string(), Some(new_branch.to_string()))
+            } else {
+                (rewritten_url, None)
+            }
+        }
+    };
+
+    let refs = match &branch {
         Some(x) => Cow::from(format!("refs/heads/{}", x)),
         None => Cow::from("HEAD"),
     };

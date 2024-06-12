@@ -10,10 +10,14 @@
 rev = "dev"
 
 [outside_nixpkgs]
-rev = "23.05" # needs a newish poetry
+rev = "23.11" # needs a poetry >= 23.11's version
+
+[ancient_poetry]
+url = "https://codeberg.org/TyberiusPrime/ancient-poetry.git"
+rev = "a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 [nixpkgs]
-rev = "22.05" # the nixpgks version or github hash
+rev = "23.11" # the nixpgks version or github hash
 packages = ["which"]
 
 
@@ -23,15 +27,19 @@ ecosystem_date="2022-11-23" # you get whatever packages the solver would have pr
 
 
 [python.packages]
-# just tell it to use 'useFlake' and define the flake below
-dppd={pypi="0.26", "pypi_url_0.26" = "https://files.pythonhosted.org/packages/02/58/a56e8d1a3c246ec37120522b0093f0a4ff4d19998aa58996338bb3785235/dppd-0.26.tar.gz" } # version is auto detected
-scanpy={pypi="1.9.3", "pypi_url_1.9.3" = "https://files.pythonhosted.org/packages/47/d5/7e580b69ac0279688c4739a508c8fa734998bfce984efba2d0755e4f0068/scanpy-1.9.3.tar.gz" } # version is auto detected
+dppd={pypi="0.26", poetry2nix.buildInputs = ["setuptools"] }
+scanpy={pypi="1.9.3", poetry2nix.buildInputs = ["flit-core", "setuptools-scm"]}
+session-info={pypi="1.0.0", poetry2nix.buildInputs = ["setuptools"]}
+
+[cmd.python]
+run = """python
+"""
 
 
 [cmd.xxx]
 run="bash"
 
-[cmd.python]
-run = """python
-"""
+[poetry2nix]
+url = "github:TyberiusPrime/poetry2nix?ref=tar_hash"
+rev = "51f5d09e95277eaa99e957cef46946e747cb4a3e"
 
