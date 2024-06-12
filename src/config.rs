@@ -68,6 +68,7 @@ pub struct ConfigToml {
     pub anysnake2: Anysnake2,
     pub nixpkgs: NixPkgs,
     pub outside_nixpkgs: NixPkgs,
+    pub ancient_poetry: Option<AncientPoetry>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: FlakeUtil,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -203,6 +204,12 @@ impl NixPkgs {
     fn default_allow_unfree() -> bool {
         false
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AncientPoetry {
+    pub rev: Option<String>,
+    pub url: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -367,8 +374,12 @@ where
                                 if allowed_keys.contains(&key.as_str()) {
                                     parsed_def.insert(key, value);
                                 } else {
-                                    if key.starts_with("hash_") | key.starts_with("pypi_url"){
-                                    } else {
+                                    if key.starts_with("hash_") {
+                                    }
+                                    else if key.starts_with("pypi_url"){
+                                        parsed_def.insert(key, value);
+                                    }
+                                    else {
                                         errors.push(format!("Unexpected key: {}", key));
                                     }
                                 }

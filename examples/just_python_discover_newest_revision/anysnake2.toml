@@ -10,19 +10,19 @@ rev = "24.05" # We use the outside nixpkgs for poetry.
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "21.05" # the nixpgks version or github hash
+rev = "23.11" # the nixpgks version or github hash
 packages = ["which"]
 
 
 [python] # python section is optional
 version="3.11" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2022-02-16" # you get whatever packages the solver would have produced on that day
+ecosystem_date="2024-02-16" # you get whatever packages the solver would have produced on that day
 
 
 [python.packages]
 # for git / github
-plotnine = { git= "https://github.com/has2k1/plotnine", rev = "e7b8fda83a1a754d156694bd90cba7fe57a9cfa2" }
+plotnine = { git= "https://github.com/has2k1/plotnine"}
 # this plotnine needs a newer mizani than we have on 2022-02-16
 # so we manual fetch an newer version from pypi! 
-mizani = {pypi= "0.11.4", "pypi_url_0.11.4" = "https://files.pythonhosted.org/packages/96/57/cb3b6f130ab629ff31e6106bbffdb9250af43e85223fdf68148d633f3bc6/mizani-0.11.4.tar.gz" }
+mizani = {pypi= "0.11.4"}
 
