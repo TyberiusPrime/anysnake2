@@ -338,12 +338,6 @@ where
     let res: Result<HashMap<String, PythonPackageDefinition>, D::Error> = parsed
         .into_iter()
         .map(|(pkg_name, v)| {
-            if pkg_name == "additional_mkpython_arguments_func" {
-                        return Err(serde::de::Error::custom(format!(
-                                "additional_mkpython_arguments_func used in python.packages, but it's meant to be on python proper"
-                            )));
-                    }
-
             match v {
                 ParsedPythonPackageDefinition::Simple(x) => {
 
@@ -353,12 +347,16 @@ where
                 ParsedPythonPackageDefinition::Complex(def) => {
                     let mut errors = Vec::new();
                     let mut parsed_def = toml::map::Map::new();
-                    let allowed_keys =["url", "poetry2nix", "version"];
+                    let allowed_keys =["url", "poetry2nix", "version", "git", "branchName", "rev", "pypi"];
                     let mut url_used = false;
                     let mut version_used = false;
                     for (key, value) in def.into_iter() {
                         match value {
                             toml::Value::String(_)| toml::Value::Array(_) | toml::Value::Table(_) => {
+                                if key == "method" {
+                                    errors.push("Method has been superseeded by fetchgit=git, fetchFromGitHub = github=. fetchhg=no longer supported (sorry). See the examples".to_string());
+                                    continue;
+                                }
                                 if key == "url" {
                                     url_used = true;
                                 }
@@ -369,7 +367,10 @@ where
                                 if allowed_keys.contains(&key.as_str()) {
                                     parsed_def.insert(key, value);
                                 } else {
-                                    errors.push(format!("Unexpected key: {}", key));
+                                    if key.starts_with("hash_") | key.starts_with("pypi_url"){
+                                    } else {
+                                        errors.push(format!("Unexpected key: {}", key));
+                                    }
                                 }
                             }
                             _ => {
@@ -501,8 +502,8 @@ pub struct Python {
     pub ecosystem_date: String,
     #[serde(deserialize_with = "de_python_package_definition")]
     pub packages: HashMap<String, PythonPackageDefinition>,
-    pub additional_mkpython_arguments: Option<String>,
-    pub additional_mkpython_arguments_func: Option<String>,
+    //pub additional_mkpython_arguments: Option<String>,
+    //pub additional_mkpython_arguments_func: Option<String>,
 }
 
 impl Python {

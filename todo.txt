@@ -1,0 +1,3 @@
+- python version poetry difference - get the right python into poetry?
+- ancient-poetry useer def ref
+- all the revs into the anysnake2.toml, auto update
