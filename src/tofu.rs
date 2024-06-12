@@ -72,8 +72,8 @@ fn apply_trust_on_first_use_python(
             match spec {
                 PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
                 PythonPackageDefinition::Complex(spec) => {
-                    handle_python_git(key, spec, updates)?;
-                    handle_python_pypi(key, spec, updates)?;
+                    handle_python_git(key, spec, updates).with_context(|| format!("failed on package {key}"))?;
+                    handle_python_pypi(key, spec, updates).with_context(|| format!("failed on package {key}"))?;
 
                     /* let method = spec
                         .get("method")
@@ -301,14 +301,25 @@ fn handle_python_pypi(
     updates: &mut TomlUpdates,
 ) -> Result<()> {
     if let Some(toml::Value::String(pypi_version)) = spec.get("pypi") {
+        let pypi_version = if pypi_version.is_empty() {
+            let newest = get_newest_pypi_version(key)?;
+            store_python_key(spec, updates, key.to_owned(), "pypi", newest.clone());
+            newest
+
+        }    else {
+            pypi_version.to_string()
+        };
+
+
+
         let url_key = format!("pypi_url_{}", pypi_version);
         if let None = spec.get(&url_key) {
             info!(
                 "Using discover-newest on first use for python pypi package {}",
                 key
             );
-            let url = get_pypi_package_source_url(key, pypi_version).context(
-                "Could not find pypi sdist url to put into {url_key} an python package {key}",
+            let url = get_pypi_package_source_url(key, &pypi_version).context(
+                "Could not find pypi sdist url",
             )?;
             //spec.insert(url_key.to_string(), toml::Value::String(url));
             store_python_key(spec, updates, key.to_owned(), &url_key, url);
