@@ -69,13 +69,13 @@ pub struct ConfigToml {
     pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: Anysnake2,
     pub nixpkgs: Option<NixPkgs>,
-    pub outside_nixpkgs: Option<ParsedVCS>,
-    pub ancient_poetry: Option<ParsedVCS>,
-    pub poetry2nix: Option<ParsedVCS>,
+    pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
+    pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
+    pub poetry2nix: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
-    pub flake_util: Option<ParsedVCS>,
+    pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
-    pub clones: Option<HashMap<String, HashMap<String, String>>>,
+    pub clones: Option<HashMap<String, HashMap<String, ParsedVCS>>>,
     #[serde(default)]
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<Rust>,
@@ -99,7 +99,7 @@ pub struct TofuConfigToml {
     pub poetry2nix: TofuVCS,
     pub flake_util: TofuVCS,
     pub clone_regexps: Option<HashMap<String, String>>,
-    pub clones: Option<HashMap<String, HashMap<String, String>>>,
+    pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<TofuRust>,
     pub python: Option<Python>,
@@ -110,6 +110,11 @@ pub struct TofuConfigToml {
 }
 
 //todo: refactor
+
+#[derive(Debug, Deserialize)]
+pub struct ParsedVCSInsideURLTag {
+    pub url: ParsedVCS
+}
 
 impl ConfigToml {
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
@@ -158,8 +163,9 @@ impl<'de> Deserialize<'de> for ParsedVCS {
     {
         // Use `serde::from_str` to attempt conversion from string slice to `MyType`
         //let s = String::deserialize(deserializer)?;
-        let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
-        let url = map.get("url");
+        //let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
+        //let url = map.get("url");
+        let url = <Option<String>>::deserialize(deserializer)?;
         match url {
             Some(s) => ParsedVCS::try_from(s.as_str()).map_err(serde::de::Error::custom),
             None => Err(serde::de::Error::custom("Expected url in field")),
@@ -256,7 +262,6 @@ impl Default for DevShell {
 #[derive(Deserialize, Debug)]
 pub struct NixPkgs {
     //tell serde to read it from url/rev instead
-    #[serde(flatten)]
     pub url: Option<ParsedVCS>,
     pub packages: Option<Vec<String>>,
     #[serde(default = "NixPkgs::default_allow_unfree")]
@@ -374,7 +379,7 @@ where
                 ParsedPythonPackageDefinition::Simple(x) => {
 
                     Ok((pkg_name,
-                        if x.starts_with("editable/") { PythonPackageDefinition::Editable(x) } else { PythonPackageDefinition::Simple(x) }))
+                        if x.starts_with("editable/") { PythonPackageDefinition::Editable(x.strip_prefix("editable/").unwrap().to_string())} else { PythonPackageDefinition::Simple(x) }))
                 }
                 ParsedPythonPackageDefinition::Complex(def) => {
                     let mut errors = Vec::new();

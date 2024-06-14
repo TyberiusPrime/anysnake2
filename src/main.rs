@@ -365,7 +365,7 @@ fn inner_main() -> Result<()> {
     }
 
     let mut tofued_config = tofued_config;
-    lookup_clones(&mut tofued_config)?;
+    //lookup_clones(&mut tofued_config)?;
     let tofued_config = tofued_config;
     perform_clones(&tofued_config)?;
 
@@ -777,53 +777,6 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-/// expand clones by clone_regular_expressions, verify url schema
-fn lookup_clones(parsed_config: &mut config::TofuConfigToml) -> Result<()> {
-    let clone_regexps: Vec<(Regex, &String)> = match &parsed_config.clone_regexps {
-        Some(replacements) => {
-            let mut res = Vec::new();
-            for (from, to) in replacements {
-                let r = Regex::new(&format!("^{}$", from))
-                    .context(format!("failed to parse {}", from))?;
-                res.push((r, to))
-            }
-            res
-        }
-        None => Vec::new(),
-    };
-    match &mut parsed_config.clones {
-        Some(clones) => {
-            for (_target_dir, name_urls) in clones.iter_mut() {
-                for (name, proto_url) in name_urls.iter_mut() {
-                    for (re, replacement) in &clone_regexps {
-                        if re.is_match(proto_url) {
-                            let mut out = proto_url.to_string();
-                            for group in re.captures_iter(proto_url) {
-                                //there only ever is one
-                                out = replacement.replace("\\0", name);
-                                for ii in 1..group.len() {
-                                    out = out.replace(&format!("\\{}", ii), &group[ii]);
-                                }
-                                //println_f!("match {name}={url} {re} => {out}");
-                            }
-                            *proto_url = out; // know it's the real url
-                        }
-                    }
-                    if !(proto_url.starts_with("git+")
-                        || proto_url.starts_with("hg+")
-                        || proto_url.starts_with("file://"))
-                    {
-                        bail!("Url did not start with git+, hg+ or file:// which are the only supported version control formats {}. (Possibly rewritten using clone_regexps", proto_url);
-                    }
-                }
-            }
-        }
-        None => {}
-    };
-    //assert!(re.is_match("2014-01-01"));
-
-    Ok(())
-}
 
 fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
     match &parsed_config.clones {
@@ -839,7 +792,7 @@ fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
                 for (name, url) in name_urls {
                     let known_url = known_clones.get(name).map(String::as_str).unwrap_or("");
                     let final_dir: PathBuf = [target_dir, name].iter().collect();
-                    if known_url != url && final_dir.exists() && !dir_empty(&final_dir)?
+                    if known_url != url.to_string() && final_dir.exists() && !dir_empty(&final_dir)?
                     //empty dir is ok.
                     {
                         let msg = format!(
@@ -854,119 +807,9 @@ fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
                     fs::create_dir_all(&final_dir)?;
                     if dir_empty(&final_dir)? {
                         info!("cloning {}/{} from {}", target_dir, name, url);
-                        known_clones.insert(name.clone(), url.clone());
-                        let (cmd, trunc_url) = if url.starts_with("git+") {
-                            ("git", url.strip_prefix("git+").unwrap())
-                        } else if url.starts_with("hg+") {
-                            ("hg", url.strip_prefix("hg+").unwrap())
-                        } else if url.starts_with("file://") {
-                            ("cp", &url[..])
-                        } else {
-                            bail!("Unexpected url schema - should have been tested before (bug in anysnake. try git+https)");
-                        };
-                        let parsed_url =
-                            Url::parse(trunc_url) //I can't change the scheme from git+https to https, with this libary
-                                .with_context(|| {
-                                    format!("Failed to parse {} as an url", &trunc_url)
-                                })?;
+                        url.clone_to_target_dir(final_dir.to_string_lossy())?;
+                        known_clones.insert(name.clone(), url.to_string());
 
-                        let mut base_url = parsed_url.clone();
-                        base_url.set_query(None);
-                        let clone_url_for_cmd = base_url.as_str();
-                        let clone_url_for_cmd = match clone_url_for_cmd.strip_prefix("file://") {
-                            Some(path) => {
-                                if path.starts_with('/') {
-                                    path.to_string()
-                                } else {
-                                    // we are in target/package, so we need to go up to to make it
-                                    // relative again
-                                    "../../".to_string() + (path.strip_prefix("./").unwrap_or(path))
-                                }
-                            }
-                            None => clone_url_for_cmd.to_string(),
-                        };
-                        let output = run_without_ctrl_c(|| match cmd {
-                            "hg" | "git" => Command::new(cmd)
-                                .args(["clone", &clone_url_for_cmd, "."])
-                                .current_dir(&final_dir)
-                                .output()
-                                .context(format!(
-                                    "Failed to execute clone {target_dir}/{name} from {url} .",
-                                    target_dir = target_dir,
-                                    name = name,
-                                    url = url
-                                )),
-                            "cp" => {
-                                let args = [
-                                    "-c",
-                                    &format!(
-                                        "cp {}/* . -a",
-                                        &clone_url_for_cmd
-                                            .strip_suffix('/')
-                                            .unwrap_or(&clone_url_for_cmd)
-                                    )[..],
-                                ];
-                                dbg!(&args);
-                                Command::new("bash")
-                                    .args(args)
-                                    .current_dir(&final_dir)
-                                    .output()
-                                    .context(format!(
-                                        "Failed to execute copy {target_dir}/{name} from {url} .",
-                                        target_dir = target_dir,
-                                        name = name,
-                                        url = url
-                                    ))
-                            }
-
-                            _ => Err(anyhow!("Unsupported clone cmd?!")),
-                        })?;
-                        if !output.status.success() {
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            let msg = format!(
-                                "Failed to clone {target_dir}/{name} from {url}. \n Stdout {stdout:?}\nStderr: {stderr:?}",
-                            target_dir = target_dir, name = name, url = url, stdout=stdout, stderr=stderr);
-                            bail!(msg);
-                        }
-
-                        for (k, v) in parsed_url.query_pairs() {
-                            let v = v.to_string();
-                            if k == "rev" {
-                                let args: Vec<&str> = if cmd == "git" {
-                                    ["checkout", &v].into()
-                                } else if cmd == "hg" {
-                                    ["checkout", "-r", &v].into()
-                                } else {
-                                    bail!("Should not be reached");
-                                };
-                                let output = run_without_ctrl_c(|| {
-                                    Command::new(cmd)
-                                        .args(&args)
-                                        .current_dir(&final_dir)
-                                        .output()
-                                        .context(format!(
-                                            "Failed to execute checkout revision {v} in {target_dir}",
-                                            v=v,
-                                            target_dir = target_dir,
-                                        ))
-                                })?;
-                                if !output.status.success() {
-                                    let stdout = String::from_utf8_lossy(&output.stdout);
-                                    let stderr = String::from_utf8_lossy(&output.stderr);
-                                    let msg = format!(
-                                        "Failed to checkout {v} in {target_dir}. \n Stdout {stdout:?}\nStderr: {stderr:?}",
-                                        target_dir = target_dir, v = v, stdout=stdout, stderr=stderr);
-                                    bail!(msg);
-                                }
-                            } else {
-                                bail!(
-                                    "Could not understand url for {target_dir}: {url}",
-                                    target_dir = &target_dir,
-                                    url = &url
-                                );
-                            }
-                        }
                     }
                 }
                 fs::write(

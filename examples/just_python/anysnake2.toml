@@ -1,13 +1,14 @@
-# basic anysnake2.toml example using python
 [anysnake2]
-rev = "dev"
+url="dev"
 
 [outside_nixpkgs]
-rev = "23.11" 
+url = "github:nixos/nixpkgs/master/23.11"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 [nixpkgs]
-rev = "23.11" 
-packages = ["which"]
+url = "github:nixos/nixpkgs/master/23.11"
 
 
 [python] 
@@ -15,15 +16,21 @@ version="3.10"
 ecosystem_date="2022-11-23" 
 preferWheels = true
 
-[clones.code]
-# clones a repo to ./code, which you can then refer in python.
-example-cli-python="file://./example-cli-python/"
-
 [python.packages]
 pandas="1.5.1"
 black=""
 tomli=">1.2"
 hatchling=""
 requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
+
+[clones.code]
+# clones a repo to ./code, which you can then refer in python.
+example-cli-python= "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/2c6d07717af20e45fa5b2c823729126be91a3cdf"
 
 
