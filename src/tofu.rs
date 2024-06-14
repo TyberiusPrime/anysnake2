@@ -15,7 +15,7 @@ use crate::{
     flake_writer::{self, get_proxy_req},
     python_parsing, run_without_ctrl_c,
     util::{change_toml_file, TomlUpdates},
-    vcs::{self, run_git_ls, BranchOrTag},
+    vcs::{self, run_git_ls, BranchOrTag, ParsedVCS, TofuVCS},
 };
 
 enum PrefetchHashResult {
@@ -46,46 +46,49 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 }
             },
             nixpkgs: self.nixpkgs.tofu_to_tag(
-                "nixpkgs",
+                &["nixpkgs"],
                 updates,
                 "github:NixOS/nixpkgs", // prefer github:/ for then nix doesn't clone the whole
                 // repo..
                 NIXPKGS_TAG_REGEX,
             )?,
             outside_nixpkgs: self.outside_nixpkgs.tofu_to_tag(
-                "outside_nixpkgs",
+                &["outside_nixpkgs"],
                 updates,
                 "github:NixOS/nixpkgs",
                 NIXPKGS_TAG_REGEX,
             )?, //todo: only tofu newest nixpkgs release..
             ancient_poetry: self.ancient_poetry.tofu_to_newest(
-                "ancient_poetry",
+                &["ancient_poetry"],
                 updates,
                 "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git",
             )?,
             poetry2nix: self.poetry2nix.tofu_to_newest(
-                "poetry2nix",
+                &["poetry2nix"],
                 updates,
                 "github:nix-community/poetry2nix",
             )?,
             flake_util: self.flake_util.tofu_to_newest(
-                "flake-util",
+                &["flake-util"],
                 updates,
                 "github:numtide/flake-utils",
             )?,
             clone_regexps: self.clone_regexps,
-            clones: self.clones,
+            clones: match self.clones {
+                Some(clones) => Some(tofu_clones(clones, updates)?),
+                None => None,
+            },
             cmd: self.cmd,
             rust: self
                 .rust
-                .tofu_to_newest("rust", updates, "github:oxalica/rust-overlay")?,
+                .tofu_to_newest(&["rust"], updates, "github:oxalica/rust-overlay")?,
             python: self.python,
             container: self.container,
             flakes: self.flakes.tofu(updates)?,
             dev_shell: self.dev_shell,
             r: self
                 .r
-                .tofu_to_newest("R", updates, "github:TyberiusPrime/nixR")?,
+                .tofu_to_newest(&["R"], updates, "github:TyberiusPrime/nixR")?,
         })
     }
 }
@@ -93,7 +96,7 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
 trait TofuToNewest<A> {
     fn tofu_to_newest(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<A>;
@@ -102,7 +105,7 @@ trait TofuToNewest<A> {
 trait TofuToTag<A> {
     fn tofu_to_tag(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
         tag_regex: &str,
@@ -112,7 +115,7 @@ trait TofuToTag<A> {
 impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
     fn tofu_to_tag(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
         tag_regex: &str,
@@ -138,10 +141,10 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
     }
 }
 
-impl TofuToTag<vcs::TofuVCS> for Option<vcs::ParsedVCS> {
+impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
     fn tofu_to_tag(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
         tag_regex: &str,
@@ -149,28 +152,28 @@ impl TofuToTag<vcs::TofuVCS> for Option<vcs::ParsedVCS> {
         Ok(tofu_repo_to_tag(
             toml_name,
             updates,
-            self,
+            self.map(|x|x.url),
             default_url,
             tag_regex,
         )?)
     }
 }
 
-impl TofuToNewest<vcs::TofuVCS> for Option<vcs::ParsedVCS> {
+impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
     fn tofu_to_newest(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<vcs::TofuVCS> {
-        Ok(tofu_repo_to_newest(toml_name, updates, self, default_url)?)
+        Ok(tofu_repo_to_newest(toml_name, updates, self.map(|x|x.url), default_url)?)
     }
 }
 
 impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
     fn tofu_to_newest(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<Option<config::TofuRust>> {
@@ -192,7 +195,7 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
 impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
     fn tofu_to_newest(
         self,
-        toml_name: &str,
+        toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<Option<config::TofuR>> {
@@ -426,7 +429,7 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
                 .into_iter()
                 .map(|(key, value)| {
                     let tofued = tofu_repo_to_newest(
-                        &format!("flakes.{key}"),
+                        &["flakes", &key],
                         updates,
                         Some(value.url),
                         "",
@@ -467,7 +470,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
                         .expect("invalid default url"),
                 };
                 let new_url = tofu_repo_to_tag(
-                    "anysnake2",
+                    &["anysnake2"],
                     updates,
                     Some(url),
                     if anysnake.use_binary {
@@ -494,7 +497,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
 }
 
 fn tofu_repo_to_tag(
-    toml_name: &str,
+    toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: Option<vcs::ParsedVCS>,
     default_url: &str,
@@ -505,7 +508,7 @@ fn tofu_repo_to_tag(
 }
 
 fn _tofu_repo_to_tag(
-    toml_name: &str,
+    toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: Option<vcs::ParsedVCS>,
     default_url: &str,
@@ -630,28 +633,27 @@ fn _tofu_repo_to_tag(
     if changed {
         let mut table = toml_edit::table();
         table["url"] = value(out.to_string());
-        updates.push(([toml_name.to_string()].into(), table));
+        updates.push((toml_name.iter().map(ToString::to_string).collect(), table));
     }
     Ok(out)
 }
 
 fn tofu_repo_to_newest(
-    toml_name: &str,
-    updates: &mut TomlUpdates,
-    input: Option<vcs::ParsedVCS>,
-    default_url: &str,
-) -> Result<vcs::TofuVCS> {
-    let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    Ok(_tofu_repo_to_newest(toml_name, updates, input, default_url).context(error_msg)?)
-}
-
-fn _tofu_repo_to_newest(
-    toml_name: &str,
+    toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: Option<vcs::ParsedVCS>,
     default_url: &str,
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
+    let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
+    Ok(_tofu_repo_to_newest(toml_name, updates, input).context(error_msg)?)
+}
+
+fn _tofu_repo_to_newest(
+    toml_name: &[&str],
+    updates: &mut TomlUpdates,
+    input: vcs::ParsedVCS,
+) -> Result<vcs::TofuVCS> {
     let (changed, out) = match &input {
         vcs::ParsedVCS::Git {
             url,
@@ -747,9 +749,8 @@ fn _tofu_repo_to_newest(
         ),
     };
     if changed {
-        let mut table = toml_edit::table();
-        table["url"] = value(out.to_string());
-        updates.push(([toml_name.to_string()].into(), table));
+        //table["url"] = value(out.to_string());
+        updates.push((toml_name.iter().map(ToString::to_string).collect(), value(out.to_string())));
     }
     Ok(out)
 }
@@ -1292,3 +1293,27 @@ fn discover_newest_rev_hg(url: &str) -> Result<String> {
         url
     ))
 }
+
+fn tofu_clones(
+    clones: HashMap<String, HashMap<String, ParsedVCS>>,
+    updates: &mut TomlUpdates,
+) -> Result<HashMap<String, HashMap<String, TofuVCS>>> {
+    clones
+        .into_iter()
+        .map(|(key1, value)| {
+            let outer = value
+                .into_iter()
+                .map(|(key2, value)| {
+                    let error_msg =
+                        format!("Failed to tofu clone clones.{key1}.{key2} - {value:?}");
+                    let inner =
+                        _tofu_repo_to_newest(&["clones", &key1, &key2], updates, value)?;
+                    Ok((key2, inner))
+                })
+                .collect::<Result<HashMap<String, TofuVCS>>>()?;
+            Ok((key1, outer))
+        })
+        .collect()
+}
+
+

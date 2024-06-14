@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use log::info;
+#[allow(unused_imports)]
+use log::{debug, info};
 use toml_edit::{Document, DocumentMut};
 
 use std::{
@@ -84,12 +85,15 @@ pub fn change_toml_file(
     let toml = std::fs::read_to_string(toml_path).expect("Could not reread config file");
     let mut doc = toml.parse::<DocumentMut>().expect("invalid doc");
     if !updates.is_empty() {
+        debug!("Applying updates to {:?}", toml_path);
+        debug!("{:?}", updates);
         for (path, value) in updates {
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
-                for p in path[1..path.len() - 1].iter() {
+                for p in path[1..path.len()].iter() {
                     x = &mut x[p];
                 }
+                *x = value;
             } else {
                 *x = value;
             }
@@ -119,6 +123,7 @@ pub fn change_toml_file(
         let out_toml = doc.to_string();
         std::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
         info!("Wrote updated {:?}", toml_path);
+        panic!();
     }
 
     Ok(())

@@ -56,23 +56,58 @@ impl TofuVCS {
             }
         }
     }
-}
 
-impl ToString for TofuVCS {
-    fn to_string(&self) -> String {
-        match self {
-            TofuVCS::Git { url, branch, rev } => {
-                format!("git+{}?ref={}&rev={}", url, branch, rev)
-            }
+    pub fn clone_to_target_dir(&self, target_dir: String) -> Result<()> {
+        let (url, rev, branch) = match self {
+            TofuVCS::Git { url, branch, rev } => (url.to_string(), rev, branch),
             TofuVCS::GitHub {
                 owner,
                 repo,
                 branch,
                 rev,
-            } => {
-                format!("github:{}/{}/{}/{}", owner, repo, branch, rev)
-            }
-        }
+            } => (
+                "https://github.com/{owner}/{repo}.git".to_string(),
+                rev,
+                branch,
+            ),
+        };
+        //let clone_args = 
+        run_without_ctrl_c(|| {
+            let mut proc = std::process::Command::new("git");
+            proc.args(vec!["clone", &url, "--branch", rev, target_dir.as_str()]);
+            proc.output()
+                .with_context(|| format!("Git clone failed for {self}"))?;
+
+            let mut proc = std::process::Command::new("git");
+            proc.args(&["branch", branch, rev]);
+            proc.current_dir(target_dir.as_str());
+            proc.output()
+                .with_context(|| format!("Git branch failed"))?;
+
+            let mut proc = std::process::Command::new("git");
+            proc.args(&["switch", branch]);
+            proc.current_dir(target_dir.as_str());
+            proc.output()
+                .with_context(|| format!("Git switch failed"))?;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for TofuVCS {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&match self {
+            TofuVCS::Git { url, branch, rev } => format!("git+{}?ref={}&rev={}", url, branch, rev),
+            TofuVCS::GitHub {
+                owner,
+                repo,
+                branch,
+                rev,
+            } => format!("github:{}/{}/{}/{}", owner, repo, branch, rev),
+        })
     }
 }
 

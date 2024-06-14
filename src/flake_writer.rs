@@ -329,9 +329,11 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
     )
 }
 
-fn extract_non_editable_python_packages(
+/// prepare what we put into pyprojec.toml
+fn prep_packages_for_pyproject_toml(
     input: &HashMap<String, PythonPackageDefinition>,
     flakes_config: &HashMap<String, config::TofuFlake>,
+    flake_dir: &Path,
 ) -> Result<toml::Table> {
     let mut res = toml::Table::new();
     for (name, spec) in input.iter() {
@@ -376,7 +378,16 @@ fn extract_non_editable_python_packages(
                 debug!("complex python package out: {}: {:?}", name, out_map);
                 res.insert(name.to_string(), out_map.into());
             }
-            PythonPackageDefinition::Editable(_) => {}
+            PythonPackageDefinition::Editable(editable_path) => {
+                let mut out_map = toml::Table::new();
+                let target_path = PathBuf::from(editable_path).join(name);
+                out_map.insert(
+                    "path".to_string(),
+                    toml::Value::String(format!("{}", target_path.canonicalize()?.to_string_lossy())),
+                );
+                out_map.insert("develop".to_string(), true.into());
+                res.insert(name.to_string(), out_map.into());
+            }
         }
     }
     /* for (name, spec) in build_packages.iter() {
@@ -726,7 +737,7 @@ build-backend = "poetry.core.masonry.api"
             format!("{}#poetry", parsed_config.outside_nixpkgs.to_nix_string(),),
             format!(
                 "{}#{}",
-                parsed_config.nixpkgs.url.to_string(),
+                parsed_config.nixpkgs.url.to_nix_string(),
                 python_major_minor
             ),
             full_url,
@@ -947,12 +958,7 @@ fn add_r(
     nixpkgs_pkgs: &mut BTreeSet<String>,
 ) -> Result<()> {
     if let Some(r_config) = &parsed_config.r {
-        inputs.push(InputFlake::new(
-            "nixR",
-            &r_config.url,
-            &[],
-            &flake_dir,
-        )?);
+        inputs.push(InputFlake::new("nixR", &r_config.url, &[], &flake_dir)?);
 
         fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
             let mut out = "".to_string();
@@ -1048,6 +1054,35 @@ fn format_poetry_build_input_overrides(
     Ok(poetry_overide_entries)
 }
 
+fn copy_minimum_for_editable_packages(
+    flake_dir: &Path,
+    python_packages: &HashMap<String, PythonPackageDefinition>,
+) -> Result<()> {
+    for (name, spec) in python_packages.iter() {
+        match spec {
+            PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Complex(_) => {},
+            PythonPackageDefinition::Editable(folder) => {
+                let input_folder = PathBuf::from(folder).join(name);
+                let target_path = flake_dir.join("poetry/python_editable").join(name);
+                ex::fs::create_dir_all(&target_path)?;
+                // copy top level files - that should be enough for poetry to discover the
+                // dependencies
+                // todo: Replace with fixed list of files.
+                // todo: copy only if size/date mismatch?
+                for filename in input_folder.read_dir()? {
+                    let filename = filename?.path();
+                    if filename.is_file() {
+                        let target = target_path.join(filename.file_name().unwrap());
+                        fs::copy(&filename, &target)?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn add_python(
     parsed_config: &config::TofuConfigToml,
     flake_dir: &Path,
@@ -1065,17 +1100,19 @@ fn add_python(
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
                 bail!(
-                            format!("Python version must be x.y (not x.y.z ,z is given by nixpkgs version). Was '{}'", &python.version));
+                            format!("Python version must be x.y (not x.y.z, z is given by nixpkgs version). Was '{}'", &python.version));
             }
             let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
             let python_packages = &python.packages;
             let mut out_python_packages =
-                extract_non_editable_python_packages(python_packages, &parsed_config.flakes)?;
-            if parsed_config.r.is_some() {
+                prep_packages_for_pyproject_toml(python_packages, &parsed_config.flakes, flake_dir)?;
+            if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages.insert("rpy2".to_string(), toml::Value::String("".to_string()));
             }
+            copy_minimum_for_editable_packages(flake_dir, python_packages)?;
+
             //out_python_packages.sort();
 
             ancient_poetry(
