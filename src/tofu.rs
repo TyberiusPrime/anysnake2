@@ -15,8 +15,7 @@ use crate::{
     flake_writer::{self, get_proxy_req},
     python_parsing, run_without_ctrl_c,
     util::{change_toml_file, TomlUpdates},
-    vcs,
-    vcs::run_github_ls,
+    vcs::{self, run_git_ls, BranchOrTag},
 };
 
 enum PrefetchHashResult {
@@ -570,26 +569,49 @@ fn _tofu_repo_to_tag(
                 rev: rev.to_string(),
             },
         ),
+
         vcs::ParsedVCS::GitHub {
             owner,
             repo,
-            branch,
+            branch: Some(branch),
             rev: None,
         } => {
-            let branch = match branch {
-                Some(branch) => branch.to_string(),
-                None => input.discover_main_branch()?,
-            };
-            (
-                true,
-                vcs::TofuVCS::GitHub {
-                    owner: owner.to_string(),
-                    repo: repo.to_string(),
-                    branch: branch.to_string(),
-                    rev: input.newest_tag(tag_regex)?,
-                },
-            )
+            // branch could either be a branch. Or a tag. We have to discover it.
+            match input.branch_or_tag(branch)? {
+                BranchOrTag::Branch => (
+                    true,
+                    vcs::TofuVCS::GitHub {
+                        owner: owner.to_string(),
+                        repo: repo.to_string(),
+                        branch: branch.to_string(),
+                        rev: input.newest_tag(tag_regex)?,
+                    },
+                ),
+                BranchOrTag::Tag => (
+                    true,
+                    vcs::TofuVCS::GitHub {
+                        owner: owner.to_string(),
+                        repo: repo.to_string(),
+                        branch: input.discover_main_branch()?,
+                        rev: branch.to_string(),
+                    },
+                ),
+            }
         }
+        vcs::ParsedVCS::GitHub {
+            owner,
+            repo,
+            branch: None,
+            rev: None,
+        } => (
+            true,
+            vcs::TofuVCS::GitHub {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                branch: input.discover_main_branch()?,
+                rev: input.newest_tag(tag_regex)?,
+            },
+        ),
         vcs::ParsedVCS::GitHub {
             owner,
             repo,
@@ -1234,7 +1256,7 @@ fn discover_newest_rev_git(url: &str, branch: Option<&str>) -> Result<String> {
         Some(x) => format!("refs/heads/{}", x),
         None => "HEAD".to_string(),
     };
-    let hashes = run_github_ls(&rewritten_url, Some(refs.as_str()))?;
+    let hashes = run_git_ls(&rewritten_url, Some(refs.as_str()))?;
     if hashes.is_empty() {
         bail!(
             "Could not find revision hash in 'git ls-remote {} {}' output.{}",
