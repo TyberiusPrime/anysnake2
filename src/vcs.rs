@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::{bail, Context, Result};
 use log::debug;
@@ -74,6 +74,11 @@ impl ToString for TofuVCS {
             }
         }
     }
+}
+
+pub enum BranchOrTag {
+    Branch,
+    Tag,
 }
 
 impl TryFrom<&str> for ParsedVCS {
@@ -187,7 +192,7 @@ impl ParsedVCS {
                 branch: _branch,
                 rev: _rev,
             } => {
-                let hash_and_ref = run_github_ls(&url, None)?;
+                let hash_and_ref = run_git_ls(&url, None)?;
                 let res: Result<_> = hash_and_ref
                     .into_iter()
                     .filter_map(|(hash, refname)| match refname.strip_prefix("refs/tags/") {
@@ -255,13 +260,23 @@ impl ParsedVCS {
             Ok(matches[0].2.clone())
         }
     }
+
+    pub fn branch_or_tag(&self, query: &str) -> Result<BranchOrTag> {
+        let temp = run_git_ls(&self.get_git_url(), Some(&format!("refs/heads/{query}")))?;
+        if temp.is_empty() {
+            return Ok(BranchOrTag::Tag);
+        } else {
+            return Ok(BranchOrTag::Branch);
+        }
+    }
+
     fn get_branches(&self) -> Result<Vec<String>> {
         let hash_and_ref = match self {
             ParsedVCS::Git {
                 url,
                 branch: _branch,
                 rev: _rev,
-            } => run_github_ls(&url, None)?,
+            } => run_git_ls(&url, None)?,
             ParsedVCS::GitHub {
                 owner,
                 repo,
@@ -269,7 +284,7 @@ impl ParsedVCS {
                 rev: _rev,
             } => {
                 let url = format!("https://github.com/{owner}/{repo}.git");
-                run_github_ls(&url, None)?
+                run_git_ls(&url, None)?
             }
         };
         let res: Vec<String> = hash_and_ref
@@ -299,23 +314,20 @@ impl ParsedVCS {
         }
     }
 
-    pub fn newest_revision(&self, branch: &str) -> Result<String> {
-        let hash_and_ref = match self {
-            ParsedVCS::Git {
-                url,
-                branch: _ignored,
-                rev: _,
-            } => run_github_ls(&url, Some(&branch))?,
+    fn get_git_url(&self) -> Cow<str> {
+        match self {
+            ParsedVCS::Git { url, branch, rev } => Cow::Borrowed(url),
             ParsedVCS::GitHub {
                 owner,
                 repo,
-                branch: _ignored,
-                rev: _,
-            } => {
-                let url = format!("https://github.com/{owner}/{repo}");
-                run_github_ls(&url, Some(&branch))?
-            }
-        };
+                branch,
+                rev,
+            } => Cow::Owned(format!("https://github.com/{owner}/{repo}")),
+        }
+    }
+
+    pub fn newest_revision(&self, branch: &str) -> Result<String> {
+        let hash_and_ref = run_git_ls(&self.get_git_url(), Some(&branch))?;
 
         if hash_and_ref.is_empty() {
             bail!(
@@ -363,8 +375,9 @@ fn filename_safe(input: &str) -> String {
         .collect()
 }
 
-pub fn run_github_ls(url: &str, branch: Option<&str>) -> Result<Vec<(String, String)>> {
+pub fn run_git_ls(url: &str, branch: Option<&str>) -> Result<Vec<(String, String)>> {
     let url = url.strip_prefix("git+").unwrap_or(url);
+    debug!("Running git ls remote on {}, branch: {:?}", url, branch);
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
         let mut proc = std::process::Command::new("git");
