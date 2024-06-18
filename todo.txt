@@ -6,3 +6,7 @@
 
 
 - does ancientpoetry create a virtualenv? supress.
+
+
+- poetry project in subdirectory of grepo. poetry project in subdir, editable.
+- git+ssh urls for poetry

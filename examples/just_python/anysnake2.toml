@@ -21,11 +21,11 @@ pandas="1.5.1"
 black=""
 tomli=">1.2"
 hatchling=""
-requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
+#requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
+requests = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", version = "pypi:2.32.3" }
+example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
+dppd = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools"]}
 
-[clones.code]
-# clones a repo to ./code, which you can then refer in python.
-example-cli-python= "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4"
 
 [flake-util]
 url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

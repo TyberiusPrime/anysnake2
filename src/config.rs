@@ -4,9 +4,10 @@ use anyhow::{bail, Context, Result};
 use itertools::{all, Itertools};
 use log::{debug, info};
 use serde::de::Deserializer;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::prelude::v1::Result as StdResult;
 
 pub trait GetRecursive {
     fn get_recursive(&self, key: &[&str]) -> Option<&toml::Value>;
@@ -102,7 +103,7 @@ pub struct TofuConfigToml {
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<TofuRust>,
-    pub python: Option<Python>,
+    pub python: Option<TofuPython>,
     pub container: Container,
     pub flakes: HashMap<String, TofuFlake>,
     pub dev_shell: DevShell,
@@ -113,7 +114,7 @@ pub struct TofuConfigToml {
 
 #[derive(Debug, Deserialize)]
 pub struct ParsedVCSInsideURLTag {
-    pub url: ParsedVCS
+    pub url: ParsedVCS,
 }
 
 impl ConfigToml {
@@ -309,12 +310,12 @@ pub struct TofuRust {
     pub url: TofuVCS,
 }
 
-#[derive(Deserialize, Debug)]
+/* #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ParsedPythonPackageDefinition {
     Simple(String),
     Complex(HashMap<String, toml::Value>),
-}
+} */
 
 #[derive(Debug, Clone)]
 pub struct BuildPythonPackageInfo {
@@ -358,18 +359,192 @@ impl BuildPythonPackageInfo {
 }
 
 #[derive(Debug, Clone)]
-pub enum PythonPackageDefinition {
-    Simple(String),
-    Editable(String),
-    Complex(toml::map::Map<String, toml::Value>),
+pub enum PythonPackageSource {
+    VersionConstraint(String),
+    URL(String),
+    VCS(ParsedVCS),
+    PyPi {
+        version: Option<String>,
+        url: Option<String>,
+    },
 }
 
-fn de_python_package_definition<'de, D>(
+#[derive(Debug, Clone)]
+pub enum TofuPythonPackageSource {
+    VersionConstraint(String),
+    URL(String),
+    VCS(TofuVCS),
+    PyPi { version: String, url: String },
+}
+
+impl PythonPackageSource {
+    fn from_url(url: &str) -> Result<PythonPackageSource> {
+        Ok(
+            if url.starts_with("github:") | url.starts_with("git+https") {
+                let vcs = ParsedVCS::try_from(url)?;
+                PythonPackageSource::VCS(vcs)
+            } else if url.starts_with("pypi:") {
+                let (_, version_and_url) = url.split_once(":").unwrap();
+                if version_and_url.is_empty() {
+                    PythonPackageSource::PyPi {
+                        url: None,
+                        version: None,
+                    }
+                } else {
+                    let (version, url) = version_and_url
+                        .split_once("/")
+                        .map(|(a, b)| (Some(a.to_string()), Some(b.to_string())))
+                        .unwrap_or((Some(version_and_url.to_string()), None));
+                    PythonPackageSource::PyPi { version, url }
+                }
+            } else {
+                PythonPackageSource::URL(url.to_string())
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PythonPackageDefinition {
+    pub source: PythonPackageSource,
+    pub editable: bool,
+    pub poetry2nix: toml::map::Map<String, toml::Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TofuPythonPackageDefinition {
+    pub source: TofuPythonPackageSource,
+    pub editable: bool,
+    pub poetry2nix: toml::map::Map<String, toml::Value>,
+}
+
+#[derive(Debug)]
+enum StrOrHashMap {
+    String(String),
+    HashMap(HashMap<String, toml::Value>),
+}
+
+impl<'de> Deserialize<'de> for StrOrHashMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct StrOrHashMapVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for StrOrHashMapVisitor {
+            type Value = StrOrHashMap;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a string or a hashmap")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(StrOrHashMap::String(v.to_string()))
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: serde::de::MapAccess<'de>,
+            {
+                let mut values = HashMap::new();
+                while let Some((key, value)) = map.next_entry()? {
+                    values.insert(key, value);
+                }
+                Ok(StrOrHashMap::HashMap(values))
+            }
+        }
+
+        deserializer.deserialize_any(StrOrHashMapVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonPackageDefinition {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        //let parsed: StdResult<StrOrHashMap> = crate::maps_duplicate_key_is_error::deserialize(deserializer)?; todo
+        let parsed = StrOrHashMap::deserialize(deserializer)?;
+        match parsed {
+            StrOrHashMap::String(str) => {
+                let source = if str.contains(":") {
+                    PythonPackageSource::from_url(str.as_str()).map_err(serde::de::Error::custom)?
+                } else {
+                    PythonPackageSource::VersionConstraint(str)
+                };
+                return Ok(PythonPackageDefinition {
+                    source,
+                    editable: false,
+                    poetry2nix: toml::map::Map::new(),
+                });
+            }
+            StrOrHashMap::HashMap(parsed) => {
+                let url = parsed.get("url");
+                let version = parsed.get("version");
+                if url.is_some() && version.is_some() {
+                    if !version
+                        .unwrap()
+                        .as_str()
+                        .context("Version was not a string")
+                        .map_err(serde::de::Error::custom)?
+                        .starts_with("pypi:")
+                    {
+                        return Err(serde::de::Error::custom(
+                        "Both url and version are used, but only one is allowed. (Or version must be pypi:...)",
+                    ));
+                    }
+                }
+                let source = {
+                    if let Some(toml::Value::String(url)) = url {
+                        PythonPackageSource::from_url(url.as_str())
+                            .map_err(serde::de::Error::custom)?
+                    } else if let Some(url) = url {
+                        return Err(serde::de::Error::custom(format!(
+                            "url must be a string, but was {:?}",
+                            url
+                        )));
+                    } else if let Some(toml::Value::String(constraint)) = version {
+                        PythonPackageSource::VersionConstraint(constraint.to_string())
+                    } else if let Some(constraint) = version {
+                        return Err(serde::de::Error::custom(format!(
+                            "version must be a string, but was {:?}",
+                            constraint
+                        )));
+                    } else {
+                        return Err(serde::de::Error::custom(
+                            "Either url or version must be set",
+                        ));
+                    }
+                };
+                let editable = parsed
+                    .get("editable")
+                    .and_then(|x| x.as_bool())
+                    .unwrap_or(false);
+                let poetry2nix = parsed
+                    .get("poetry2nix")
+                    .and_then(|x| x.as_table())
+                    .unwrap_or(&toml::map::Map::new())
+                    .clone();
+                return Ok(PythonPackageDefinition {
+                    source,
+                    editable,
+                    poetry2nix,
+                });
+            }
+        }
+    }
+}
+
+/* fn de_python_package_definition<'de, D>(
     deserializer: D,
 ) -> Result<HashMap<String, PythonPackageDefinition>, D::Error>
 where
     D: Deserializer<'de>,
 {
+    let str_parsed: String =
     let parsed: HashMap<String, ParsedPythonPackageDefinition> =
         crate::maps_duplicate_key_is_error::deserialize(deserializer)?;
     let res: Result<HashMap<String, PythonPackageDefinition>, D::Error> = parsed
@@ -377,16 +552,20 @@ where
         .map(|(pkg_name, v)| {
             match v {
                 ParsedPythonPackageDefinition::Simple(x) => {
+                    Ok((pkg_name, if x.starts_with("editable/") {
+                        PythonPackageDefinition::Simple{version: x.strip_prefix("editable/").unwrap().to_string(),editable: true}
+                    } else {
+                        PythonPackageDefinition::Simple{version: x,editable: false}
+                    }))
 
-                    Ok((pkg_name,
-                        if x.starts_with("editable/") { PythonPackageDefinition::Editable(x.strip_prefix("editable/").unwrap().to_string())} else { PythonPackageDefinition::Simple(x) }))
                 }
                 ParsedPythonPackageDefinition::Complex(def) => {
                     let mut errors = Vec::new();
                     let mut parsed_def = toml::map::Map::new();
-                    let allowed_keys =["url", "poetry2nix", "version", "git", "branchName", "rev", "pypi"];
+                    let allowed_keys =["version","url", "poetry2nix", "version", "git", "branchName", "rev", "pypi"];
                     let mut url_used = false;
                     let mut version_used = false;
+                    let mut editable = false;
                     for (key, value) in def.into_iter() {
                         match value {
                             toml::Value::String(_)| toml::Value::Array(_) | toml::Value::Table(_) => {
@@ -418,14 +597,36 @@ where
                                 errors.push("All python package definition values must be strings, or list of strings.".to_string());
                             }
                         }
+
                         if url_used && version_used {
                             errors.push("Both url and version are used, but only one is allowed.".to_string());
-                        }
+                        } else if version_used {
+                            let str_ver =  def.get("version").unwrap().as_str();
+                            match str_ver {
+                                Some(str_ver) => {
+                                    if str_ver.starts_with("editable/") {
+                                        editable = true;
+                                        parsed_def["version"] = str_ver.strip_prefix("editable/").unwrap().to_string().into();
+                                }}
+                                None => {errors.push("version must be a string".to_string());}
+                            }
+                        } else if url_used {
+                            let str_url =  def.get("url").unwrap().as_str();
+                            match str_url {
+                                Some(str_url) =>{
+                                    if str_url.starts_with("editable/") {
+                                        errors.push("url = 'editable/...' is not allowed. Use version = 'editable/...' instead".to_string());
+                                    }
+                                },
+                                None  => {errors.push("url in python package definitions must be a string".to_string());}
+                            }
+
+                            }
                     }
                     if errors.is_empty() {
                         Ok((
                             pkg_name,
-                            PythonPackageDefinition::Complex(parsed_def)))
+                            PythonPackageDefinition::Complex{def: parsed_def, editable}))
                     } else {
                         Err(serde::de::Error::custom(format!(
                             "Python.packages.{}: {}",
@@ -535,21 +736,34 @@ where
             }})
         .collect();
     res
-}
+} */
 
 #[derive(Deserialize, Debug)]
 pub struct Python {
     pub version: String,
     pub ecosystem_date: String,
-    #[serde(deserialize_with = "de_python_package_definition")]
     pub packages: HashMap<String, PythonPackageDefinition>,
-    //pub additional_mkpython_arguments: Option<String>,
-    //pub additional_mkpython_arguments_func: Option<String>,
 }
 
-impl Python {
+#[derive(Debug)]
+pub struct TofuPython {
+    pub version: String,
+    pub ecosystem_date: String,
+    pub packages: HashMap<String, TofuPythonPackageDefinition>,
+}
+
+impl TofuPython {
     pub fn parsed_ecosystem_date(&self) -> Result<chrono::NaiveDate> {
         parse_my_date(&self.ecosystem_date)
+    }
+
+    pub fn has_editable_packages(&self) -> bool {
+        for spec in self.packages.values() {
+            if spec.editable {
+                return true;
+            }
+        }
+        return false;
     }
 }
 

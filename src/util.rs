@@ -78,10 +78,7 @@ fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
     }
 }
 
-pub fn change_toml_file(
-    toml_path: &PathBuf,
-    updates: TomlUpdates,
-) -> Result<()> {
+pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()> {
     let toml = std::fs::read_to_string(toml_path).expect("Could not reread config file");
     let mut doc = toml.parse::<DocumentMut>().expect("invalid doc");
     if !updates.is_empty() {
@@ -91,6 +88,12 @@ pub fn change_toml_file(
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
                 for p in path[1..path.len()].iter() {
+                    match x {
+                        toml_edit::Item::Value(t) => {
+                            *x = toml_edit::Item::Value(toml_edit::Table::new().into_inline_table().into());
+                        }
+                        _ => {}
+                    }
                     x = &mut x[p];
                 }
                 *x = value;
@@ -123,7 +126,6 @@ pub fn change_toml_file(
         let out_toml = doc.to_string();
         std::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
         info!("Wrote updated {:?}", toml_path);
-        panic!();
     }
 
     Ok(())
