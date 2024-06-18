@@ -242,8 +242,17 @@ fn switch_to_configured_version(
                 info!("--no-version-switch was passed, not switching versions");
             } else {
                 let rev = match url {
-                    vcs::TofuVCS::Git { url: _, branch: _, rev } => rev,
-                    vcs::TofuVCS::GitHub { owner: _, repo: _, branch: _, rev } => rev,
+                    vcs::TofuVCS::Git {
+                        url: _,
+                        branch: _,
+                        rev,
+                    } => rev,
+                    vcs::TofuVCS::GitHub {
+                        owner: _,
+                        repo: _,
+                        branch: _,
+                        rev,
+                    } => rev,
                 };
                 if rev.as_str()
                     != matches
@@ -251,20 +260,11 @@ fn switch_to_configured_version(
                         .cloned()
                         .unwrap_or_else(|| "noversionspecified".to_string())
                 {
-                    info!(
-                        "restarting with version from {}",
-                        url.to_string()
-                    );
+                    info!("restarting with version from {}", url.to_string());
                     let repo = url.to_string();
 
-                    let mut args = vec![
-                        "shell",
-                        &repo,
-                        "-c",
-                        "anysnake2",
-                        "--_running_version",
-                        rev,
-                    ];
+                    let mut args =
+                        vec!["shell", &repo, "-c", "anysnake2", "--_running_version", rev];
                     let input_args: Vec<String> = std::env::args().collect();
                     {
                         for argument in input_args.iter().skip(1) {
@@ -422,7 +422,12 @@ fn inner_main() -> Result<()> {
 
         if let Some(python) = &tofued_config.python {
             //todo
-            //fill_venv(&python.version, &python_packages, &nixpkgs_url, &flake_dir)?;
+            fill_venv(
+                &python.version,
+                &python.packages,
+                &tofued_config.outside_nixpkgs,
+                &flake_dir,
+            )?;
         };
 
         if cmd == "develop" {
@@ -550,14 +555,9 @@ fn inner_main() -> Result<()> {
                     "ro".to_string(),
                 )); */
                 let mut python_paths = Vec::new();
-                for (pkg, spec) in python.packages.iter().filter_map(|(pkg, spec)| match spec {
-                    PythonPackageDefinition::Editable(spec) => Some((pkg, spec)),
-                    _ => None,
-                }) {
+                for (pkg, spec) in python.packages.iter().filter(|(pkg, spec)| spec.editable) {
                     let safe_pkg = safe_python_package_name(pkg);
-                    let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
-                        .iter()
-                        .collect();
+                    let target_dir: PathBuf = ["code", pkg].iter().collect(); //todo: make configurable
                     binds.push((
                         target_dir.to_string_lossy(),
                         format!("/anysnake2/venv/linked_in/{}", safe_pkg),
@@ -777,7 +777,6 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-
 fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
     match &parsed_config.clones {
         Some(clones) => {
@@ -807,9 +806,8 @@ fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
                     fs::create_dir_all(&final_dir)?;
                     if dir_empty(&final_dir)? {
                         info!("cloning {}/{} from {}", target_dir, name, url);
-                        url.clone_to_target_dir(final_dir.to_string_lossy())?;
+                        url.clone(final_dir.to_string_lossy())?;
                         known_clones.insert(name.clone(), url.to_string());
-
                     }
                 }
                 fs::write(
@@ -846,7 +844,7 @@ fn rebuild_flake(
 
     if target != "flake" {
         debug!("building container");
-        let nix_build_result = run_without_ctrl_c(|| {
+        let nix_build_result = (|| {
             Command::new("nix")
                 .args(["build", &format!("./#{}", target), "-v",
                 "--max-jobs", "auto",
@@ -858,7 +856,7 @@ fn rebuild_flake(
                 .status()
                 .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{} -v --show-trace'",
                     target))
-        })?;
+        })()?;
         if nix_build_result.success() {
             fs::remove_file(&build_unfinished_file)?;
             Ok(())
@@ -908,8 +906,8 @@ fn safe_python_package_name(input: &str) -> String {
 // deal with the editable packages.
 fn fill_venv(
     python_version: &str,
-    python: &[(String, PythonPackageDefinition)],
-    outside_nixpkgs_url: &str, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
+    python: &HashMap<String, config::TofuPythonPackageDefinition>,
+    outside_nixpkgs_url: &vcs::TofuVCS, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
     flake_dir: &Path,
 ) -> Result<()> {
     Ok(())
@@ -927,10 +925,15 @@ fn fill_venv(
 
     for (pkg, spec) in python
         .iter()
-        .filter(|(_, spec)| spec.starts_with("editable/"))
+        .filter_map(|(pkg, spec)| match spec{
+            PythonPackageDefinition::Complex(_) |
+            PythonPackageDefinition::Simple(_) => None,
+            PythonPackageDefinition::Editable(spec) => Some((pkg,spec)),
+        })
     {
+        debug!("ensuring venv  for {pkg}");
         let safe_pkg = safe_python_package_name(pkg);
-        let target_dir: PathBuf = [spec.strip_prefix("editable/").unwrap(), pkg]
+        let target_dir: PathBuf = [spec, pkg]
             .iter()
             .collect();
         if !target_dir.exists() {
@@ -1035,7 +1038,7 @@ fn fill_venv(
             info!("installing inside singularity");
             let singularity_result = run_singularity(
                 &singularity_args[..],
-                outside_nixpkgs_url,
+                &outside_nixpkgs_url.to_nix_string(),
                 Some(&venv_dir.join("singularity.bash")),
                 None,
                 flake_dir,
@@ -1103,9 +1106,9 @@ fn fill_venv(
             */
         }
     }
-    */
     Ok(())
         */
+    */
 }
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
@@ -1305,12 +1308,9 @@ fn write_develop_python_path(
         .context("No parent found for flake dir")?
         .to_path_buf();
 
-    for (pkg, spec) in python_packages.iter().filter_map(|(pkg, spec)| match spec {
-        PythonPackageDefinition::Editable(spec) => Some((pkg, spec)),
-        _ => None,
-    }) {
+    for (pkg, _spec) in python_packages.iter().filter(|(pkg, spec)| spec.editable) {
         let safe_pkg = safe_python_package_name(pkg);
-        let real_target = parent_dir.join(spec.strip_prefix("editable/").unwrap());
+        let real_target = parent_dir.join("code").join(pkg);
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
         let egg_target = parse_egg(egg_link)?;
         let egg_target =

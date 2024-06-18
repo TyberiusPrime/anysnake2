@@ -1,5 +1,6 @@
 #![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
 use crate::config::{self, BuildPythonPackageInfo, GetRecursive, PythonPackageDefinition};
+use crate::vcs::TofuVCS;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
@@ -161,6 +162,7 @@ pub fn write_flake(
         &mut git_tracked_files,
         &filenames.pyproject_toml,
         &filenames.poetry_lock,
+        &parsed_config.clones.as_ref(),
     )?;
 
     /* flake_contents = match &parsed_config.flakes {
@@ -331,14 +333,15 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 
 /// prepare what we put into pyprojec.toml
 fn prep_packages_for_pyproject_toml(
-    input: &HashMap<String, PythonPackageDefinition>,
+    input: &HashMap<String, config::TofuPythonPackageDefinition>,
     flakes_config: &HashMap<String, config::TofuFlake>,
     flake_dir: &Path,
+    clones: &Option<&HashMap<String, HashMap<String, TofuVCS>>>,
 ) -> Result<toml::Table> {
     let mut res = toml::Table::new();
     for (name, spec) in input.iter() {
-        match spec {
-            PythonPackageDefinition::Simple(version_constraint) => {
+        match &spec.source {
+            config::TofuPythonPackageSource::VersionConstraint(version_constraint) => {
                 if version_constraint.contains("==")
                     || version_constraint.contains('>')
                     || version_constraint.contains('<')
@@ -363,30 +366,18 @@ fn prep_packages_for_pyproject_toml(
                     //bail!("invalid python version spec {}{}", name, version_constraint);
                 }
             }
-            PythonPackageDefinition::Complex(map) => {
-                debug!("complex python package: {}: {:?}", name, map);
-                let out_map: toml::Table = map
-                    .iter()
-                    .filter_map(|(k, v)| -> Option<(String, toml::Value)> {
-                        if k != "poetry2nix" {
-                            Some((k.to_string(), v.clone()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                debug!("complex python package out: {}: {:?}", name, out_map);
-                res.insert(name.to_string(), out_map.into());
+            config::TofuPythonPackageSource::URL(url)
+            | config::TofuPythonPackageSource::PyPi { url, .. } => {
+                let mut out_map: toml::Table = toml::Table::new();
+                out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
+                res.insert(name.to_string(), toml::Value::Table(out_map));
             }
-            PythonPackageDefinition::Editable(editable_path) => {
+            config::TofuPythonPackageSource::VCS(vcs) => {
+                let (url, rev, _branch) = vcs.get_url_rev_branch();
                 let mut out_map = toml::Table::new();
-                let target_path = PathBuf::from(editable_path).join(name);
-                out_map.insert(
-                    "path".to_string(),
-                    toml::Value::String(format!("{}", target_path.canonicalize()?.to_string_lossy())),
-                );
-                out_map.insert("develop".to_string(), true.into());
-                res.insert(name.to_string(), out_map.into());
+                out_map.insert("git".to_string(), toml::Value::String(url));
+                out_map.insert("rev".to_string(), toml::Value::String(rev.to_string()));
+                res.insert(name.to_string(), toml::Value::Table(out_map));
             }
         }
     }
@@ -753,6 +744,7 @@ build-backend = "poetry.core.masonry.api"
         debug!("running ancient-poetry: {:?}", &full_args);
         let child = Command::new("nix")
             .args(full_args)
+            .current_dir(".")
             //.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
@@ -1025,62 +1017,38 @@ fn add_r(
 }
 
 fn format_poetry_build_input_overrides(
-    python_packages: &HashMap<String, PythonPackageDefinition>,
+    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
 ) -> Result<Vec<String>> {
     let mut poetry_overide_entries = Vec::new();
     for (name, spec) in python_packages.iter() {
-        match spec {
-            PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Editable(_) => {}
-            PythonPackageDefinition::Complex(spec) => {
-                debug!("complex python package: {}: {:?}", name, spec);
-                if let Some(build_inputs) = spec.get_recursive(&["poetry2nix", "buildInputs"]) {
-                    let str_build_inputs = build_inputs
-                        .as_array().with_context(||format!("Build input was not a list of strings package definition for {}", name))?
-                        .iter()
-                        .map(|v| Ok({
-                            let v= v
-                                .as_str()
-                                .with_context(||format!("Build input was not a list of strings package definition for {}", name))?;
-                            format!("prev.{}", v)
-                        }))
-                        .collect::<Result<Vec<String>>>()
-                        ?
-                        .join(" ");
-                    poetry_overide_entries.push(format!("{name} = prev.{name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
-                }
-            }
+        debug!("complex python package: {}: {:?}", name, spec);
+        if let Some(build_inputs) = spec.poetry2nix.get("buildInputs") {
+            let str_build_inputs = build_inputs
+                .as_array()
+                .with_context(|| {
+                    format!(
+                        "Build input was not a list of strings package definition for {}",
+                        name
+                    )
+                })?
+                .iter()
+                .map(|v| {
+                    Ok({
+                        let v = v.as_str().with_context(|| {
+                            format!(
+                                "Build input was not a list of strings package definition for {}",
+                                name
+                            )
+                        })?;
+                        format!("prev.{}", v)
+                    })
+                })
+                .collect::<Result<Vec<String>>>()?
+                .join(" ");
+            poetry_overide_entries.push(format!("{name} = prev.{name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
         }
     }
     Ok(poetry_overide_entries)
-}
-
-fn copy_minimum_for_editable_packages(
-    flake_dir: &Path,
-    python_packages: &HashMap<String, PythonPackageDefinition>,
-) -> Result<()> {
-    for (name, spec) in python_packages.iter() {
-        match spec {
-            PythonPackageDefinition::Simple(_) | PythonPackageDefinition::Complex(_) => {},
-            PythonPackageDefinition::Editable(folder) => {
-                let input_folder = PathBuf::from(folder).join(name);
-                let target_path = flake_dir.join("poetry/python_editable").join(name);
-                ex::fs::create_dir_all(&target_path)?;
-                // copy top level files - that should be enough for poetry to discover the
-                // dependencies
-                // todo: Replace with fixed list of files.
-                // todo: copy only if size/date mismatch?
-                for filename in input_folder.read_dir()? {
-                    let filename = filename?.path();
-                    if filename.is_file() {
-                        let target = target_path.join(filename.file_name().unwrap());
-                        fs::copy(&filename, &target)?;
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn add_python(
@@ -1094,6 +1062,7 @@ fn add_python(
     git_tracked_files: &mut Vec<String>,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
+    clones: &Option<&HashMap<String, HashMap<String, TofuVCS>>>,
 ) -> Result<()> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     match &parsed_config.python {
@@ -1106,12 +1075,20 @@ fn add_python(
             let python_major_minor = format!("python{}", python.version.replace(".", ""));
 
             let python_packages = &python.packages;
-            let mut out_python_packages =
-                prep_packages_for_pyproject_toml(python_packages, &parsed_config.flakes, flake_dir)?;
+            let mut out_python_packages = prep_packages_for_pyproject_toml(
+                python_packages,
+                &parsed_config.flakes,
+                flake_dir,
+                clones,
+            )?;
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
-                out_python_packages.insert("rpy2".to_string(), toml::Value::String("".to_string()));
+                out_python_packages
+                    .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
             }
-            copy_minimum_for_editable_packages(flake_dir, python_packages)?;
+            if python.has_editable_packages() && !out_python_packages.contains_key("pip") {
+                out_python_packages
+                    .insert("pip".to_string(), toml::Value::String(">0".to_string()));
+            }
 
             //out_python_packages.sort();
 

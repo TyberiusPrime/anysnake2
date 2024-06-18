@@ -1,7 +1,7 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
-use log::debug;
+use log::{debug, error};
 use serde::Serialize;
 use version_compare::Version;
 
@@ -10,7 +10,7 @@ use crate::{
     run_without_ctrl_c,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParsedVCS {
     Git {
         url: String,
@@ -25,7 +25,7 @@ pub enum ParsedVCS {
     },
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Debug, PartialEq, Eq, Clone)]
 pub enum TofuVCS {
     Git {
         url: String,
@@ -57,8 +57,8 @@ impl TofuVCS {
         }
     }
 
-    pub fn clone_to_target_dir(&self, target_dir: String) -> Result<()> {
-        let (url, rev, branch) = match self {
+    pub fn get_url_rev_branch(&self) -> (String, &str, &str) {
+        match self {
             TofuVCS::Git { url, branch, rev } => (url.to_string(), rev, branch),
             TofuVCS::GitHub {
                 owner,
@@ -66,32 +66,106 @@ impl TofuVCS {
                 branch,
                 rev,
             } => (
-                "https://github.com/{owner}/{repo}.git".to_string(),
+                format!("https://github.com/{owner}/{repo}.git"),
                 rev,
                 branch,
             ),
-        };
-        //let clone_args = 
+        }
+    }
+
+    pub fn clone(&self, target_dir: String) -> Result<()> {
+        let (url, rev, branch) = self.get_url_rev_branch();
+        //let clone_args =
         run_without_ctrl_c(|| {
-            let mut proc = std::process::Command::new("git");
-            proc.args(vec!["clone", &url, "--branch", rev, target_dir.as_str()]);
-            proc.output()
-                .with_context(|| format!("Git clone failed for {self}"))?;
+            let inner = || {
+                let mut proc = std::process::Command::new("git");
+                proc.args(vec!["clone", &url, target_dir.as_str()]);
+                debug!("Running {:?}", proc);
+                let status = proc
+                    .status()
+                    .with_context(|| format!("Git clone failed for {self}"))?;
+                if !status.success() {
+                    bail!("Git clone failed for {self}");
+                }
 
-            let mut proc = std::process::Command::new("git");
-            proc.args(&["branch", branch, rev]);
-            proc.current_dir(target_dir.as_str());
-            proc.output()
-                .with_context(|| format!("Git branch failed"))?;
+                let mut proc = std::process::Command::new("git");
+                proc.args(&["checkout", branch]);
+                proc.current_dir(target_dir.as_str());
+                debug!("Running {:?}", proc);
+                let status = proc
+                    .status()
+                    .with_context(|| format!("Git checkout failed"))?;
+                if !status.success() {
+                    bail!("Git checkout failed for {self}");
+                }
+                //git reset
+                let mut proc = std::process::Command::new("git");
+                proc.args(&["reset", "--hard", rev]);
+                proc.current_dir(target_dir.as_str());
+                debug!("Running {:?}", proc);
+                let status = proc.status().with_context(|| format!("Git reset failed"))?;
+                if !status.success() {
+                    bail!("Git reset failed for {self}");
+                }
+                Ok(())
+            };
 
-            let mut proc = std::process::Command::new("git");
-            proc.args(&["switch", branch]);
-            proc.current_dir(target_dir.as_str());
-            proc.output()
-                .with_context(|| format!("Git switch failed"))?;
+            if let Err(msg) = inner() {
+                error!("Throwing away cloned repo because of error: {msg:?}");
+                ex::fs::remove_dir_all(&target_dir)
+                    .context("Failed to remove target dir of failed clone")?;
+
+                return Err(msg);
+            }
 
             Ok(())
         })?;
+
+        Ok(())
+    }
+    pub fn copy_revision(&self, target_dir: &PathBuf) -> Result<()> {
+        let (url, rev, _branch) = self.get_url_rev_branch();
+        let mut proc = std::process::Command::new("git");
+        proc.args(&["init"]);
+        proc.current_dir(target_dir);
+        debug!("Running {:?}", proc);
+        let status = proc.status().with_context(|| format!("Git init"))?;
+        if !status.success() {
+            bail!("Git init failed for {self}");
+        }
+
+        let mut proc = std::process::Command::new("git");
+        proc.args(&["remote", "add", "origin", &url]);
+        proc.current_dir(target_dir);
+        debug!("Running {:?}", proc);
+        let status = proc
+            .status()
+            .with_context(|| format!("Git remote add failed"))?;
+        if !status.success() {
+            bail!("Git remote add failed {self}");
+        }
+
+        let mut proc = std::process::Command::new("git");
+        proc.args(&["fetch", "origin", rev]);
+        proc.current_dir(target_dir);
+        debug!("Running {:?}", proc);
+        let status = proc
+            .status()
+            .with_context(|| format!("Git fetch origin failed"))?;
+        if !status.success() {
+            bail!("Git fetch origin failed {self}");
+        }
+
+        let mut proc = std::process::Command::new("git");
+        proc.args(&["reset", "--hard", rev]);
+        proc.current_dir(target_dir);
+        debug!("Running {:?}", proc);
+        let status = proc.status().with_context(|| format!("Git reset failed"))?;
+        if !status.success() {
+            bail!("Git reset failed {self}");
+        }
+        let git_dir = PathBuf::from(target_dir).join(".git");
+        ex::fs::remove_dir_all(git_dir)?;
 
         Ok(())
     }
@@ -243,6 +317,7 @@ impl ParsedVCS {
                 branch: _,
                 rev: _rev,
             } => {
+                //should be run git_ls instead?
                 let mut res = HashMap::new();
                 for page in 0..30 {
                     let json = get_github_tags(owner, repo, page)?;
