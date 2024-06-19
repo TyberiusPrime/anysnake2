@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use log::{debug, info};
-use toml_edit::{DocumentMut};
+use toml_edit::DocumentMut;
 
 use std::{
     collections::HashMap,
@@ -46,34 +46,25 @@ pub fn dir_empty(path: &Path) -> Result<bool> {
 }
 
 pub type TomlUpdates = Vec<(Vec<String>, toml_edit::Item)>;
-/// if no hash_{rev} is set, discover it and update anysnake2.toml
-///
-///
+
 fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
     for (k, v) in document.iter_mut() {
-        match v {
-            toml_edit::Item::Table(t) => {
-                let position = order
-                    .get(k.get())
-                    .map(|x| *x)
-                    .unwrap_or(k.chars().next().unwrap() as usize * 255);
-                t.set_position(position);
+        if let toml_edit::Item::Table(t) = v {
+            let position = order
+                .get(k.get())
+                .map_or_else(|| k.chars().next().unwrap() as usize * 255, |x| *x);
+            t.set_position(position);
 
-                for (k2, v2) in t.iter_mut() {
-                    let k2k = format!("{}.{}", k.get(), k2.get());
-                    match v2 {
-                        toml_edit::Item::Table(t2) => {
-                            let position2 = order
-                                .get(k2k.as_str())
-                                .map(|x| *x)
-                                .unwrap_or(position + (k2.get().chars().next().unwrap() as usize));
-                            t2.set_position(position2);
-                        }
-                        _ => {}
-                    }
+            for (k2, v2) in t.iter_mut() {
+                let k2k = format!("{}.{}", k.get(), k2.get());
+                if let toml_edit::Item::Table(t2) = v2 {
+                    let position2 = order.get(k2k.as_str()).map_or_else(
+                        || (position + (k2.get().chars().next().unwrap() as usize)),
+                        |x| *x,
+                    );
+                    t2.set_position(position2);
                 }
             }
-            _ => {}
         }
     }
 }
@@ -87,12 +78,11 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
         for (path, value) in updates {
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
-                for p in path[1..path.len()].iter() {
-                    match x {
-                        toml_edit::Item::Value(_t) => {
-                            *x = toml_edit::Item::Value(toml_edit::Table::new().into_inline_table().into());
-                        }
-                        _ => {}
+                for p in &path[1..path.len()] {
+                    if let toml_edit::Item::Value(_t) = x {
+                        *x = toml_edit::Item::Value(
+                            toml_edit::Table::new().into_inline_table().into(),
+                        );
                     }
                     x = &mut x[p];
                 }
@@ -124,7 +114,7 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
         apply_table_order(&mut doc, &order);
 
         let out_toml = doc.to_string();
-        std::fs::write(toml_path, out_toml).expect("failed to rewrite config file");
+        std::fs::write(toml_path, out_toml).context("failed to rewrite config file")?;
         info!("Wrote updated {:?}", toml_path);
     }
 
@@ -149,9 +139,7 @@ pub fn get_proxy_req() -> Result<ureq::Agent> {
         //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
         debug!("using proxy_url {}", proxy_url);
         let proxy = ureq::Proxy::new(proxy_url)?;
-        agent = agent.proxy(proxy)
+        agent = agent.proxy(proxy);
     }
     Ok(agent.build())
 }
-
-

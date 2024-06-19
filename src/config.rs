@@ -65,6 +65,7 @@ pub struct TofuMinimalConfigToml {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct ConfigToml {
     #[serde(skip)]
     pub anysnake2_toml_path: Option<PathBuf>,
@@ -162,10 +163,6 @@ impl<'de> Deserialize<'de> for ParsedVCS {
     where
         D: serde::Deserializer<'de>,
     {
-        // Use `serde::from_str` to attempt conversion from string slice to `MyType`
-        //let s = String::deserialize(deserializer)?;
-        //let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
-        //let url = map.get("url");
         let url = <Option<String>>::deserialize(deserializer)?;
         match url {
             Some(s) => ParsedVCS::try_from(s.as_str()).map_err(serde::de::Error::custom),
@@ -176,7 +173,7 @@ impl<'de> Deserialize<'de> for ParsedVCS {
 
 #[derive(Debug)]
 pub enum ParsedVCSorDev {
-    VCS(ParsedVCS),
+    Vcs(ParsedVCS),
     Dev,
 }
 
@@ -186,18 +183,18 @@ impl<'de> Deserialize<'de> for ParsedVCSorDev {
         D: serde::Deserializer<'de>,
     {
         // Use `serde::from_str` to attempt conversion from string slice to `MyType`
-        let s = String::deserialize(deserializer)?;
-        Ok(if s == "dev" {
+        let parsed = String::deserialize(deserializer)?;
+        Ok(if parsed == "dev" {
             ParsedVCSorDev::Dev
         } else {
-            ParsedVCSorDev::VCS(ParsedVCS::try_from(s.as_str()).map_err(serde::de::Error::custom)?)
+            ParsedVCSorDev::Vcs(ParsedVCS::try_from(parsed.as_str()).map_err(serde::de::Error::custom)?)
         })
     }
 }
 
 #[derive(Debug)]
 pub enum TofuVCSorDev {
-    VCS(TofuVCS),
+    Vcs(TofuVCS),
     Dev,
 }
 
@@ -206,7 +203,7 @@ impl TryFrom<ParsedVCSorDev> for TofuVCSorDev {
 
     fn try_from(value: ParsedVCSorDev) -> std::prelude::v1::Result<Self, Self::Error> {
         match value {
-            ParsedVCSorDev::VCS(v) => Ok(TofuVCSorDev::VCS(TofuVCS::try_from(v)?)),
+            ParsedVCSorDev::Vcs(v) => Ok(TofuVCSorDev::Vcs(TofuVCS::try_from(v)?)),
             ParsedVCSorDev::Dev => Ok(TofuVCSorDev::Dev),
         }
     }
@@ -348,7 +345,7 @@ impl BuildPythonPackageInfo {
             .map_or(false, |x| x == "fetchPypi");
         for (k, v) in self.options.iter().sorted_by_key(|x| x.0) {
             if k != "method" && k != "buildInputs" && k != "buildPythonPackage_arguments" {
-                res.push(format!("\"{}\" = \"{}\";", k, v));
+                res.push(format!("\"{k}\" = \"{v}\";"));
             }
         }
         if inherit_pname && !self.options.contains_key("pname") {
@@ -361,8 +358,8 @@ impl BuildPythonPackageInfo {
 #[derive(Debug, Clone)]
 pub enum PythonPackageSource {
     VersionConstraint(String),
-    URL(String),
-    VCS(ParsedVCS),
+    Url(String),
+    Vcs(ParsedVCS),
     PyPi {
         version: Option<String>,
         url: Option<String>,
@@ -372,8 +369,8 @@ pub enum PythonPackageSource {
 #[derive(Debug, Clone)]
 pub enum TofuPythonPackageSource {
     VersionConstraint(String),
-    URL(String),
-    VCS(TofuVCS),
+    Url(String),
+    Vcs(TofuVCS),
     PyPi { version: String, url: String },
 }
 
@@ -382,7 +379,7 @@ impl PythonPackageSource {
         Ok(
             if url.starts_with("github:") | url.starts_with("git+https") {
                 let vcs = ParsedVCS::try_from(url)?;
-                PythonPackageSource::VCS(vcs)
+                PythonPackageSource::Vcs(vcs)
             /* } else if url.starts_with("pypi:") {
             let (_, version_and_url) = url.split_once(":").unwrap();
             if version_and_url.is_empty() {
@@ -398,7 +395,7 @@ impl PythonPackageSource {
                 PythonPackageSource::PyPi { version, url }
             } */
             } else {
-                PythonPackageSource::URL(url.to_string())
+                PythonPackageSource::Url(url.to_string())
             },
         )
     }
@@ -469,16 +466,16 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
         let parsed = StrOrHashMap::deserialize(deserializer)?;
         match parsed {
             StrOrHashMap::String(str) => {
-                let source = if str.contains(":") {
+                let source = if str.contains(':') {
                     PythonPackageSource::from_url(str.as_str()).map_err(serde::de::Error::custom)?
                 } else {
                     PythonPackageSource::VersionConstraint(str)
                 };
-                return Ok(PythonPackageDefinition {
+                Ok(PythonPackageDefinition {
                     source,
                     editable_path: None,
                     poetry2nix: toml::map::Map::new(),
-                });
+                })
             }
             StrOrHashMap::HashMap(parsed) => {
                 let url = parsed.get("url");
@@ -494,16 +491,15 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                             .map_err(serde::de::Error::custom)?
                     } else if let Some(url) = url {
                         return Err(serde::de::Error::custom(format!(
-                            "url must be a string, but was {:?}",
-                            url
+                            "url must be a string, but was {url:?}",
                         )));
                     } else if let Some(toml::Value::String(constraint)) = version {
                         if constraint.starts_with("pypi:") {
                             PythonPackageSource::PyPi {
-                                version: Some(constraint.split_once(":").unwrap().1.to_string()),
+                                version: Some(constraint.split_once(':').unwrap().1.to_string()),
                                 url: parsed
                                     .get("cached_url")
-                                    .and_then(|x| x.as_str())
+                                    .and_then(toml::Value::as_str)
                                     .map(ToString::to_string),
                             }
                         } else {
@@ -511,20 +507,19 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         }
                     } else if let Some(constraint) = version {
                         return Err(serde::de::Error::custom(format!(
-                            "version must be a string, but was {:?}",
-                            constraint
+                            "version must be a string, but was {constraint:?}",
                         )));
                     } else {
                         // this is a case of 'it's only here for poetry2nix.* or such
-                        PythonPackageSource::VersionConstraint("".to_string())
+                        PythonPackageSource::VersionConstraint(String::default())
                     }
                 };
                 let editable = {
-                    let str_val = parsed.get("editable").and_then(|x| x.as_str());
+                    let str_val = parsed.get("editable").and_then(toml::Value::as_str);
                     if let Some(str_val) = str_val {
                         Some(str_val.to_string())
                     } else {
-                        let b = parsed.get("editable").and_then(|x| x.as_bool());
+                        let b = parsed.get("editable").and_then(toml::Value::as_bool);
                         match b {
                             Some(true) => Some("code".to_string()),
                             _ => None,
@@ -533,14 +528,14 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 };
                 let poetry2nix = parsed
                     .get("poetry2nix")
-                    .and_then(|x| x.as_table())
+                    .and_then(toml::Value::as_table)
                     .unwrap_or(&toml::map::Map::new())
                     .clone();
-                return Ok(PythonPackageDefinition {
+                Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
                     poetry2nix,
-                });
+                })
             }
         }
     }
@@ -571,7 +566,7 @@ impl TofuPython {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 
@@ -619,10 +614,10 @@ pub struct TofuR {
     pub additional_packages: Option<HashMap<String, String>>,
 }
 
-fn parse_my_date(s: &str) -> Result<chrono::NaiveDate> {
+fn parse_my_date(input: &str) -> Result<chrono::NaiveDate> {
     const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
     Ok(
-        chrono::NaiveDateTime::parse_from_str(&format!("{} 00:00:00", s), FORMAT)?
+        chrono::NaiveDateTime::parse_from_str(&format!("{input} 00:00:00"), FORMAT)?
             .and_utc()
             .date_naive(),
     )

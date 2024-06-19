@@ -4,10 +4,10 @@ use std::process::Command;
 use tempfile::TempDir;
 
 fn assert_have_github_api_token() {
-    if !std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD").is_ok() {
+    if std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD").is_err() {
         panic!("Need to set ANYSNAKE2_GITHUB_API_PASSWORD to run tests");
     }
-    if !std::env::var("ANYSNAKE2_GITHUB_API_USERNAME").is_ok() {
+    if std::env::var("ANYSNAKE2_GITHUB_API_USERNAME").is_err() {
         panic!("Need to set ANYSNAKE2_GITHUB_API_USERNAME to run tests");
     }
 }
@@ -311,9 +311,9 @@ fn test_full_rpy2_sitepaths() {
 
 #[test]
 fn test_just_r() {
-    use toml_edit::Document;
+    use toml_edit::DocumentMut;
     let toml_path = "examples/just_r/anysnake2.toml";
-    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml = ex::fs::read_to_string(toml_path).unwrap();
 
     assert!(!toml.contains("nixr_tag"));
 
@@ -332,10 +332,10 @@ fn test_just_r() {
         .join(".anysnake2_flake/result/rootfs/R_libs/Rcpp/override_in_place");
     assert!(override_test_file.exists());
     let toml_path = td.path().join("anysnake2.toml");
-    let toml = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml = ex::fs::read_to_string(toml_path).unwrap();
     assert!(toml.contains("nixr_tag ="));
     //verify it's toml
-    toml.parse::<Document>().expect("invalid doc");
+    toml.parse::<DocumentMut>().expect("invalid doc");
 }
 
 #[test]
@@ -534,7 +534,7 @@ fn test_just_python_pypi() {
     let dppd_version = stdout.trim().split_once("dppd_version=").unwrap().1.trim();
     dbg!(dppd_version);
     let dppd_version: Vec<u32> = dppd_version
-        .split(".")
+        .split('.')
         .map(|x| x.parse::<u32>().unwrap())
         .collect();
     dbg!(&dppd_version);

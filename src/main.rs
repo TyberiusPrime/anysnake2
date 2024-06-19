@@ -1,7 +1,9 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Arg, ArgMatches};
-use config::{PythonPackageDefinition};
+use config::PythonPackageDefinition;
 use ex::fs;
 use indoc::indoc;
 use lazy_static::lazy_static;
@@ -185,11 +187,11 @@ fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
                 std::include_str!("../examples/minimal/anysnake2.toml")
             ),
             Some(("full", _)) => {
-                println!("{}", std::include_str!("../examples/full/anysnake2.toml"))
+                println!("{}", std::include_str!("../examples/full/anysnake2.toml"));
             }
             Some(("basic", _)) => {
                 // includes basic
-                println!("{}", std::include_str!("../examples/basic/anysnake2.toml"))
+                println!("{}", std::include_str!("../examples/basic/anysnake2.toml"));
             }
             _ => {
                 bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
@@ -205,7 +207,7 @@ fn configure_logging(matches: &ArgMatches) -> Result<()> {
     let default_verbosity = 2;
     let str_verbosity = matches.get_one::<String>("verbose");
     let verbosity: usize = match str_verbosity {
-        Some(str_verbosity) => usize::from_str(&str_verbosity)
+        Some(str_verbosity) => usize::from_str(str_verbosity)
             .context("Failed to parse verbosity. Must be an integer")?,
         None => default_verbosity,
     };
@@ -234,7 +236,7 @@ fn switch_to_configured_version(
         config::TofuVCSorDev::Dev => {
             info!("Using development version of anysnake");
         }
-        config::TofuVCSorDev::VCS(url) => {
+        config::TofuVCSorDev::Vcs(url) => {
             if matches.contains_id("no-version-switch") {
                 info!("--no-version-switch was passed, not switching versions");
             } else {
@@ -243,8 +245,8 @@ fn switch_to_configured_version(
                         url: _,
                         branch: _,
                         rev,
-                    } => rev,
-                    vcs::TofuVCS::GitHub {
+                    }
+                    | vcs::TofuVCS::GitHub {
                         owner: _,
                         repo: _,
                         branch: _,
@@ -282,6 +284,7 @@ fn switch_to_configured_version(
 }
 
 #[allow(clippy::vec_init_then_push)]
+#[allow(clippy::too_many_lines)]
 fn inner_main() -> Result<()> {
     install_ctrl_c_handler()?;
     let matches = parse_args();
@@ -554,12 +557,12 @@ fn inner_main() -> Result<()> {
                         .collect(); //todo: make configurable
                     binds.push((
                         target_dir.to_string_lossy(),
-                        format!("/anysnake2/venv/linked_in/{}", safe_pkg),
+                        format!("/anysnake2/venv/linked_in/{safe_pkg}"),
                         "ro".to_string(),
                     ));
-                    let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+                    let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
                     let egg_target = parse_egg(egg_link)?;
-                    python_paths.push(egg_target)
+                    python_paths.push(egg_target);
                 }
                 envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
                 paths.push("/anysnake2/venv/bin");
@@ -589,26 +592,18 @@ fn inner_main() -> Result<()> {
             }
             for (from, to, opts) in binds {
                 singularity_args.push("--bind".into());
-                singularity_args.push(format!(
-                    "{}:{}:{}",
-                    //fs::canonicalize(from)?
-                    //.into_os_string()
-                    //.to_string_lossy(),
-                    from,
-                    to,
-                    opts
-                ));
+                singularity_args.push(format!("{from}:{to}:{opts}",));
             }
 
             if let Some(container_envs) = &tofued_config.container.env {
-                for (k, v) in container_envs.iter() {
+                for (k, v) in container_envs {
                     envs.push(format!("{}={}", k, replace_env_vars(v)));
                 }
             }
 
             envs.push(format!("PATH={}", paths.join(":")));
 
-            for e in envs.into_iter() {
+            for e in envs {
                 singularity_args.push("--env".into());
                 singularity_args.push(e);
             }
@@ -638,7 +633,7 @@ fn inner_main() -> Result<()> {
                 &singularity_args[..],
                 &tofued_config.outside_nixpkgs.to_nix_string(),
                 Some(&run_dir.join("singularity.bash")),
-                dtach_socket,
+                &dtach_socket,
                 &flake_dir,
             )?;
             if let Some(bash_script) = post_run_outside {
@@ -647,7 +642,7 @@ fn inner_main() -> Result<()> {
                         "An error occured when running the post_run_outside bash script: {}\nScript: {}",
                         e,
                         add_line_numbers(&bash_script)
-                    )
+                    );
                 }
             };
             if let Some(mut parallel_running_child) = parallel_running_child {
@@ -677,10 +672,10 @@ fn run_singularity(
     args: &[String],
     outside_nix_repo_url: &str,
     log_file: Option<&PathBuf>,
-    dtach_socket: Option<String>,
+    dtach_socket: &Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{}#singularity", outside_nix_repo_url);
+    let singularity_url = format!("{outside_nix_repo_url}#singularity");
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
@@ -744,11 +739,11 @@ fn print_version_and_exit() -> ! {
 }
 
 fn pretty_print_singularity_call(args: &[String]) -> String {
-    let mut res = "".to_string();
+    let mut res = String::new();
     let mut skip_space = false;
-    for arg in args.iter() {
+    for arg in args {
         if skip_space {
-            skip_space = false
+            skip_space = false;
         } else {
             res += "    ";
         }
@@ -759,11 +754,11 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
         } else {
             res += arg;
         }
-        if !(arg == "--bind" || arg == "--env" || arg == "--home" || arg == "singularity") {
-            res += " \\\n";
-        } else {
+        if arg == "--bind" || arg == "--env" || arg == "--home" || arg == "singularity" {
             skip_space = true;
             res += " ";
+        } else {
+            res += " \\\n";
         }
     }
     res.pop();
@@ -807,15 +802,12 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
     {
         let tf = ex::fs::File::create(&download_filename)?;
         let mut btf = std::io::BufWriter::new(tf);
-        let mut req = util::get_proxy_req()?
-            .get(url)
-            .call()?
-            .into_reader();
+        let mut req = util::get_proxy_req()?.get(url).call()?.into_reader();
         std::io::copy(&mut req, &mut btf)?;
     }
     //call tar to unpack
     Command::new("tar")
-        .args(&["-xzf", "download.tar.gz", "--strip-components=1"])
+        .args(["-xzf", "download.tar.gz", "--strip-components=1"])
         .current_dir(target_dir)
         .status()
         .context("Failed to untar downloaded archive")?;
@@ -847,17 +839,15 @@ fn clone(
                     .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
-            config::TofuPythonPackageSource::URL(url) => {
+            config::TofuPythonPackageSource::PyPi { version: _, url }
+            | config::TofuPythonPackageSource::Url(url) => {
                 download_and_unzip(url, &final_dir)?;
             }
-            config::TofuPythonPackageSource::VCS(tofu_vcs) => {
-                tofu_vcs.clone_repo(final_dir.to_string_lossy())?;
-            }
-            config::TofuPythonPackageSource::PyPi { version: _, url } => {
-                download_and_unzip(url, &final_dir)?;
+            config::TofuPythonPackageSource::Vcs(tofu_vcs) => {
+                tofu_vcs.clone_repo(&final_dir.to_string_lossy())?;
             }
         }
-        known_clones.insert(name.to_string(), format!("{:?}", source));
+        known_clones.insert(name.to_string(), format!("{source:?}"));
     }
     Ok(())
 }
@@ -867,21 +857,21 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
     let mut todo: HashMap<String, HashMap<String, config::TofuPythonPackageSource>> =
         HashMap::new();
     if let Some(clones) = parsed_config.clones.as_ref() {
-        for (target_dir, entries) in clones.iter() {
-            for (name, source) in entries.iter() {
+        for (target_dir, entries) in clones {
+            for (name, source) in entries {
                 let entry = todo
                     .entry(target_dir.to_string())
                     .or_insert_with(HashMap::new);
                 entry.insert(
                     name.clone(),
-                    config::TofuPythonPackageSource::VCS(source.clone()),
+                    config::TofuPythonPackageSource::Vcs(source.clone()),
                 );
             }
         }
     }
     //now add in editable python packages
     if let Some(python) = &parsed_config.python {
-        for (pkg_name, package) in python.packages.iter() {
+        for (pkg_name, package) in &python.packages {
             if let Some(editable_path) = &package.editable_path {
                 let entry = todo
                     .entry(editable_path.to_string())
@@ -892,25 +882,26 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
         }
     }
 
-    for (target_dir, name_urls) in todo.iter() {
-        fs::create_dir_all(target_dir).context(format!("Could not create {}", target_dir))?;
+    for (target_dir, name_urls) in &todo {
+        fs::create_dir_all(target_dir).context(format!("Could not create {target_dir}"))?;
         let clone_log: PathBuf = [target_dir, ".clone_info.json"].iter().collect();
-        let mut known_clones: HashMap<String, String> = match clone_log.exists() {
-            true => serde_json::from_str(&fs::read_to_string(&clone_log)?)?,
-            false => HashMap::new(),
+        let mut known_clones: HashMap<String, String> = if clone_log.exists() {
+            serde_json::from_str(&fs::read_to_string(&clone_log)?)?
+        } else {
+            HashMap::new()
         };
         let do_clones = |known_clones: &mut HashMap<String, String>| {
             for (name, source) in name_urls {
-                let known_url = known_clones.get(name).map(String::as_str).unwrap_or("");
+                let known_url = known_clones.get(name).map_or("", String::as_str);
                 let final_dir: PathBuf = [target_dir, name].iter().collect();
-                let url = format!("{:?}", source);
+                let url = format!("{source:?}");
                 if known_url != url && final_dir.exists() && !dir_empty(&final_dir)?
                 //empty dir is ok.
                 {
                     let msg = format!(
                             "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
                         Cowardly refusing to throw away old checkout."
-                        , target_dir=target_dir, name=name, known_url=known_url, url=url);
+                        );
                     bail!(msg);
                 }
             }
@@ -951,11 +942,13 @@ fn rebuild_flake(
     let build_unfinished_file = flake_dir.as_ref().join(".build_unfinished");
     fs::write(&build_unfinished_file, "in_progress")?;
 
-    if target != "flake" {
+    if target == "flake" {
+        Ok(())
+    } else {
         debug!("building container");
-        let nix_build_result = (|| {
+        let nix_build_result =
             Command::new("nix")
-                .args(["build", &format!("./#{}", target), "-v",
+                .args(["build", &format!("./#{target}"), "-v",
                 "--max-jobs", "auto",
                 "--cores", "4",
                 "--keep-going"
@@ -963,17 +956,13 @@ fn rebuild_flake(
                 )
                 .current_dir(&flake_dir)
                 .status()
-                .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{} -v --show-trace'",
-                    target))
-        })()?;
+                .with_context(|| format!("nix build failed. Perhaps try with --show-trace using 'nix build ./#{target} -v --show-trace'"))?;
         if nix_build_result.success() {
             fs::remove_file(&build_unfinished_file)?;
             Ok(())
         } else {
             Err(anyhow!("flake building failed"))
         }
-    } else {
-        Ok(())
     }
 }
 
@@ -998,12 +987,12 @@ fn run_bash(script: &str) -> Result<()> {
     })
 }
 
-/// so we can use ${env_var} in the home dir, and export envs into the containers
+/// so we can use `${env_var}` in the home dir, and export envs into the containers
 fn replace_env_vars(input: &str) -> String {
     let mut output = input.to_string();
     for (k, v) in std::env::vars() {
-        output = output.replace(&format!("${}", k), &v);
-        output = output.replace(&format!("${{{}}}", k), &v);
+        output = output.replace(&format!("${k}"), &v);
+        output = output.replace(&format!("${{{k}}}"), &v);
     }
     output
 }
@@ -1043,13 +1032,13 @@ fn fill_venv(
             bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}",
                                pkg, target_dir);
         }
-        let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
         let venv_used = {
-            let anysnake_link = venv_dir.join(format!("{}.anysnake-link", safe_pkg));
-            if !anysnake_link.exists() {
-                "".to_string()
-            } else {
+            let anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+            if anysnake_link.exists() {
                 ex::fs::read_to_string(anysnake_link)?
+            } else {
+                String::new()
             }
         };
         if !egg_link.exists() || venv_used != target_python_str {
@@ -1058,7 +1047,7 @@ fn fill_venv(
         }
     }
     if !to_build.is_empty() {
-        for (safe_pkg, target_dir) in to_build.iter() {
+        for (safe_pkg, target_dir) in &to_build {
             info!("Pip install {:?}", &target_dir);
             let td = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
             let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
@@ -1143,7 +1132,7 @@ fn fill_venv(
                 &singularity_args[..],
                 &outside_nixpkgs_url.to_nix_string(),
                 Some(&venv_dir.join("singularity.bash")),
-                None,
+                &None,
                 flake_dir,
             )
             .context("singularity failed")?;
@@ -1158,18 +1147,18 @@ fn fill_venv(
             let source_egg_folder = td
                 .path()
                 .join("venv/lib")
-                .join(format!("python{}", python_version))
+                .join(format!("python{python_version}"))
                 .join("site-packages");
-            let target_egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+            let target_egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
             let paths = fs::read_dir(&source_egg_folder)
                 .context("could not read site-packages folder in temp venv")?;
             let mut any_found = false;
             for path in paths {
                 let path = path.unwrap().path();
-                let suffix = path
-                    .extension()
-                    .map(|x| x.to_string_lossy())
-                    .unwrap_or_else(|| Cow::Owned(String::default()));
+                let suffix = path.extension().map_or_else(
+                    || Cow::Owned(String::default()),
+                    std::ffi::OsStr::to_string_lossy,
+                );
                 if suffix == "pth" || suffix == "egg-link" {
                     //we want to read {safe_pkg}.egg-link, not __editable__{safe_pkg}-{version}.pth
                     //because we don't *know* the version
@@ -1191,7 +1180,7 @@ fn fill_venv(
                 bail!("Could not find .egg or .pth in venv folder");
             }
 
-            let target_anysnake_link = venv_dir.join(format!("{}.anysnake-link", safe_pkg));
+            let target_anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
             fs::write(target_anysnake_link, &target_python_str)
                 .context("target anysnake link write failed")?;
         }
@@ -1200,17 +1189,15 @@ fn fill_venv(
 }
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
-    let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {:?}", path))?;
+    let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
     let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
     let hits = binary_re.captures(&text);
+    #[allow(clippy::single_match_else)]
     let out = match hits {
         Some(x) => std::str::from_utf8(&x[1])?.to_string(),
         None => {
             let text = std::str::from_utf8(&text).with_context(|| {
-                format!(
-                    "failed utf-8 converting {:?}, but also had no NIX_PYTHONEXECUTABLE",
-                    path
-                )
+                format!("failed utf-8 converting {path:?}, but also had no NIX_PYTHONEXECUTABLE")
             })?;
             let re = Regex::new("exec \"([^\"]+)\"").unwrap();
             let out: String = re
@@ -1257,15 +1244,15 @@ fn prefetch_flake(url_without_hash: &str) -> Result<String> {
         let output = std::process::Command::new("nix")
             .args(["flake", "prefetch", url_without_hash, "--json"])
             .output()?;
-        if !output.status.success() {
-            error!("nix prefetch failed");
-            error!("stderr was: {}", String::from_utf8_lossy(&output.stderr));
-            Err(anyhow!("nix prefetch failed"))
-        } else {
+        if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let j: NixFlakePrefetchOutput = serde_json::from_str(&stdout)?;
             //now from the gc_dir
             Ok(j.storePath)
+        } else {
+            error!("nix prefetch failed");
+            error!("stderr was: {}", String::from_utf8_lossy(&output.stderr));
+            Err(anyhow!("nix prefetch failed"))
         }
     })
 }
@@ -1281,10 +1268,10 @@ fn register_gc_root(store_path: &str, symlink: &Path) -> Result<()> {
                 &symlink.to_string_lossy(),
             ])
             .output()?;
-        if !output.status.success() {
-            Err(anyhow!("nix-store realise failed"))
-        } else {
+        if output.status.success() {
             Ok(())
+        } else {
+            Err(anyhow!("nix-store realise failed"))
         }
     })
 }
@@ -1303,15 +1290,15 @@ fn nix_build_flake(url: &str) -> Result<String> {
                 "--json",
             ])
             .output()?;
-        if !output.status.success() {
-            Err(anyhow!("nix build failed"))
-        } else {
+        if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             info!("{}", stdout);
             let j: Vec<NixBuildOutput> =
                 serde_json::from_str(&stdout).context("failed to parse nix build output")?;
             let j = j.into_iter().next().unwrap();
             Ok(j.outputs.out)
+        } else {
+            Err(anyhow!("nix build failed"))
         }
     })
 }
@@ -1322,7 +1309,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     let gc_roots = flake_dir.as_ref().join(".gcroots");
     fs::create_dir_all(&gc_roots)?;
 
-    let (without_hash, _) = url.rsplit_once('#').expect("GC_root url should contain #");
+    let (without_hash, _) = url.rsplit_once('#').context("GC_root url should contain #")?;
     //first we store and hash the flake itself and record tha.
     let flake_symlink_here = gc_roots.join(without_hash.replace('/', "_"));
     if !flake_symlink_here.exists() {
@@ -1341,7 +1328,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
 fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     let mut available: Vec<_> = fs::read_dir(flake_dir.as_ref().join("dtach"))
         .context("Could not find dtach socket directory")?
-        .filter_map(|x| x.ok())
+        .filter_map(Result::ok)
         .collect();
     if available.is_empty() {
         bail!("No session to attach to available");
@@ -1357,17 +1344,17 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
             }
             let line1 = std::io::stdin().lock().lines().next().unwrap().unwrap();
             for (ii, entry) in available.iter().enumerate() {
-                if format!("{}", ii) == line1 {
+                if format!("{ii}") == line1 {
                     return run_dtach(entry.path(), outside_nix_repo);
                 }
             }
-            println!("sorry I did not understand that. \n")
+            println!("sorry I did not understand that. \n");
         }
     }
 }
 
 fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
-    let dtach_url = format!("{}#dtach", outside_nix_repo);
+    let dtach_url = format!("{outside_nix_repo}#dtach");
     let nix_full_args = vec![
         "shell".to_string(),
         dtach_url,
@@ -1403,12 +1390,12 @@ fn write_develop_python_path(
     {
         let safe_pkg = safe_python_package_name(pkg);
         let real_target = parent_dir.join("code").join(pkg);
-        let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));
+        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
         let egg_target = parse_egg(egg_link)?;
         let egg_target =
             egg_target.replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());
 
-        develop_python_paths.push(egg_target)
+        develop_python_paths.push(egg_target);
     }
     fs::write(
         flake_dir.as_ref().join("develop_python_path.bash"),
@@ -1416,5 +1403,3 @@ fn write_develop_python_path(
     )?;
     Ok(())
 }
-
-
