@@ -13,7 +13,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::{python_parsing, run_without_ctrl_c, vcs};
+use crate::{python_parsing, run_without_ctrl_c, safe_python_package_name, vcs};
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -1045,7 +1045,8 @@ fn format_poetry_build_input_overrides(
                 })
                 .collect::<Result<Vec<String>>>()?
                 .join(" ");
-            poetry_overide_entries.push(format!("{name} = prev.{name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
+            let safe_name = safe_python_package_name(name);
+            poetry_overide_entries.push(format!("{safe_name} = prev.{safe_name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
         }
     }
     Ok(poetry_overide_entries)

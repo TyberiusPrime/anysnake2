@@ -73,7 +73,7 @@ impl TofuVCS {
         }
     }
 
-    pub fn clone(&self, target_dir: String) -> Result<()> {
+    pub fn clone_repo(&self, target_dir: String) -> Result<()> {
         let (url, rev, branch) = self.get_url_rev_branch();
         //let clone_args =
         run_without_ctrl_c(|| {
