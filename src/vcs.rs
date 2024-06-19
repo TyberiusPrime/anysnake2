@@ -1,14 +1,11 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, error};
 use serde::Serialize;
 use version_compare::Version;
 
-use crate::{
-    flake_writer::{add_auth, get_proxy_req},
-    run_without_ctrl_c,
-};
+use crate::{flake_writer::add_auth, run_without_ctrl_c, util::get_proxy_req};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParsedVCS {
@@ -49,7 +46,7 @@ impl TofuVCS {
             TofuVCS::GitHub {
                 owner,
                 repo,
-                branch,
+                branch: _,
                 rev,
             } => {
                 format!("github:{}/{}/{}", owner, repo, rev)
@@ -120,52 +117,6 @@ impl TofuVCS {
 
             Ok(())
         })?;
-
-        Ok(())
-    }
-    pub fn copy_revision(&self, target_dir: &PathBuf) -> Result<()> {
-        let (url, rev, _branch) = self.get_url_rev_branch();
-        let mut proc = std::process::Command::new("git");
-        proc.args(&["init"]);
-        proc.current_dir(target_dir);
-        debug!("Running {:?}", proc);
-        let status = proc.status().with_context(|| format!("Git init"))?;
-        if !status.success() {
-            bail!("Git init failed for {self}");
-        }
-
-        let mut proc = std::process::Command::new("git");
-        proc.args(&["remote", "add", "origin", &url]);
-        proc.current_dir(target_dir);
-        debug!("Running {:?}", proc);
-        let status = proc
-            .status()
-            .with_context(|| format!("Git remote add failed"))?;
-        if !status.success() {
-            bail!("Git remote add failed {self}");
-        }
-
-        let mut proc = std::process::Command::new("git");
-        proc.args(&["fetch", "origin", rev]);
-        proc.current_dir(target_dir);
-        debug!("Running {:?}", proc);
-        let status = proc
-            .status()
-            .with_context(|| format!("Git fetch origin failed"))?;
-        if !status.success() {
-            bail!("Git fetch origin failed {self}");
-        }
-
-        let mut proc = std::process::Command::new("git");
-        proc.args(&["reset", "--hard", rev]);
-        proc.current_dir(target_dir);
-        debug!("Running {:?}", proc);
-        let status = proc.status().with_context(|| format!("Git reset failed"))?;
-        if !status.success() {
-            bail!("Git reset failed {self}");
-        }
-        let git_dir = PathBuf::from(target_dir).join(".git");
-        ex::fs::remove_dir_all(git_dir)?;
 
         Ok(())
     }
@@ -267,32 +218,6 @@ impl TryFrom<&str> for ParsedVCS {
 }
 
 impl ParsedVCS {
-    //for caching the tag -> rev lookup
-    fn get_cache_name(&self) -> String {
-        match self {
-            ParsedVCS::Git { url, branch, rev } => format!(
-                "git-{}-{}",
-                filename_safe(url),
-                filename_safe(branch.as_ref().map(|x| x.as_str()).unwrap_or_default())
-            ),
-            ParsedVCS::GitHub {
-                owner,
-                repo,
-                branch,
-                rev,
-            } => {
-                format!(
-                    "github-{}-{}-{}",
-                    filename_safe(owner),
-                    filename_safe(repo),
-                    branch
-                        .as_ref()
-                        .map(|x| filename_safe(x.as_str()))
-                        .unwrap_or_default()
-                )
-            }
-        }
-    }
 
     fn get_tags(&self) -> Result<HashMap<String, String>> {
         match self {
@@ -426,12 +351,12 @@ impl ParsedVCS {
 
     fn get_git_url(&self) -> Cow<str> {
         match self {
-            ParsedVCS::Git { url, branch, rev } => Cow::Borrowed(url),
+            ParsedVCS::Git { url, branch: _, rev: _ } => Cow::Borrowed(url),
             ParsedVCS::GitHub {
                 owner,
                 repo,
-                branch,
-                rev,
+                branch: _,
+                rev: _,
             } => Cow::Owned(format!("https://github.com/{owner}/{repo}")),
         }
     }
@@ -473,16 +398,6 @@ impl TryFrom<ParsedVCS> for TofuVCS {
             },
         })
     }
-}
-
-fn filename_safe(input: &str) -> String {
-    input
-        .chars()
-        .map(|c| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => c,
-            _ => '_',
-        })
-        .collect()
 }
 
 pub fn run_git_ls(url: &str, branch: Option<&str>) -> Result<Vec<(String, String)>> {

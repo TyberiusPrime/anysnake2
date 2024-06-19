@@ -1,21 +1,14 @@
 use anyhow::{anyhow, bail, Context, Result};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use regex::Regex;
-use std::{borrow::Cow, collections::HashMap, hash::Hash, path::PathBuf, process::Command};
-use toml_edit::{value, Item, Table};
-use version_compare::Version;
+use std::{collections::HashMap, path::PathBuf, process::Command};
+use toml_edit::value;
 
+#[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{
-        self, BuildPythonPackageInfo, MinimalConfigToml, NixPkgs, PythonPackageDefinition,
-        TofuAnysnake2, TofuConfigToml,
-    },
-    flake_writer::{self, get_proxy_req},
-    python_parsing, run_without_ctrl_c,
-    util::{change_toml_file, TomlUpdates},
-    vcs::{self, run_git_ls, BranchOrTag, ParsedVCS, TofuVCS},
+    config::{self, TofuAnysnake2, TofuConfigToml},
+    util::{change_toml_file, get_proxy_req, TomlUpdates},
+    vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 
 enum PrefetchHashResult {
@@ -131,7 +124,7 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
             tag_regex,
         )?;
 
-        let mut out = config::TofuNixpkgs {
+        let out = config::TofuNixpkgs {
             url: url_and_rev,
             packages: _self.packages.unwrap_or_else(|| Vec::new()),
             allow_unfree: _self.allow_unfree,
@@ -242,7 +235,7 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
 
 impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
     fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuMinimalConfigToml> {
-        let mut anysnake = match self.anysnake2 {
+        let anysnake = match self.anysnake2 {
             Some(value) => value,
             None => config::Anysnake2 {
                 url: None,
@@ -438,7 +431,28 @@ fn tofu_repo_to_newest(
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    Ok(_tofu_repo_to_newest(toml_name, updates, input).context(error_msg)?)
+    let mut newest = _tofu_repo_to_newest(toml_name, updates, input).context(error_msg)?;
+
+    // workaround for repos that break githubs tar file consistency >
+    if let TofuVCS::GitHub {
+        owner,
+        repo,
+        branch: _,
+        rev,
+    } = &newest
+    {
+        if let PrefetchHashResult::HaveToUseFetchGit = prefetch_github_hash(owner, repo, rev)? {
+            let (url, rev, branch) = newest.get_url_rev_branch();
+            warn!("The github repo {owner}/{repo}/?rev={rev} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use git directly instead, which is immune to that.");
+
+            newest = TofuVCS::Git {
+                url,
+                branch: branch.to_string(),
+                rev: rev.to_string(),
+            };
+        }
+    }
+    Ok(newest)
 }
 
 fn _tofu_repo_to_newest(
@@ -580,129 +594,7 @@ pub fn apply_trust_on_first_use(
     Ok(tofued)
 }
 
-fn handle_python_github(
-    key: &str,
-    spec: &mut toml::map::Map<String, toml::Value>,
-    updates: &mut TomlUpdates,
-) -> Result<()> {
-    if let Some(toml::Value::String(giturl)) = spec.get("github") {
-        let owner = spec
-            .get("owner")
-            .and_then(|x| x.as_str())
-            .context("No owner found")?;
-    }
-    todo!();
-}
-
-fn handle_python_git(
-    key: &str,
-    spec: &mut toml::map::Map<String, toml::Value>,
-    updates: &mut TomlUpdates,
-) -> Result<()> {
-    if let Some(toml::Value::String(giturl)) = spec.get("git") {
-        if let None = spec.get("rev") {
-            info!(
-                "Using discover-newest on first use for python package {}",
-                key
-            );
-            let rev =
-                discover_newest_rev_git(&giturl, spec.get("branchName").and_then(|x| x.as_str()))?;
-            info!("\tDiscovered revision {}", &rev);
-            //spec.retain(|k, _| k == "branchName");
-            spec.insert("rev".to_string(), toml::Value::String(rev.clone()));
-
-            store_python_key(spec, updates, key.to_owned(), "rev", rev);
-        }
-    }
-    Ok(())
-}
-fn handle_python_pypi(
-    key: &str,
-    spec: &mut toml::map::Map<String, toml::Value>,
-    updates: &mut TomlUpdates,
-) -> Result<()> {
-    if let Some(toml::Value::String(pypi_version)) = spec.get("pypi") {
-        let pypi_version = if pypi_version.is_empty() {
-            let newest = get_newest_pypi_version(key)?;
-            store_python_key(spec, updates, key.to_owned(), "pypi", newest.clone());
-            newest
-        } else {
-            pypi_version.to_string()
-        };
-
-        let url_key = format!("pypi_url_{}", pypi_version);
-        if let None = spec.get(&url_key) {
-            info!(
-                "Using discover-newest on first use for python pypi package {} {spec:?}",
-                key
-            );
-            let url = get_pypi_package_source_url(key, &pypi_version)
-                .context("Could not find pypi sdist url")?;
-            //spec.insert(url_key.to_string(), toml::Value::String(url));
-            store_python_key(spec, updates, key.to_owned(), &url_key, url);
-
-            //let hash = prefetch_pypi_hash(&pypi_version, &pypi_version, "https://nixos.org")?;
-            //store_hash(spec, updates, key.to_owned(), &url_key, hash);
-        }
-        let pypi_file_url = spec
-            .get(&url_key)
-            .and_then(|x| x.as_str())
-            .unwrap()
-            .to_string();
-        spec.retain(|k, _| !k.starts_with("pypi"));
-        spec.insert("url".to_string(), pypi_file_url.clone().into());
-        updates.push((
-            vec![
-                "python".to_string(),
-                "packages".to_string(),
-                key.to_owned(),
-                url_key,
-            ],
-            Item::Value(pypi_file_url.into()),
-        ));
-    }
-    Ok(())
-}
-
-/// helper for apply_trust_on_first_use
-fn store_python_key(
-    spec: &mut toml::map::Map<String, toml::Value>,
-    updates: &mut TomlUpdates,
-    key: String,
-    hash_key: &str,
-    hash: String,
-) {
-    updates.push((
-        vec![
-            "python".to_string(),
-            "packages".to_string(),
-            key,
-            hash_key.to_string(),
-        ],
-        Item::Value(hash.clone().into()),
-    ));
-
-    spec.insert(hash_key.to_string(), toml::Value::String(hash.into()));
-}
-
-fn store_version(
-    spec: &mut BuildPythonPackageInfo,
-    updates: &mut TomlUpdates,
-    key: String,
-    version: &String,
-) {
-    updates.push((
-        vec![
-            "python".to_string(),
-            "packages".to_string(),
-            key,
-            "version".to_string(),
-        ],
-        Item::Value(version.into()),
-    ));
-    spec.insert("version".to_string(), version.to_owned());
-}
-
+/* currently unused
 fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
     let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
     let nix_prefetch_git_url_args = &[
@@ -733,7 +625,7 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
     Ok(new_format)
 }
 
-fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
+ fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
     let nix_prefetch_hg_url = format!("{}#nix-prefetch-hg", outside_nixpkgs_url);
     let nix_prefetch_hg_url_args = &[
         "shell",
@@ -757,6 +649,41 @@ fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<S
 
     Ok(new_format)
 }
+
+fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
+    /*
+         * nix-universal-prefetch pythonPackages.fetchPypi \
+        --pname home-assistant-frontend \
+        --version 20200519.1
+    149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
+    */
+    let nix_prefetch_scripts = format!("{}#nix-universal-prefetch", outside_nixpkgs_url);
+    let nix_prefetch_args = &[
+        "shell",
+        &nix_prefetch_scripts,
+        "-c",
+        "nix-universal-prefetch",
+        "pythonPackages.fetchPypi",
+        "--pname",
+        pname,
+        "--version",
+        version,
+    ];
+    let stdout = Command::new("nix")
+        .args(nix_prefetch_args)
+        .output()
+        .context("failed on nix-prefetch-url for pypi")?
+        .stdout;
+    let stdout = std::str::from_utf8(&stdout)?.trim();
+    let lines = stdout.split('\n');
+    let old_format = lines
+        .last()
+        .expect("Could not parse nix-prefetch-pypi output");
+    let new_format = convert_hash_to_subresource_format(old_format)?;
+
+    Ok(new_format)
+}
+*/
 
 fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!(
@@ -819,7 +746,6 @@ pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Re
 }
 
 fn get_newest_pypi_version(package_name: &str) -> Result<String> {
-    use flake_writer::get_proxy_req; //todo: refactor out of flake_writer
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
@@ -829,40 +755,6 @@ fn get_newest_pypi_version(package_name: &str) -> Result<String> {
         .as_str()
         .context("no version in json")?;
     Ok(version.to_string())
-}
-
-fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    /*
-         * nix-universal-prefetch pythonPackages.fetchPypi \
-        --pname home-assistant-frontend \
-        --version 20200519.1
-    149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
-    */
-    let nix_prefetch_scripts = format!("{}#nix-universal-prefetch", outside_nixpkgs_url);
-    let nix_prefetch_args = &[
-        "shell",
-        &nix_prefetch_scripts,
-        "-c",
-        "nix-universal-prefetch",
-        "pythonPackages.fetchPypi",
-        "--pname",
-        pname,
-        "--version",
-        version,
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_args)
-        .output()
-        .context("failed on nix-prefetch-url for pypi")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split('\n');
-    let old_format = lines
-        .last()
-        .expect("Could not parse nix-prefetch-pypi output");
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
 }
 
 fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
@@ -1018,55 +910,6 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         })?;
     };
     Ok(())
-} */
-
-fn rewrite_github_url(url: &str, branch: Option<&str>) -> (String, Option<String>) //todo cow
-{
-    let rewritten_url = if url.starts_with("github:") {
-        url.replace("github:", "https://github.com/")
-    } else {
-        url.to_string()
-    };
-    let (rewritten_url, branch): (String, Option<String>) = match branch {
-        Some(branch) => (rewritten_url, Some(branch.to_string())),
-        None => {
-            if rewritten_url.contains("?ref=") {
-                let (rewritten_url, new_branch) = rewritten_url.rsplit_once("?ref=").unwrap();
-                info!(
-                    "auto detected branch {} from url: {}",
-                    new_branch, rewritten_url
-                );
-                (rewritten_url.to_string(), Some(new_branch.to_string()))
-            } else {
-                (rewritten_url, None)
-            }
-        }
-    };
-    (rewritten_url, branch)
-}
-
-fn discover_newest_rev_git(url: &str, branch: Option<&str>) -> Result<String> {
-    let (rewritten_url, branch) = rewrite_github_url(url, branch);
-
-    let refs = match &branch {
-        Some(x) => format!("refs/heads/{}", x),
-        None => "HEAD".to_string(),
-    };
-    let hashes = run_git_ls(&rewritten_url, Some(refs.as_str()))?;
-    if hashes.is_empty() {
-        bail!(
-            "Could not find revision hash in 'git ls-remote {} {}' output.{}",
-            url,
-            refs,
-            if branch.is_some() {
-                " Is your branchName correct?"
-            } else {
-                ""
-            }
-        );
-    } else {
-        Ok(hashes[0].0.clone())
-    }
 }
 
 fn discover_newest_rev_hg(url: &str) -> Result<String> {
@@ -1089,6 +932,8 @@ fn discover_newest_rev_hg(url: &str) -> Result<String> {
     ))
 }
 
+*/
+
 fn tofu_clones(
     clones: HashMap<String, HashMap<String, ParsedVCS>>,
     updates: &mut TomlUpdates,
@@ -1099,7 +944,7 @@ fn tofu_clones(
             let outer = value
                 .into_iter()
                 .map(|(key2, value)| {
-                    let error_msg =
+                    let _error_msg =
                         format!("Failed to tofu clone clones.{key1}.{key2} - {value:?}");
                     let inner = _tofu_repo_to_newest(&["clones", &key1, &key2], updates, value)?;
                     Ok((key2, inner))
@@ -1161,9 +1006,7 @@ fn tofu_python_package_definition(
                 };
                 let new_url = match url {
                     None => true,
-                    Some(ref url) => {
-                        !url.contains(&format!("-{pypi_version}.")) 
-                    }
+                    Some(ref url) => !url.contains(&format!("-{pypi_version}.")),
                 };
                 let new_url = if new_url {
                     get_pypi_package_source_url(name, &pypi_version)
