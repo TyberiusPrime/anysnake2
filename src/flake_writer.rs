@@ -1,19 +1,16 @@
-#![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
-use crate::config::{self, BuildPythonPackageInfo, GetRecursive, PythonPackageDefinition};
-use crate::vcs::TofuVCS;
+use crate::config;
 use anyhow::{anyhow, bail, Context, Result};
-use chrono::{NaiveDate, NaiveDateTime};
 use ex::fs;
 use itertools::Itertools;
+#[allow(unused_imports)]
 use log::{debug, info, trace};
 use regex::Regex;
-use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::{python_parsing, run_without_ctrl_c, safe_python_package_name, vcs};
+use crate::{run_without_ctrl_c, safe_python_package_name, vcs};
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -24,26 +21,12 @@ struct InputFlake {
 }
 
 impl InputFlake {
-    fn new(name: &str, url: &vcs::TofuVCS, follows: &[&str], flake_dir: impl AsRef<Path>) -> Self {
+    fn new(name: &str, url: &vcs::TofuVCS, follows: &[&str]) -> Self {
         InputFlake {
             name: name.to_string(),
             url: url.to_string(),
             follows: follows.iter().map(ToString::to_string).collect(),
             is_flake: true,
-        }
-    }
-    fn new_with_flake_option(
-        name: &str,
-        url: &str,
-        follows: &[&str],
-        flake_dir: impl AsRef<Path>,
-        is_flake: bool,
-    ) -> Self {
-        InputFlake {
-            name: name.to_string(),
-            url: url.to_string(),
-            follows: follows.iter().map(ToString::to_string).collect(),
-            is_flake,
         }
     }
 }
@@ -73,7 +56,6 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
     }
 }
 
-#[allow(clippy::vec_init_then_push)]
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &config::TofuConfigToml,
@@ -94,8 +76,7 @@ pub fn write_flake(
     let mut inputs: Vec<InputFlake> = Vec::new();
     let mut definitions: BTreeMap<String, String> = BTreeMap::new();
     let mut overlays: Vec<String> = Vec::new();
-    let mut rust_extensions: Vec<String> = Vec::new();
-    let mut flakes_used_for_python_packages: BTreeSet<String> = BTreeSet::new();
+    let rust_extensions: Vec<String> = Vec::new();
     let mut nixpkgs_pkgs = BTreeSet::new();
     let mut git_tracked_files = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
@@ -105,24 +86,17 @@ pub fn write_flake(
         "flake-utils",
         &parsed_config.flake_util,
         &[],
-        flake_dir,
     ));
 
     // and nixpkgs is non optional as well.
 
-    inputs.push(InputFlake::new(
-        "nixpkgs",
-        &parsed_config.nixpkgs.url,
-        &[],
-        flake_dir,
-    ));
+    inputs.push(InputFlake::new("nixpkgs", &parsed_config.nixpkgs.url, &[]));
     nixpkgs_pkgs.extend(parsed_config.nixpkgs.packages.clone());
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
                                                ////todo: does rust even need to be a special case?
     add_rust(
         parsed_config,
-        flake_dir,
         &mut inputs,
         &mut definitions,
         &mut overlays,
@@ -132,15 +106,12 @@ pub fn write_flake(
 
     add_flakes(
         parsed_config,
-        flake_dir,
         &mut inputs,
-        &flakes_used_for_python_packages,
         &mut nixpkgs_pkgs,
     );
 
     add_r(
         parsed_config,
-        flake_dir,
         &mut inputs,
         &mut definitions,
         &mut overlays,
@@ -149,12 +120,9 @@ pub fn write_flake(
 
     add_python(
         parsed_config,
-        flake_dir,
         &mut inputs,
         &mut definitions,
-        &mut overlays,
         &mut nixpkgs_pkgs,
-        &mut flakes_used_for_python_packages,
         &mut git_tracked_files,
         &filenames.pyproject_toml,
         &filenames.poetry_lock,
@@ -329,8 +297,6 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 /// prepare what we put into pyprojec.toml
 fn prep_packages_for_pyproject_toml(
     input: &HashMap<String, config::TofuPythonPackageDefinition>,
-    flakes_config: &HashMap<String, config::TofuFlake>,
-    flake_dir: &Path,
 ) -> toml::Table {
     let mut result = toml::Table::new();
     for (name, spec) in input {
@@ -397,117 +363,6 @@ fn prep_packages_for_pyproject_toml(
     } */
 }
 
-fn python_version_from_spec(
-    spec: &BuildPythonPackageInfo,
-    override_version: Option<&str>,
-) -> String {
-    format!(
-        "999+{}",
-        override_version.unwrap_or(
-            spec.get("version")
-                .unwrap_or(spec.get("rev").unwrap_or(&"0+unknown_version".to_string()))
-        )
-    )
-}
-fn format_python_build_packages(
-    input: &HashMap<String, BuildPythonPackageInfo>,
-    flakes_config: &Option<HashMap<String, config::Flake>>,
-    flakes_used_for_python_packages: &mut BTreeSet<String>,
-) -> String {
-    let mut res: String = String::new();
-    let mut providers: String = String::new();
-    let mut packages_extra: Vec<String> = Vec::new();
-    for (key, spec) in input.iter().sorted_by_key(|x| x.0) {
-        let overrides = match &spec.overrides {
-            Some(ov_packages) => {
-                let mut ov = "overridesPre = [ (self: super: { ".to_string();
-                for p in ov_packages {
-                    ov.push_str(&format!("{p} = {p}_pkg;\n"));
-                }
-
-                ov.push_str(" } ) ];");
-                ov
-            }
-            None => String::new(),
-        };
-        if spec
-            .get("method")
-            .expect("no method in package definition")
-            .as_str()
-            == "useFlake"
-        {
-            todo!();
-            /*
-            let flake_name = spec.get("flake_name").unwrap_or(key);
-            let flake_rev = get_flake_rev(flake_name, flakes_config)
-                .with_context(|| format!("python.packages.{}", key))?;
-            res.push_str(&format!(
-                "{}_pkg = ({}.mach-nix-build-python-package pkgs mach-nix_ \"{}\");\n",
-                //todo: shohorn the overrides into this?!
-                flake_name,
-                flake_name,
-                python_version_from_spec(spec, Some(&flake_rev))
-            ));
-            flakes_used_for_python_packages.insert(flake_name.to_string());
-            packages_extra.push(flake_name.to_string());
-            */
-        } else {
-            res.push_str(&format!(
-                "{key}_pkg = prev.{key}.override rec {{
-                pname = \"{key}\";
-                version=\"{version}\";
-                src = {src_method} {{ # {src_comment}
-                    {src_spec}
-                }};
-                {arguments}
-              {overrides}
-              }});\n",
-                key = key,
-                version = python_version_from_spec(spec, None),
-                src_method = match spec
-                    .get("method")
-                    .expect("Missing 'method' on python build package definition")
-                    .as_ref()
-                {
-                    "fetchPypi" => "pkgs.python3Packages.fetchPypi".to_string(),
-                    other => format!("pkgs.{other}"),
-                },
-                src_comment = key,
-                src_spec = spec.src_to_nix(),
-                arguments = spec //todo: handle this...
-                    .get("buildPythonPackage_arguments")
-                    .map_or("", |str_including_curly_braces| str_including_curly_braces
-                        .trim()
-                        .trim_matches('{')
-                        .trim_matches('}')
-                        .trim()),
-                overrides = overrides
-            ));
-            packages_extra.push(key.to_string());
-        }
-        providers.push_str(&format!("providers.{key} = \"nixpkgs\";\n"));
-    }
-
-    let mut out: String = "// (let ".into();
-    out.push_str(&res);
-    out.push_str("machnix_overrides = (self: super: {");
-    for pkg in &packages_extra {
-        out.push_str(&format!("{pkg} = {pkg}_pkg;\n"));
-    }
-    out.push_str("} );\n");
-    out.push_str("in { packagesExtra = [");
-    for pkg in &packages_extra {
-        out.push_str(pkg);
-        out.push_str("_pkg ");
-    }
-    out.push(']');
-    out.push_str("\n; overridesPre = [ machnix_overrides ];\n");
-    out.push('\n');
-    out.push_str(&providers);
-    out.push_str("})\n");
-    out
-}
-
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
     use base64::Engine;
     let usrpw = String::from(user) + ":" + pass;
@@ -525,50 +380,6 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
         }
     }
     request
-}
-
-fn pretty_opt_date(date: &Option<chrono::NaiveDateTime>) -> String {
-    match date {
-        Some(x) => x.format("%Y-%m-%d").to_string(),
-        None => String::new(),
-    }
-}
-
-fn oldest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
-    let oldest = new_mappings.keys().min().unwrap();
-    Ok(chrono::NaiveDateTime::parse_from_str(
-        &format!("{oldest} 00:00"),
-        "%Y%m%d %H:%M",
-    )?)
-}
-fn newest_date(new_mappings: &HashMap<String, String>) -> Result<chrono::NaiveDateTime> {
-    let oldest = new_mappings.keys().max().unwrap();
-    //println!("oldest {}", oldest);
-    Ok(chrono::NaiveDateTime::parse_from_str(
-        &format!("{oldest} 00:00"),
-        "%Y%m%d %H:%M",
-    )?)
-}
-
-fn next_larger_date(
-    mappings: &HashMap<String, String>,
-    date: &NaiveDateTime,
-) -> Option<chrono::NaiveDateTime> {
-    let q = date.format("%Y%m%d").to_string();
-    let oldest = mappings.keys().filter(|x| *x > &q).min();
-    oldest.and_then(|oldest| {
-        chrono::NaiveDateTime::parse_from_str(&format!("{oldest} 00:00"), "%Y%m%d %H:%M").ok()
-    })
-}
-fn next_smaller_date(
-    mappings: &HashMap<String, String>,
-    date: &NaiveDateTime,
-) -> Option<chrono::NaiveDateTime> {
-    let q = date.format("%Y%m%d").to_string();
-    let oldest = mappings.keys().filter(|x| *x < &q).max();
-    oldest.and_then(|oldest| {
-        chrono::NaiveDateTime::parse_from_str(&format!("{oldest} 00:00"), "%Y%m%d %H:%M").ok()
-    })
 }
 
 fn nix_format(
@@ -682,18 +493,13 @@ build-backend = "poetry.core.masonry.api"
             poetry_lock_path.to_string_lossy().to_string(),
         ];
         debug!("running ancient-poetry: {:?}", &full_args);
-        let child = Command::new("nix")
+        let out = Command::new("nix")
             .args(full_args)
             .current_dir(".")
             //.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-        let out = child
-            .wait_with_output()
-            .context("Failed to wait on ancient poetry")?; // closes stdin
-        if out.status.success() {
-            let stdout = std::str::from_utf8(&out.stdout)
-                .context("ancient-poetry lock output wan't utf8")?;
+            //.stdout(Stdio::piped())
+            .status()?;
+        if out.success() {
             //write it to poetry.lock
             //ex::fs::write(poetry_lock_path, stdout)?;
             ex::fs::write(
@@ -703,10 +509,8 @@ build-backend = "poetry.core.masonry.api"
             Ok(())
         } else {
             Err(anyhow!(
-                "ancient-poetry error returncode: {}\nstdout: {}",
-                out.status.code().unwrap(),
-                std::str::from_utf8(&out.stdout)
-                    .context("ancient-poetry lock output wan't utf8")?
+                "ancient-poetry error returncode: {}\n",
+                out.code().unwrap(),
             ))
         }
     } else {
@@ -801,7 +605,6 @@ fn run_git_add(tracked_files: &[String], flake_dir: &Path) -> Result<()> {
 }
 fn add_rust(
     parsed_config: &config::TofuConfigToml,
-    flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
     overlays: &mut Vec<String>,
@@ -818,7 +621,6 @@ fn add_rust(
                 "rust-overlay",
                 &rust.url,
                 &["nixpkgs", "flake-utils"],
-                flake_dir,
             ));
             overlays.push("import rust-overlay".to_string());
             let str_rust_extensions: Vec<String> = out_rust_extensions
@@ -840,14 +642,11 @@ fn add_rust(
 
 fn add_flakes(
     parsed_config: &config::TofuConfigToml,
-    flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
-    flakes_used_for_python_packages: &BTreeSet<String>,
     nixpkgs_pkgs: &mut BTreeSet<String>,
 ) {
     {
         let flakes = &parsed_config.flakes;
-        let mut flake_packages = String::new();
         let mut names: Vec<&String> = flakes.keys().collect();
         names.sort();
         for name in names {
@@ -860,7 +659,6 @@ fn add_flakes(
                 name,
                 &flake.url, // at this point we must have a rev,
                 &rev_follows[..],
-                flake_dir,
             ));
             if flake.packages.is_empty() {
                 nixpkgs_pkgs.insert(format!("{}.{}", name, "defaultPackage.x86_64-linux"));
@@ -875,7 +673,6 @@ fn add_flakes(
 
 fn add_r(
     parsed_config: &config::TofuConfigToml,
-    flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
     overlays: &mut Vec<String>,
@@ -890,7 +687,7 @@ fn add_r(
     }
 
     if let Some(r_config) = &parsed_config.r {
-        inputs.push(InputFlake::new("nixR", &r_config.url, &[], flake_dir));
+        inputs.push(InputFlake::new("nixR", &r_config.url, &[]));
 
         let r_override_args = r_config
             .override_attrs
@@ -985,12 +782,9 @@ fn format_poetry_build_input_overrides(
 #[allow(clippy::too_many_arguments)]
 fn add_python(
     parsed_config: &config::TofuConfigToml,
-    flake_dir: &Path,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
-    overlays: &mut [String],
     nixpkgs_pkgs: &mut BTreeSet<String>,
-    flakes_used_for_python_packages: &mut BTreeSet<String>,
     git_tracked_files: &mut Vec<String>,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
@@ -1002,15 +796,10 @@ fn add_python(
                 bail!(
                             format!("Python version must be x.y (not x.y.z, z is given by nixpkgs version). Was '{}'", &python.version));
             }
-            let python_major_dot_minor = &python.version;
             let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
             let python_packages = &python.packages;
-            let mut out_python_packages = prep_packages_for_pyproject_toml(
-                python_packages,
-                &parsed_config.flakes,
-                flake_dir,
-            );
+            let mut out_python_packages = prep_packages_for_pyproject_toml(python_packages);
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages
                     .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
@@ -1039,7 +828,6 @@ fn add_python(
                 "poetry2nix",
                 &parsed_config.poetry2nix,
                 &[],
-                flake_dir,
             ));
 
             definitions.insert(

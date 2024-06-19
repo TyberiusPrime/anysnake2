@@ -1,12 +1,10 @@
-#![allow(unused_imports, unused_variables, unused_mut, dead_code)] // todo: remove
 use crate::vcs::{ParsedVCS, TofuVCS};
-use anyhow::{bail, Context, Result};
-use itertools::{all, Itertools};
-use log::{debug, info};
+use anyhow::{Context, Result};
+
 use serde::de::Deserializer;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::prelude::v1::Result as StdResult;
 
 pub trait GetRecursive {
@@ -120,7 +118,7 @@ pub struct ParsedVCSInsideURLTag {
 
 impl ConfigToml {
     pub fn from_str(raw_config: &str) -> Result<ConfigToml> {
-        let mut res: ConfigToml = toml::from_str(raw_config)?;
+        let res: ConfigToml = toml::from_str(raw_config)?;
         Ok(res)
     }
     pub fn from_file(config_file: &str) -> Result<ConfigToml> {
@@ -139,7 +137,7 @@ impl ConfigToml {
 
 impl MinimalConfigToml {
     pub fn from_str(raw_config: &str) -> Result<MinimalConfigToml> {
-        let mut res: MinimalConfigToml = toml::from_str(raw_config)?;
+        let res: MinimalConfigToml = toml::from_str(raw_config)?;
         Ok(res)
     }
 
@@ -316,44 +314,9 @@ pub enum ParsedPythonPackageDefinition {
 
 #[derive(Debug, Clone)]
 pub struct BuildPythonPackageInfo {
-    options: HashMap<String, String>,
     pub overrides: Option<Vec<String>>,
 }
 
-impl BuildPythonPackageInfo {
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.options.get(key)
-    }
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.options.contains_key(key)
-    }
-    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
-        self.options.insert(key, value)
-    }
-    pub fn retain<F>(&mut self, f: F)
-    where
-        F: FnMut(&String, &mut String) -> bool,
-    {
-        self.options.retain(f);
-    }
-
-    pub fn src_to_nix(&self) -> String {
-        let mut res = Vec::new();
-        let inherit_pname: bool = self
-            .options
-            .get("method")
-            .map_or(false, |x| x == "fetchPypi");
-        for (k, v) in self.options.iter().sorted_by_key(|x| x.0) {
-            if k != "method" && k != "buildInputs" && k != "buildPythonPackage_arguments" {
-                res.push(format!("\"{k}\" = \"{v}\";"));
-            }
-        }
-        if inherit_pname && !self.options.contains_key("pname") {
-            res.push("inherit pname;".to_string());
-        }
-        res.join("\n")
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum PythonPackageSource {
@@ -621,38 +584,4 @@ fn parse_my_date(input: &str) -> Result<chrono::NaiveDate> {
             .and_utc()
             .date_naive(),
     )
-}
-
-impl ConfigToml {
-    pub fn get_root_path_str(&self) -> Result<String> {
-        let abs_config_path = self
-            .anysnake2_toml_path
-            .as_ref()
-            .context("Config path not set???")?;
-        let root = abs_config_path
-            .parent()
-            .context("config file had no parent path")?;
-        Ok(root
-            .to_owned()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string())
-    }
-}
-
-impl TofuConfigToml {
-    pub fn get_root_path_str(&self) -> Result<String> {
-        let abs_config_path = self
-            .anysnake2_toml_path
-            .as_ref()
-            .context("Config path not set???")?;
-        let root = abs_config_path
-            .parent()
-            .context("config file had no parent path")?;
-        Ok(root
-            .to_owned()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string())
-    }
 }
