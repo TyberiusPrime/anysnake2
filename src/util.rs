@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use log::{debug, info};
-use toml_edit::{Document, DocumentMut};
+use toml_edit::{DocumentMut};
 
 use std::{
     collections::HashMap,
@@ -89,7 +89,7 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
             if path.len() > 1 {
                 for p in path[1..path.len()].iter() {
                     match x {
-                        toml_edit::Item::Value(t) => {
+                        toml_edit::Item::Value(_t) => {
                             *x = toml_edit::Item::Value(toml_edit::Table::new().into_inline_table().into());
                         }
                         _ => {}
@@ -130,3 +130,28 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
 
     Ok(())
 }
+
+/// retrieve an url, possibly using the http proxy from the environment
+pub fn get_proxy_req() -> Result<ureq::Agent> {
+    let mut agent = ureq::AgentBuilder::new();
+    let proxy_url = if let Ok(proxy_url) = std::env::var("https_proxy") {
+        debug!("found https proxy env var");
+        Some(proxy_url)
+    } else if let Ok(proxy_url) = std::env::var("http_proxy") {
+        debug!("found http proxy env var");
+        Some(proxy_url)
+    } else {
+        None
+    };
+    if let Some(proxy_url) = proxy_url {
+        //let proxy_url = proxy_url
+        //.strip_prefix("https://")
+        //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
+        debug!("using proxy_url {}", proxy_url);
+        let proxy = ureq::Proxy::new(proxy_url)?;
+        agent = agent.proxy(proxy)
+    }
+    Ok(agent.build())
+}
+
+

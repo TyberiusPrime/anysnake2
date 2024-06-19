@@ -1,7 +1,7 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Arg, ArgMatches};
-use config::{BuildPythonPackageInfo, PythonPackageDefinition};
+use config::{PythonPackageDefinition};
 use ex::fs;
 use indoc::indoc;
 use lazy_static::lazy_static;
@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
 use tofu::apply_trust_on_first_use;
-use util::{add_line_numbers, change_toml_file, dir_empty, CloneStringLossy};
+use util::{add_line_numbers, dir_empty, CloneStringLossy};
 
 /* TODO
 
@@ -42,7 +42,6 @@ use util::{add_line_numbers, change_toml_file, dir_empty, CloneStringLossy};
 
 mod config;
 mod flake_writer;
-mod maps_duplicate_key_is_error;
 mod python_parsing;
 mod tofu;
 mod util;
@@ -230,7 +229,6 @@ fn configure_logging(matches: &ArgMatches) -> Result<()> {
 fn switch_to_configured_version(
     parsed_config: &config::TofuMinimalConfigToml,
     matches: &ArgMatches,
-    flake_dir: impl AsRef<Path>,
 ) -> Result<()> {
     match &parsed_config.anysnake2.url {
         config::TofuVCSorDev::Dev => {
@@ -283,11 +281,6 @@ fn switch_to_configured_version(
     Ok(())
 }
 
-struct CollectedPythonPackages {
-    requirement_packages: Vec<(String, PythonPackageDefinition)>,
-    build_packages: HashMap<String, BuildPythonPackageInfo>,
-}
-
 #[allow(clippy::vec_init_then_push)]
 fn inner_main() -> Result<()> {
     install_ctrl_c_handler()?;
@@ -335,9 +328,9 @@ fn inner_main() -> Result<()> {
     let minimal_parsed_config: config::TofuMinimalConfigToml =
         tofu::tofu_anysnake2_itself(minimal_parsed_config)?;
 
-    switch_to_configured_version(&minimal_parsed_config, &matches, &flake_dir)?;
+    switch_to_configured_version(&minimal_parsed_config, &matches)?;
 
-    let mut parsed_config: config::ConfigToml = config::ConfigToml::from_file(&config_file)?;
+    let parsed_config: config::ConfigToml = config::ConfigToml::from_file(&config_file)?;
     if cmd == "version" {
         //output the version you'd actually be using!
         print_version_and_exit();
@@ -363,7 +356,7 @@ fn inner_main() -> Result<()> {
         );
     }
 
-    let mut tofued_config = tofued_config;
+    let tofued_config = tofued_config;
     //lookup_clones(&mut tofued_config)?;
     let tofued_config = tofued_config;
 
@@ -431,7 +424,8 @@ fn inner_main() -> Result<()> {
         };
 
         if cmd == "develop" {
-            if let Some(python) = &tofued_config.python {
+            if let Some(_python) = &tofued_config.python {
+                todo!();
                 //todo
                 //write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
             }
@@ -813,7 +807,7 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
     {
         let tf = ex::fs::File::create(&download_filename)?;
         let mut btf = std::io::BufWriter::new(tf);
-        let mut req = flake_writer::get_proxy_req()?
+        let mut req = util::get_proxy_req()?
             .get(url)
             .call()?
             .into_reader();
@@ -1038,7 +1032,7 @@ fn fill_venv(
 
     for (pkg, spec) in python
         .iter()
-        .filter(|(pkg, spec)| spec.editable_path.is_some())
+        .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
         debug!("ensuring venv  for {pkg}");
         let safe_pkg = safe_python_package_name(pkg);
@@ -1390,6 +1384,7 @@ fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
     }
 }
 
+#[allow(unused)] //todo, there's a missing code path in 'develop'
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
     python_packages: &[(String, PythonPackageDefinition)],
@@ -1404,7 +1399,7 @@ fn write_develop_python_path(
 
     for (pkg, _spec) in python_packages
         .iter()
-        .filter(|(pkg, spec)| spec.editable_path.is_some())
+        .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
         let safe_pkg = safe_python_package_name(pkg);
         let real_target = parent_dir.join("code").join(pkg);
@@ -1421,3 +1416,5 @@ fn write_develop_python_path(
     )?;
     Ok(())
 }
+
+
