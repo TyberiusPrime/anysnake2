@@ -112,10 +112,10 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
         default_url: &str,
         tag_regex: &str,
     ) -> Result<config::TofuNixpkgs> {
-        let _self = self.unwrap_or_else(|| config::NixPkgs::new());
+        let inner_self = self.unwrap_or_else(config::NixPkgs::new);
 
         let url_and_rev: vcs::ParsedVCS =
-            _self.url.unwrap_or_else(|| default_url.try_into().unwrap());
+            inner_self.url.unwrap_or_else(|| default_url.try_into().unwrap());
         let url_and_rev = tofu_repo_to_tag(
             toml_name,
             updates,
@@ -126,8 +126,8 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
 
         let out = config::TofuNixpkgs {
             url: url_and_rev,
-            packages: _self.packages.unwrap_or_else(|| Vec::new()),
-            allow_unfree: _self.allow_unfree,
+            packages: inner_self.packages.unwrap_or_default(),
+            allow_unfree: inner_self.allow_unfree,
         };
         Ok(out)
     }
@@ -141,13 +141,13 @@ impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
         default_url: &str,
         tag_regex: &str,
     ) -> Result<vcs::TofuVCS> {
-        Ok(tofu_repo_to_tag(
+        tofu_repo_to_tag(
             toml_name,
             updates,
             self.map(|x| x.url),
             default_url,
             tag_regex,
-        )?)
+        )
     }
 }
 
@@ -158,12 +158,12 @@ impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<vcs::TofuVCS> {
-        Ok(tofu_repo_to_newest(
+        tofu_repo_to_newest(
             toml_name,
             updates,
             self.map(|x| x.url),
             default_url,
-        )?)
+        )
     }
 }
 
@@ -198,13 +198,13 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
     ) -> Result<Option<config::TofuR>> {
         Ok(match self {
             None => None,
-            Some(_self) => Some(config::TofuR {
-                date: _self.date,
-                packages: _self.packages,
-                url: tofu_repo_to_newest(toml_name, updates, _self.url, default_url)?,
-                override_attrs: _self.override_attrs,
-                dependency_overrides: _self.dependency_overrides,
-                additional_packages: _self.additional_packages,
+            Some(inner_self) => Some(config::TofuR {
+                date: inner_self.date,
+                packages: inner_self.packages,
+                url: tofu_repo_to_newest(toml_name, updates, inner_self.url, default_url)?,
+                override_attrs: inner_self.override_attrs,
+                dependency_overrides: inner_self.dependency_overrides,
+                additional_packages: inner_self.additional_packages,
             }),
         })
     }
@@ -224,7 +224,7 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
                         config::TofuFlake {
                             url: tofued,
                             follows: value.follows,
-                            packages: value.packages.unwrap_or_else(|| Vec::new()),
+                            packages: value.packages.unwrap_or_default(),
                         },
                     ))
                 })
@@ -248,7 +248,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
             Some(config::ParsedVCSorDev::Dev) => config::TofuVCSorDev::Dev,
             other => {
                 let url = match other {
-                    Some(config::ParsedVCSorDev::VCS(vcs)) => vcs,
+                    Some(config::ParsedVCSorDev::Vcs(vcs)) => vcs,
                     Some(_) => unreachable!(),
                     None => "github:TyberiusPrime/anysnake2"
                         .try_into()
@@ -265,7 +265,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
                     },
                     r"(\d\.){1,3}",
                 )?;
-                config::TofuVCSorDev::VCS(new_url)
+                config::TofuVCSorDev::Vcs(new_url)
             }
         };
 
@@ -289,9 +289,10 @@ fn tofu_repo_to_tag(
     tag_regex: &str,
 ) -> Result<vcs::TofuVCS> {
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    Ok(_tofu_repo_to_tag(toml_name, updates, input, default_url, tag_regex).context(error_msg)?)
+    _tofu_repo_to_tag(toml_name, updates, input, default_url, tag_regex).context(error_msg)
 }
 
+#[allow(clippy::too_many_lines)]
 fn _tofu_repo_to_tag(
     toml_name: &[&str],
     updates: &mut TomlUpdates,
@@ -431,7 +432,7 @@ fn tofu_repo_to_newest(
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    let mut newest = _tofu_repo_to_newest(toml_name, updates, input).context(error_msg)?;
+    let mut newest = _tofu_repo_to_newest(toml_name, updates, &input).context(error_msg)?;
 
     // workaround for repos that break githubs tar file consistency >
     if let TofuVCS::GitHub {
@@ -458,7 +459,7 @@ fn tofu_repo_to_newest(
 fn _tofu_repo_to_newest(
     toml_name: &[&str],
     updates: &mut TomlUpdates,
-    input: vcs::ParsedVCS,
+    input: &vcs::ParsedVCS,
 ) -> Result<vcs::TofuVCS> {
     let (changed, out) = match &input {
         vcs::ParsedVCS::Git {
@@ -564,7 +565,8 @@ fn _tofu_repo_to_newest(
     Ok(out)
 }
 
-/// aply just enough tofu to get us a toml file.
+/// apply just enough tofu to get us a toml file.
+#[allow(clippy::module_name_repetitions)]
 pub fn tofu_anysnake2_itself(
     config: config::MinimalConfigToml,
 ) -> Result<config::TofuMinimalConfigToml> {
@@ -573,10 +575,8 @@ pub fn tofu_anysnake2_itself(
     let tofued = config.tofu(&mut updates)?;
     if !tofued.anysnake2.do_not_modify_flake {
         change_toml_file(&config_file, updates)?;
-    } else {
-        if !updates.is_empty() {
-            bail!("No anysnake version to use defined in anysnake2.toml, but flake is not allowed to be modified");
-        }
+    } else if !updates.is_empty() {
+        bail!("No anysnake version to use defined in anysnake2.toml, but flake is not allowed to be modified");
     }
     Ok(tofued)
 }
@@ -688,24 +688,21 @@ fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> 
 fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!(
         "https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",
-        owner = owner,
-        repo = repo,
-        git_hash = git_hash
     );
 
     let stdout = Command::new("nix-prefetch-url")
         .args([&url, "--type", "sha256", "--unpack", "--print-path"])
         .output()
-        .context(format!("Failed to nix-prefetch {url}", url = url))?
+        .context(format!("Failed to nix-prefetch {url}"))?
         .stdout;
     let stdout = std::str::from_utf8(&stdout)?;
     let mut stdout_split = stdout.split('\n');
     let old_format = stdout_split
         .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 0  - should have been hash)", url))?;
+        .with_context(||format!("unexpected output from 'nix-prefetch-url {url} --type sha256 --unpack --print-path' (line 0  - should have been hash)"))?;
     let path = stdout_split
         .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {} --type sha256 --unpack --print-path' (line 1  - should have been hash)", url))?;
+        .with_context(||format!("unexpected output from 'nix-prefetch-url {url} --type sha256 --unpack --print-path' (line 1  - should have been hash)"))?;
 
     /* if the git repo is using .gitattributes and 'export-subst'
      * then github tarballs are actually not stable - if the drop out of the caching
@@ -768,7 +765,6 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
         .output()
         .context(format!(
             "Failed to nix hash to-sri --type sha256 '{hash}'",
-            hash = hash
         ))?
         .stdout;
     let res = std::str::from_utf8(&res)
@@ -946,7 +942,7 @@ fn tofu_clones(
                 .map(|(key2, value)| {
                     let _error_msg =
                         format!("Failed to tofu clone clones.{key1}.{key2} - {value:?}");
-                    let inner = _tofu_repo_to_newest(&["clones", &key1, &key2], updates, value)?;
+                    let inner = _tofu_repo_to_newest(&["clones", &key1, &key2], updates, &value)?;
                     Ok((key2, inner))
                 })
                 .collect::<Result<HashMap<String, TofuVCS>>>()?;
@@ -958,8 +954,8 @@ fn tofu_clones(
 impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
     fn tofu(self, updates: &mut TomlUpdates) -> Result<Option<config::TofuPython>> {
         match self {
-            Some(_self) => {
-                let tofu_packages: Result<HashMap<_, _>> = _self
+            Some(inner_self) => {
+                let tofu_packages: Result<HashMap<_, _>> = inner_self
                     .packages
                     .into_iter()
                     .map(|(key, value)| {
@@ -970,8 +966,8 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
                     .collect();
 
                 Ok(Some(config::TofuPython {
-                    version: _self.version,
-                    ecosystem_date: _self.ecosystem_date,
+                    version: inner_self.version,
+                    ecosystem_date: inner_self.ecosystem_date,
                     packages: tofu_packages?,
                 }))
             }
@@ -980,6 +976,7 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
     }
 }
 
+#[allow(clippy::enum_glob_use)]
 fn tofu_python_package_definition(
     name: &str,
     ppd: &config::PythonPackageDefinition,
@@ -991,15 +988,15 @@ fn tofu_python_package_definition(
         poetry2nix: ppd.poetry2nix.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
-            config::PythonPackageSource::URL(x) => URL(x.to_string()),
-            config::PythonPackageSource::VCS(parsed_vcs) => VCS(tofu_repo_to_newest(
+            config::PythonPackageSource::Url(x) => Url(x.to_string()),
+            config::PythonPackageSource::Vcs(parsed_vcs) => Vcs(tofu_repo_to_newest(
                 &["python", "packages", name, "url"],
                 updates,
-                Some(parsed_vcs.to_owned()),
+                Some(parsed_vcs.clone()),
                 "",
             )?),
             config::PythonPackageSource::PyPi { version, url } => {
-                let pypi_version = match version.as_ref().map(|x| x.as_str()) {
+                let pypi_version = match version.as_ref().map(String::as_str) {
                     None | Some("") => get_newest_pypi_version(name)
                         .with_context(|| format!("Could not get pypi version for {name}"))?,
                     Some(version) => version.to_string(),
