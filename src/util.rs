@@ -76,10 +76,13 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
         debug!("Applying updates to {:?}", toml_path);
         debug!("{:?}", updates);
         for (path, value) in updates {
+            if !doc.contains_key(&path[0]) {
+                doc[&path[0]] = toml_edit::Item::Table(toml_edit::Table::new());
+            }
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
                 for p in &path[1..path.len()] {
-                    if let toml_edit::Item::Value(_t) = x {
+                    if let toml_edit::Item::Value(_t) = x { // if it was previously a value...
                         *x = toml_edit::Item::Value(
                             toml_edit::Table::new().into_inline_table().into(),
                         );
@@ -96,6 +99,7 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
             ("anysnake2", 0),
             ("outside_nixpkgs", 1),
             ("ancient_poetry", 2),
+            ("poetry2nix", 2),
             ("nixpkgs", 3),
             ("clones", 4),
             ("python", 10),
