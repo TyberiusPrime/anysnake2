@@ -20,6 +20,10 @@ pub enum ParsedVCS {
         branch: Option<String>,
         rev: Option<String>,
     },
+    Mercurial {
+        url: String,
+        rev: Option<String>,
+    },
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq, Clone)]
@@ -33,6 +37,11 @@ pub enum TofuVCS {
         owner: String,
         repo: String,
         branch: String,
+        rev: String,
+    },
+
+    Mercurial {
+        url: String,
         rev: String,
     },
 }
@@ -51,6 +60,9 @@ impl TofuVCS {
             } => {
                 format!("github:{owner}/{repo}/{rev}")
             }
+            TofuVCS::Mercurial { url, rev } => {
+                format!("hg+{url}?rev={rev}")
+            }
         }
     }
 
@@ -67,6 +79,7 @@ impl TofuVCS {
                 rev,
                 branch,
             ),
+            TofuVCS::Mercurial { url, rev } => (url.to_string(), "", rev),
         }
     }
 
@@ -134,6 +147,9 @@ impl std::fmt::Display for TofuVCS {
                 branch,
                 rev,
             } => format!("github:{owner}/{repo}/{branch}/{rev}"),
+            TofuVCS::Mercurial { url, rev } => {
+                format!("hg+{url}?rev={rev}")
+            }
         })
     }
 }
@@ -183,6 +199,9 @@ impl TryFrom<&str> for ParsedVCS {
                 rev,
             }
         } else if input.starts_with("github:") {
+            if input.starts_with("github:/") {
+                bail!("github: urls must start with the repo, not /repo. Error in {input}");
+            }
             let mut parts = input.splitn(4, '/');
             let owner = parts
                 .next()
@@ -211,10 +230,19 @@ impl TryFrom<&str> for ParsedVCS {
                 branch,
                 rev,
             }
+        } else if input.starts_with("hg+https://") {
+            let without_hg = input.strip_prefix("hg+").unwrap();
+            let (url, query_string) = without_hg.split_once('?').unwrap_or((without_hg, ""));
+            let query_string = extract_query_string(query_string)?;
+            let rev = query_string.get("rev").map(ToString::to_string);
+            ParsedVCS::Mercurial {
+                url: url.to_string(),
+                rev,
+            }
         } else if input.starts_with("path:/") {
             bail!("flake urls must not start with path:/. These handle ?rev= wrong. Use just an absolute path instead");
         } else {
-            bail!("unknown vcs: {}", input);
+            bail!("unknown vcs / unparsable url: {}", input);
         })
     }
 }
@@ -265,6 +293,9 @@ impl ParsedVCS {
                 }
                 Ok(res)
             }
+            ParsedVCS::Mercurial { .. } => Ok(HashMap::new()), // ignoring mercurial
+                                                               // bookmarks/tags/branches
+                                                               // for now
         }
     }
 
@@ -322,13 +353,14 @@ impl ParsedVCS {
                 let url = format!("https://github.com/{owner}/{repo}.git");
                 run_git_ls(&url, None)?
             }
+            ParsedVCS::Mercurial { .. } => {
+                return Ok(Vec::new()); //todo: ignoring mercurial bookmarks/tags/branches for now
+            }
         };
         let res: Vec<String> = hash_and_ref
             .into_iter()
             .filter_map(|(_hash, refname)| {
-                refname
-                    .strip_prefix("refs/heads/")
-                    .map(ToString::to_string)
+                refname.strip_prefix("refs/heads/").map(ToString::to_string)
             })
             .collect();
         Ok(res)
@@ -336,9 +368,12 @@ impl ParsedVCS {
 
     pub fn discover_main_branch(&self) -> Result<String> {
         let branches = self.get_branches()?;
+        //debug!("Found branches: {branches:?}");
         if branches.iter().any(|x| x == "main") {
+            debug!("Found 'main' branch");
             Ok("main".to_string())
         } else if branches.iter().any(|x| x == "master") {
+            debug!("Found 'master' branch");
             Ok("master".to_string())
         } else if branches.len() == 1 {
             Ok(branches[0].clone())
@@ -362,20 +397,53 @@ impl ParsedVCS {
                 branch: _,
                 rev: _,
             } => Cow::Owned(format!("https://github.com/{owner}/{repo}")),
+            ParsedVCS::Mercurial { .. } => panic!("Mercurial has no git url"),
         }
     }
 
     pub fn newest_revision(&self, branch: &str) -> Result<String> {
-        let hash_and_ref = run_git_ls(&self.get_git_url(), Some(branch))?;
+        match self {
+            ParsedVCS::Git { .. } | ParsedVCS::GitHub { .. } => {
+                let hash_and_ref = run_git_ls(&self.get_git_url(), Some(branch))?;
 
-        if hash_and_ref.is_empty() {
-            bail!(
-                "No revisions found for git url {:?}, branch: {}",
-                self,
-                branch
-            );
+                if hash_and_ref.is_empty() {
+                    bail!(
+                        "No revisions found for git url {:?}, branch: {}",
+                        self,
+                        branch
+                    );
+                }
+                Ok(hash_and_ref[0].0.clone())
+            }
+            ParsedVCS::Mercurial { url, rev } => {
+                debug!("url: {url}, rev: {rev:?}");
+                let mut proc = std::process::Command::new("nix");
+                proc.args([
+                    "shell",
+                    &format!("{}#mercurial", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
+                    "-c",
+                    "hg",
+                    "id",
+                    "--debug",
+                    url,
+                ]);
+                debug!("Running {:?}", proc);
+                let output = proc.output().context("hg id ")?;
+                let stdout =
+                    std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed in hg id output");
+                if !output.status.success() {
+                    let stderr = std::str::from_utf8(&output.stderr)
+                        .expect("utf-8 decoding failed in hg id output");
+                    bail!("hg id  failed with status: {}. Stdout: {stdout}, stderr:{stderr}", output.status);
+                }
+                let sha1_regex = regex::Regex::new(r"[a-f0-9]{40}").unwrap();
+                let rev = sha1_regex
+                    .find(stdout)
+                    .context("No sha1 found in hg id output")?
+                    .as_str().to_string();
+                Ok(rev)
+            }
         }
-        Ok(hash_and_ref[0].0.clone())
     }
 }
 
@@ -400,6 +468,10 @@ impl TryFrom<ParsedVCS> for TofuVCS {
                 branch: branch.ok_or_else(|| anyhow::anyhow!("No branch in github url"))?,
                 rev: rev.ok_or_else(|| anyhow::anyhow!("No rev in github url"))?,
             },
+            ParsedVCS::Mercurial { url, rev } => TofuVCS::Mercurial {
+                url,
+                rev: rev.ok_or_else(|| anyhow::anyhow!("No rev in mercurial url"))?,
+            },
         })
     }
 }
@@ -409,16 +481,29 @@ pub fn run_git_ls(url: &str, branch: Option<&str>) -> Result<Vec<(String, String
     debug!("Running git ls remote on {}, branch: {:?}", url, branch);
     let output = run_without_ctrl_c(|| {
         //todo: run this is in the provided nixpkgs!
-        let mut proc = std::process::Command::new("git");
-        proc.args(["ls-remote", url]);
+        let mut proc = std::process::Command::new("nix");
+        proc.args([
+            "shell",
+            // if outside_nippkgs.url is not set in the config, we have to fall back 
+            // to a 'known' git.
+            &format!("{}#git", crate::OUTSIDE_NIXPKGS_URL.get().map_or("github:nixos/nixpkgs/24.05", String::as_str)),
+            "-c",
+            "git",
+            "ls-remote",
+            url,
+        ]);
         if let Some(branch) = branch {
             proc.arg(branch);
         }
+        debug!("Running {:?}", proc);
         Ok(proc.output()?)
     })
     .context("git ls-remote failed")?;
+    if !output.status.success() {
+        bail!("git ls-remote failed with status: {}", output.status);
+    }
     let stdout =
-        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed  no hg id --debug");
+        std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed in git ls-remote output");
     let mut res = Vec::new();
     for line in stdout.lines() {
         let (hash, refname) = line

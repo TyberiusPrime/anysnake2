@@ -142,13 +142,16 @@ impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
         default_url: &str,
         tag_regex: &str,
     ) -> Result<vcs::TofuVCS> {
-        tofu_repo_to_tag(
+        let res = tofu_repo_to_tag(
             toml_name,
             updates,
             self.map(|x| x.url),
             default_url,
             tag_regex,
-        )
+        )?;
+        crate::OUTSIDE_NIXPKGS_URL.set(res.to_nix_string()).unwrap();
+
+        Ok(res)
     }
 }
 
@@ -213,8 +216,12 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
             Some(flakes) => flakes
                 .into_iter()
                 .map(|(key, value)| {
-                    let tofued =
-                        tofu_repo_to_newest(&["flakes", &key, "url"], updates, Some(value.url), "")?;
+                    let tofued = tofu_repo_to_newest(
+                        &["flakes", &key, "url"],
+                        updates,
+                        Some(value.url),
+                        "",
+                    )?;
                     Ok((
                         key,
                         config::TofuFlake {
@@ -411,12 +418,32 @@ fn _tofu_repo_to_tag(
                 rev: rev.to_string(),
             },
         ),
+        ParsedVCS::Mercurial {
+            url,
+            rev: Some(rev),
+        } => (
+            false,
+            TofuVCS::Mercurial {
+                url: url.to_string(),
+                rev: rev.to_string(),
+            },
+        ),
+        ParsedVCS::Mercurial { url, rev: None } => {
+            (
+                true,
+                TofuVCS::Mercurial {
+                    url: url.to_string(),
+                    rev: input.newest_revision("")?, //todo: we're ignoring mercurial
+                                                     //'branches/bookmarks' for  now
+                },
+            )
+        }
     };
     if changed {
-        let mut table = toml_edit::table();
-        table["url"] = value(out.to_string());
-        updates.push((toml_name.iter().map(ToString::to_string).collect(), table));
-        updates.push((toml_name.iter().map(ToString::to_string).collect(), value(out.to_string())));
+        updates.push((
+            toml_name.iter().map(ToString::to_string).collect(),
+            value(out.to_string()),
+        ));
     }
     Ok(out)
 }
@@ -429,35 +456,40 @@ fn tofu_repo_to_newest(
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    let mut newest = _tofu_repo_to_newest(toml_name, updates, &input).context(error_msg)?;
+    let (changed, mut newest) =
+        _tofu_repo_to_newest(toml_name, updates, &input).context(error_msg)?;
 
     // workaround for repos that break githubs tar file consistency >
-    if let TofuVCS::GitHub {
-        owner,
-        repo,
-        branch: _,
-        rev,
-    } = &newest
-    {
-        if let PrefetchHashResult::HaveToUseFetchGit = prefetch_github_hash(owner, repo, rev)? {
-            let (url, rev, branch) = newest.get_url_rev_branch();
-            warn!("The github repo {owner}/{repo}/?rev={rev} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use git directly instead, which is immune to that.");
+    // todo: this needs to be done once, but even if the user inputs everything, right?
+    if changed {
+        if let TofuVCS::GitHub {
+            owner,
+            repo,
+            branch: _,
+            rev,
+        } = &newest
+        {
+            if let PrefetchHashResult::HaveToUseFetchGit = prefetch_github_hash(owner, repo, rev)? {
+                let (url, rev, branch) = newest.get_url_rev_branch();
+                warn!("The github repo {owner}/{repo}/?rev={rev} is using .gitattributes and export-subst, which leads to the github tarball used by fetchFromGithub changing hashes over time.\nYour anysnake2.toml has been adjusted to use git directly instead, which is immune to that.");
 
-            newest = TofuVCS::Git {
-                url,
-                branch: branch.to_string(),
-                rev: rev.to_string(),
-            };
+                newest = TofuVCS::Git {
+                    url,
+                    branch: branch.to_string(),
+                    rev: rev.to_string(),
+                };
+            }
         }
     }
     Ok(newest)
 }
 
+#[allow(clippy::too_many_lines)]
 fn _tofu_repo_to_newest(
     toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: &vcs::ParsedVCS,
-) -> Result<vcs::TofuVCS> {
+) -> Result<(bool, vcs::TofuVCS)> {
     let (changed, out) = match &input {
         vcs::ParsedVCS::Git {
             url,
@@ -551,6 +583,26 @@ fn _tofu_repo_to_newest(
                 rev: rev.to_string(),
             },
         ),
+        ParsedVCS::Mercurial {
+            url,
+            rev: Some(rev),
+        } => (
+            false,
+            TofuVCS::Mercurial {
+                url: url.to_string(),
+                rev: rev.to_string(),
+            },
+        ),
+        ParsedVCS::Mercurial { url, rev: None } => {
+            (
+                true,
+                TofuVCS::Mercurial {
+                    url: url.to_string(),
+                    rev: input.newest_revision("")?, //todo: we're ignoring mercurial
+                                                     //'branches/bookmarks' for  now
+                },
+            )
+        }
     };
     if changed {
         //table["url"] = value(out.to_string());
@@ -559,7 +611,7 @@ fn _tofu_repo_to_newest(
             value(out.to_string()),
         ));
     }
-    Ok(out)
+    Ok((changed, out))
 }
 
 /// apply just enough tofu to get us a toml file.
@@ -683,9 +735,7 @@ fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> 
 */
 
 fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
-    let url = format!(
-        "https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",
-    );
+    let url = format!("https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",);
 
     let stdout = Command::new("nix-prefetch-url")
         .args([&url, "--type", "sha256", "--unpack", "--print-path"])
@@ -760,9 +810,7 @@ fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
     let res = Command::new("nix")
         .args(["hash", "to-sri", "--type", "sha256", hash])
         .output()
-        .context(format!(
-            "Failed to nix hash to-sri --type sha256 '{hash}'",
-        ))?
+        .context(format!("Failed to nix hash to-sri --type sha256 '{hash}'",))?
         .stdout;
     let res = std::str::from_utf8(&res)
         .context("nix hash output was not utf8")?
@@ -940,7 +988,7 @@ fn tofu_clones(
                     let _error_msg =
                         format!("Failed to tofu clone clones.{key1}.{key2} - {value:?}");
                     let inner = _tofu_repo_to_newest(&["clones", &key1, &key2], updates, &value)?;
-                    Ok((key2, inner))
+                    Ok((key2, inner.1))
                 })
                 .collect::<Result<HashMap<String, TofuVCS>>>()?;
             Ok((key1, outer))
@@ -986,12 +1034,15 @@ fn tofu_python_package_definition(
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),
-            config::PythonPackageSource::Vcs(parsed_vcs) => Vcs(tofu_repo_to_newest(
-                &["python", "packages", name, "url"],
-                updates,
-                Some(parsed_vcs.clone()),
-                "",
-            )?),
+            config::PythonPackageSource::Vcs(parsed_vcs) => match parsed_vcs {
+                ParsedVCS::Mercurial { .. } => bail!("Poetry does not support mercurial."),
+                _ => Vcs(tofu_repo_to_newest(
+                    &["python", "packages", name, "url"],
+                    updates,
+                    Some(parsed_vcs.clone()),
+                    "",
+                )?),
+            },
             config::PythonPackageSource::PyPi { version, url } => {
                 let pypi_version = match version.as_ref().map(String::as_str) {
                     None | Some("") => get_newest_pypi_version(name)

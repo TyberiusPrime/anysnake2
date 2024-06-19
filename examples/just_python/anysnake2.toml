@@ -27,7 +27,7 @@ example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/mas
 dppd = {poetry2nix.buildInputs = ["setuptools"]}
 dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
 pyscaffold = "3.1"
-pytest=""
+#pytest=""
 
 
 [flake-util]

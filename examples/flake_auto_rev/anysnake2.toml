@@ -1,30 +1,44 @@
-# the absolute minimal anysnake2.toml example
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
-
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
-
+url = "dev"
 
 [nixpkgs]
-rev = "21.05" # the nixpgks version or github hash
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[outside_nixpkgs]
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/48e7ed4ef7832efa5a5558e573986c4128fc478f"
 
 
 [flakes.hello]
-	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema 
-	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	# rev get's auto detected
-
-[flakes.hello3]
-	url = "github:/TyberiusPrime/hello_flake/master" #https://nixos.wiki/wiki/Flakes#Input_schema 
-	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	# rev get's auto detected
-
+# 	# rev get's auto detected
+ 	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
 
 [flakes.hello2]
-	url = "git+https://github.com/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema 
-	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	# rev get's auto detected
+ 	url = "git+https://github.com/TyberiusPrime/hello_flake?ref=main&rev=f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+ 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+
+[flakes.hello_merucrial]
+ 	url = "hg+https://hg.sr.ht/~tyberius_prime/hello_flake?rev=ed4abef5589800a2f1cf43282b46f180bc46fa0d"
+
+
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+# 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+
+
+# [flakes.hello2]
+# 	url = "git+https://github.com/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema
+# 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+
+# [flakes.hello3]
+# 	url = "github:TyberiusPrime/hello_flake/master" #https://nixos.wiki/wiki/Flakes#Input_schema
+# 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+
 
 
