@@ -10,3 +10,6 @@
 
 - poetry project in subdirectory of grepo. poetry project in subdir, editable.
 - git+ssh urls for poetry
+
+ - why does it pull in pytest 8.1.something when you don't set pytest in 
+ the just_python example

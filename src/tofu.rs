@@ -35,7 +35,6 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             anysnake2: {
                 config::TofuAnysnake2 {
                     url: {
-                        debug!("So far {:?}", self.anysnake2.url);
                         self.anysnake2.url.and_then(|x| x.try_into().ok()).expect(
                             "Expected to have a completely resolved anysnake2 at this point",
                         )
@@ -802,7 +801,7 @@ fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<Prefe
     Ok(PrefetchHashResult::Hash(new_format))
 }
 
-fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Result<String> {
+pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Result<String> {
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
@@ -1143,7 +1142,7 @@ fn tofu_python_package_definition(
 ) -> Result<config::TofuPythonPackageDefinition> {
     use config::TofuPythonPackageSource::*;
     Ok(config::TofuPythonPackageDefinition {
-        editable: ppd.editable,
+        editable_path: ppd.editable_path.clone(),
         poetry2nix: ppd.poetry2nix.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
@@ -1162,7 +1161,9 @@ fn tofu_python_package_definition(
                 };
                 let new_url = match url {
                     None => true,
-                    Some(ref url) => !url.contains(&format!("-{pypi_version}.")),
+                    Some(ref url) => {
+                        !url.contains(&format!("-{pypi_version}.")) 
+                    }
                 };
                 let new_url = if new_url {
                     get_pypi_package_source_url(name, &pypi_version)
@@ -1171,7 +1172,7 @@ fn tofu_python_package_definition(
                     url.as_ref().unwrap().to_string()
                 };
                 let mut out = toml_edit::Table::new().into_inline_table();
-                out.insert("url", new_url.clone().into());
+                out.insert("cached_url", new_url.clone().into());
                 out.insert("version", format!("pypi:{pypi_version}").into());
                 let push = (new_url != url.as_deref().unwrap_or(""))
                     || (pypi_version != version.as_deref().unwrap_or(""));

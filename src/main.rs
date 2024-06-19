@@ -10,7 +10,7 @@ use python_parsing::parse_egg;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
-use std::ffi::OsStr;
+use std::borrow::Cow;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
 use tofu::apply_trust_on_first_use;
-use url::Url;
 use util::{add_line_numbers, change_toml_file, dir_empty, CloneStringLossy};
 
 /* TODO
@@ -367,10 +366,11 @@ fn inner_main() -> Result<()> {
     let mut tofued_config = tofued_config;
     //lookup_clones(&mut tofued_config)?;
     let tofued_config = tofued_config;
-    perform_clones(&tofued_config)?;
 
     let flake_changed =
         flake_writer::write_flake(&flake_dir, &tofued_config, use_generated_file_instead)?;
+
+    perform_clones(&flake_dir, &tofued_config)?;
 
     if let Some(("build", sc)) = matches.subcommand() {
         {
@@ -548,16 +548,16 @@ fn inner_main() -> Result<()> {
             if let Some(python) = &tofued_config.python {
                 let venv_dir: PathBuf = flake_dir.join("venv").join(&python.version);
                 error!("{:?}", venv_dir);
-                /* binds.push(( //TODO: Remove or keep, depending on what we do about the editable
-                 * things.
-                    venv_dir.to_string_lossy(),
-                    "/anysnake2/venv".to_string(),
-                    "ro".to_string(),
-                )); */
                 let mut python_paths = Vec::new();
-                for (pkg, spec) in python.packages.iter().filter(|(pkg, spec)| spec.editable) {
+                for (pkg, spec) in python
+                    .packages
+                    .iter()
+                    .filter(|(_, spec)| spec.editable_path.is_some())
+                {
                     let safe_pkg = safe_python_package_name(pkg);
-                    let target_dir: PathBuf = ["code", pkg].iter().collect(); //todo: make configurable
+                    let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
+                        .iter()
+                        .collect(); //todo: make configurable
                     binds.push((
                         target_dir.to_string_lossy(),
                         format!("/anysnake2/venv/linked_in/{}", safe_pkg),
@@ -777,48 +777,163 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-fn perform_clones(parsed_config: &config::TofuConfigToml) -> Result<()> {
-    match &parsed_config.clones {
-        Some(clones) => {
-            for (target_dir, name_urls) in clones.iter() {
-                fs::create_dir_all(target_dir)
-                    .context(format!("Could not create {}", target_dir))?;
-                let clone_log: PathBuf = [target_dir, ".clone_info.json"].iter().collect();
-                let mut known_clones: HashMap<String, String> = match clone_log.exists() {
-                    true => serde_json::from_str(&fs::read_to_string(&clone_log)?)?,
-                    false => HashMap::new(),
-                };
-                for (name, url) in name_urls {
-                    let known_url = known_clones.get(name).map(String::as_str).unwrap_or("");
-                    let final_dir: PathBuf = [target_dir, name].iter().collect();
-                    if known_url != url.to_string() && final_dir.exists() && !dir_empty(&final_dir)?
-                    //empty dir is ok.
-                    {
-                        let msg = format!(
+fn extract_python_package_version_from_poetry_lock(
+    flake_dir: &Path,
+    safe_name: &str,
+) -> Result<String> {
+    let poetry_lock: PathBuf = flake_dir.join("poetry/poetry.lock");
+    let poetry_lock = fs::read_to_string(&poetry_lock)?;
+    let poetry_lock: toml::Value = toml::from_str(&poetry_lock)?;
+    for package in poetry_lock["package"]
+        .as_array()
+        .expect("poetry.toml parsing error")
+    {
+        if package["name"]
+            .as_str()
+            .expect("no package name/not a string in poetry.lock")
+            == safe_name
+        {
+            return Ok(package["version"]
+                .as_str()
+                .expect("package version not a string in poetry.lock")
+                .to_string());
+        }
+    }
+    bail!("Could not find package {} in poetry.lock", safe_name);
+}
+
+fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
+    //remove target dir if it exists
+    if target_dir.exists() {
+        ex::fs::remove_dir_all(target_dir).context("Failed to remove target dir")?;
+    }
+    ex::fs::create_dir_all(target_dir).context("Failed to create target dir")?;
+    let download_filename = target_dir.join("download.tar.gz");
+
+    {
+        let tf = ex::fs::File::create(&download_filename)?;
+        let mut btf = std::io::BufWriter::new(tf);
+        let mut req = flake_writer::get_proxy_req()?
+            .get(url)
+            .call()?
+            .into_reader();
+        std::io::copy(&mut req, &mut btf)?;
+    }
+    //call tar to unpack
+    Command::new("tar")
+        .args(&["-xzf", "download.tar.gz", "--strip-components=1"])
+        .current_dir(target_dir)
+        .status()
+        .context("Failed to untar downloaded archive")?;
+
+    ex::fs::remove_file(download_filename).context("Failed to remove download file")?;
+
+    Ok(())
+}
+
+fn clone(
+    flake_dir: &Path,
+    parent_dir: &str,
+    name: &str,
+    source: &config::TofuPythonPackageSource,
+    known_clones: &mut HashMap<String, String>,
+) -> Result<()> {
+    let final_dir: PathBuf = [parent_dir, name].iter().collect();
+    fs::create_dir_all(&final_dir)?;
+    if dir_empty(&final_dir)? {
+        info!("cloning {}/{} from {:?}", parent_dir, name, source);
+        match source {
+            config::TofuPythonPackageSource::VersionConstraint(_) => {
+                let safe_name = safe_python_package_name(name);
+                let actual_version =
+                    extract_python_package_version_from_poetry_lock(flake_dir, &safe_name)?;
+                // I don't see how we get from what's in poetry.lock to the url right now, and this
+                // is at hand
+                let url = tofu::get_pypi_package_source_url(&safe_name, &actual_version)
+                    .context("Failed to get python package source")?;
+                download_and_unzip(&url, &final_dir)?;
+            }
+            config::TofuPythonPackageSource::URL(url) => {
+                download_and_unzip(url, &final_dir)?;
+            }
+            config::TofuPythonPackageSource::VCS(tofu_vcs) => {
+                tofu_vcs.clone_repo(final_dir.to_string_lossy())?;
+            }
+            config::TofuPythonPackageSource::PyPi { version: _, url } => {
+                download_and_unzip(url, &final_dir)?;
+            }
+        }
+        known_clones.insert(name.to_string(), format!("{:?}", source));
+    }
+    Ok(())
+}
+
+fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> Result<()> {
+    // the old school 'clones' clones
+    let mut todo: HashMap<String, HashMap<String, config::TofuPythonPackageSource>> =
+        HashMap::new();
+    if let Some(clones) = parsed_config.clones.as_ref() {
+        for (target_dir, entries) in clones.iter() {
+            for (name, source) in entries.iter() {
+                let entry = todo
+                    .entry(target_dir.to_string())
+                    .or_insert_with(HashMap::new);
+                entry.insert(
+                    name.clone(),
+                    config::TofuPythonPackageSource::VCS(source.clone()),
+                );
+            }
+        }
+    }
+    //now add in editable python packages
+    if let Some(python) = &parsed_config.python {
+        for (pkg_name, package) in python.packages.iter() {
+            if let Some(editable_path) = &package.editable_path {
+                let entry = todo
+                    .entry(editable_path.to_string())
+                    .or_insert_with(HashMap::new);
+                let safe_name = safe_python_package_name(pkg_name);
+                entry.insert(safe_name, package.source.clone());
+            }
+        }
+    }
+
+    for (target_dir, name_urls) in todo.iter() {
+        fs::create_dir_all(target_dir).context(format!("Could not create {}", target_dir))?;
+        let clone_log: PathBuf = [target_dir, ".clone_info.json"].iter().collect();
+        let mut known_clones: HashMap<String, String> = match clone_log.exists() {
+            true => serde_json::from_str(&fs::read_to_string(&clone_log)?)?,
+            false => HashMap::new(),
+        };
+        let do_clones = |known_clones: &mut HashMap<String, String>| {
+            for (name, source) in name_urls {
+                let known_url = known_clones.get(name).map(String::as_str).unwrap_or("");
+                let final_dir: PathBuf = [target_dir, name].iter().collect();
+                let url = format!("{:?}", source);
+                if known_url != url && final_dir.exists() && !dir_empty(&final_dir)?
+                //empty dir is ok.
+                {
+                    let msg = format!(
                             "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
                         Cowardly refusing to throw away old checkout."
                         , target_dir=target_dir, name=name, known_url=known_url, url=url);
-                        bail!(msg);
-                    }
+                    bail!(msg);
                 }
-                for (name, url) in name_urls {
-                    let final_dir: PathBuf = [target_dir, name].iter().collect();
-                    fs::create_dir_all(&final_dir)?;
-                    if dir_empty(&final_dir)? {
-                        info!("cloning {}/{} from {}", target_dir, name, url);
-                        url.clone(final_dir.to_string_lossy())?;
-                        known_clones.insert(name.clone(), url.to_string());
-                    }
-                }
-                fs::write(
-                    &clone_log,
-                    serde_json::to_string_pretty(&json!(known_clones))?,
-                )
-                .with_context(|| format!("Failed to write {:?}", &clone_log))?;
             }
-        }
-        None => {}
-    };
+            for (name, url) in name_urls {
+                clone(flake_dir, target_dir, name, url, known_clones)
+                    .context("Cloning for {name} into {target_dir} from {url:?}")?;
+            }
+            Ok(())
+        };
+        let clone_result = do_clones(&mut known_clones);
+        fs::write(
+            &clone_log,
+            serde_json::to_string_pretty(&json!(known_clones))?,
+        )
+        .with_context(|| format!("Failed to write {:?}", &clone_log))?;
+        clone_result?;
+    }
 
     Ok(())
 }
@@ -910,8 +1025,6 @@ fn fill_venv(
     outside_nixpkgs_url: &vcs::TofuVCS, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
     flake_dir: &Path,
 ) -> Result<()> {
-    Ok(())
-    /*
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
     fs::create_dir_all(&venv_dir.join("bin"))?;
     fs::create_dir_all(flake_dir.join("venv_develop"))?;
@@ -925,15 +1038,11 @@ fn fill_venv(
 
     for (pkg, spec) in python
         .iter()
-        .filter_map(|(pkg, spec)| match spec{
-            PythonPackageDefinition::Complex(_) |
-            PythonPackageDefinition::Simple(_) => None,
-            PythonPackageDefinition::Editable(spec) => Some((pkg,spec)),
-        })
+        .filter(|(pkg, spec)| spec.editable_path.is_some())
     {
         debug!("ensuring venv  for {pkg}");
         let safe_pkg = safe_python_package_name(pkg);
-        let target_dir: PathBuf = [spec, pkg]
+        let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
             .iter()
             .collect();
         if !target_dir.exists() {
@@ -1063,7 +1172,10 @@ fn fill_venv(
             let mut any_found = false;
             for path in paths {
                 let path = path.unwrap().path();
-                let suffix = path.extension().unwrap_or(OsStr::new("")).to_string_lossy();
+                let suffix = path
+                    .extension()
+                    .map(|x| x.to_string_lossy())
+                    .unwrap_or_else(|| Cow::Owned(String::default()));
                 if suffix == "pth" || suffix == "egg-link" {
                     //we want to read {safe_pkg}.egg-link, not __editable__{safe_pkg}-{version}.pth
                     //because we don't *know* the version
@@ -1088,27 +1200,9 @@ fn fill_venv(
             let target_anysnake_link = venv_dir.join(format!("{}.anysnake-link", safe_pkg));
             fs::write(target_anysnake_link, &target_python_str)
                 .context("target anysnake link write failed")?;
-
-            /*keep it here in case we need it again...
-             * for dir_entry in walkdir::WalkDir::new(td.path()) {
-                let dir_entry = dir_entry?;
-                if let Some(filename) = dir_entry.file_name().to_str() {
-                    if filename.ends_with(".egg-link") {
-                        trace!("found {:?} for {:?}", &safe_pkg, &dir_entry);
-                        fs::write(
-                            target_egg_link,
-                            fs::read_to_string(dir_entry.path())?,
-                        )?;
-                        break;
-                    }
-                };
-            }
-            */
         }
     }
     Ok(())
-        */
-    */
 }
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
@@ -1308,7 +1402,10 @@ fn write_develop_python_path(
         .context("No parent found for flake dir")?
         .to_path_buf();
 
-    for (pkg, _spec) in python_packages.iter().filter(|(pkg, spec)| spec.editable) {
+    for (pkg, _spec) in python_packages
+        .iter()
+        .filter(|(pkg, spec)| spec.editable_path.is_some())
+    {
         let safe_pkg = safe_python_package_name(pkg);
         let real_target = parent_dir.join("code").join(pkg);
         let egg_link = venv_dir.join(format!("{}.egg-link", safe_pkg));

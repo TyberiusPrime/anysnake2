@@ -22,9 +22,12 @@ black=""
 tomli=">1.2"
 hatchling=""
 #requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
-requests = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", version = "pypi:2.32.3" }
+requests = { cached_url = "https://files.pythonhosted.org/packages/86/ec/535bf6f9bd280de6a4637526602a146a68fde757100ecf8c9333173392db/requests-2.32.2.tar.gz", version = "pypi:2.32.2" }
 example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
-dppd = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools"]}
+dppd = {poetry2nix.buildInputs = ["setuptools"]}
+dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
+pyscaffold = "3.1"
+pytest=""
 
 
 [flake-util]

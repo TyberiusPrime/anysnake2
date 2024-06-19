@@ -383,20 +383,20 @@ impl PythonPackageSource {
             if url.starts_with("github:") | url.starts_with("git+https") {
                 let vcs = ParsedVCS::try_from(url)?;
                 PythonPackageSource::VCS(vcs)
-            } else if url.starts_with("pypi:") {
-                let (_, version_and_url) = url.split_once(":").unwrap();
-                if version_and_url.is_empty() {
-                    PythonPackageSource::PyPi {
-                        url: None,
-                        version: None,
-                    }
-                } else {
-                    let (version, url) = version_and_url
-                        .split_once("/")
-                        .map(|(a, b)| (Some(a.to_string()), Some(b.to_string())))
-                        .unwrap_or((Some(version_and_url.to_string()), None));
-                    PythonPackageSource::PyPi { version, url }
+            /* } else if url.starts_with("pypi:") {
+            let (_, version_and_url) = url.split_once(":").unwrap();
+            if version_and_url.is_empty() {
+                PythonPackageSource::PyPi {
+                    url: None,
+                    version: None,
                 }
+            } else {
+                let (version, url) = version_and_url
+                    .split_once("/")
+                    .map(|(a, b)| (Some(a.to_string()), Some(b.to_string())))
+                    .unwrap_or((Some(version_and_url.to_string()), None));
+                PythonPackageSource::PyPi { version, url }
+            } */
             } else {
                 PythonPackageSource::URL(url.to_string())
             },
@@ -407,14 +407,14 @@ impl PythonPackageSource {
 #[derive(Debug, Clone)]
 pub struct PythonPackageDefinition {
     pub source: PythonPackageSource,
-    pub editable: bool,
+    pub editable_path: Option<String>,
     pub poetry2nix: toml::map::Map<String, toml::Value>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TofuPythonPackageDefinition {
     pub source: TofuPythonPackageSource,
-    pub editable: bool,
+    pub editable_path: Option<String>,
     pub poetry2nix: toml::map::Map<String, toml::Value>,
 }
 
@@ -477,7 +477,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 };
                 return Ok(PythonPackageDefinition {
                     source,
-                    editable: false,
+                    editable_path: None,
                     poetry2nix: toml::map::Map::new(),
                 });
             }
@@ -485,17 +485,9 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 let url = parsed.get("url");
                 let version = parsed.get("version");
                 if url.is_some() && version.is_some() {
-                    if !version
-                        .unwrap()
-                        .as_str()
-                        .context("Version was not a string")
-                        .map_err(serde::de::Error::custom)?
-                        .starts_with("pypi:")
-                    {
-                        return Err(serde::de::Error::custom(
-                        "Both url and version are used, but only one is allowed. (Or version must be pypi:...)",
+                    return Err(serde::de::Error::custom(
+                        "Both url and version are used, but only one is allowed. ",
                     ));
-                    }
                 }
                 let source = {
                     if let Some(toml::Value::String(url)) = url {
@@ -507,22 +499,39 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                             url
                         )));
                     } else if let Some(toml::Value::String(constraint)) = version {
-                        PythonPackageSource::VersionConstraint(constraint.to_string())
+                        if constraint.starts_with("pypi:") {
+                            PythonPackageSource::PyPi {
+                                version: Some(constraint.split_once(":").unwrap().1.to_string()),
+                                url: parsed
+                                    .get("cached_url")
+                                    .and_then(|x| x.as_str())
+                                    .map(ToString::to_string),
+                            }
+                        } else {
+                            PythonPackageSource::VersionConstraint(constraint.to_string())
+                        }
                     } else if let Some(constraint) = version {
                         return Err(serde::de::Error::custom(format!(
                             "version must be a string, but was {:?}",
                             constraint
                         )));
                     } else {
-                        return Err(serde::de::Error::custom(
-                            "Either url or version must be set",
-                        ));
+                        // this is a case of 'it's only here for poetry2nix.* or such
+                        PythonPackageSource::VersionConstraint("".to_string())
                     }
                 };
-                let editable = parsed
-                    .get("editable")
-                    .and_then(|x| x.as_bool())
-                    .unwrap_or(false);
+                let editable = {
+                    let str_val = parsed.get("editable").and_then(|x| x.as_str());
+                    if let Some(str_val) = str_val {
+                        Some(str_val.to_string())
+                    } else {
+                        let b = parsed.get("editable").and_then(|x| x.as_bool());
+                        match b {
+                            Some(true) => Some("code".to_string()),
+                            _ => None,
+                        }
+                    }
+                };
                 let poetry2nix = parsed
                     .get("poetry2nix")
                     .and_then(|x| x.as_table())
@@ -530,7 +539,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     .clone();
                 return Ok(PythonPackageDefinition {
                     source,
-                    editable,
+                    editable_path: editable,
                     poetry2nix,
                 });
             }
@@ -759,7 +768,7 @@ impl TofuPython {
 
     pub fn has_editable_packages(&self) -> bool {
         for spec in self.packages.values() {
-            if spec.editable {
+            if spec.editable_path.is_some() {
                 return true;
             }
         }
