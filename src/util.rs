@@ -97,9 +97,6 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
 
         let order: HashMap<&str, usize> = [
             ("anysnake2", 0),
-            ("outside_nixpkgs", 1),
-            ("ancient_poetry", 2),
-            ("poetry2nix", 2),
             ("nixpkgs", 3),
             ("clones", 4),
             ("python", 10),
@@ -111,6 +108,9 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
             ("container", 21),
             ("env", 22),
             ("cmd", 23),
+            ("outside_nixpkgs", 96),
+            ("ancient_poetry", 97),
+            ("poetry2nix", 98),
             ("flake_util", 99),
         ]
         .into_iter()

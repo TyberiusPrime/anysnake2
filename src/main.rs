@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::{collections::HashMap, str::FromStr};
 use tofu::apply_trust_on_first_use;
 use util::{add_line_numbers, dir_empty, CloneStringLossy};
@@ -90,6 +91,11 @@ fn main() {
 lazy_static! {
     /// whether ctrl-c can terminate us right now.
     static ref CTRL_C_ALLOWED: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+}
+
+lazy_static! {
+    ///Set after reading the config so we can call nix shell .. from anywhere
+    static ref OUTSIDE_NIXPKGS_URL: OnceLock<String> = OnceLock::new();
 }
 
 fn install_ctrl_c_handler() -> Result<()> {
@@ -252,6 +258,9 @@ fn switch_to_configured_version(
                         branch: _,
                         rev,
                     } => rev,
+                    vcs::TofuVCS::Mercurial { .. } => {
+                        bail!("Anysnake itself must be hosted on a git repo")
+                    }
                 };
                 if rev.as_str()
                     != matches
@@ -341,8 +350,7 @@ fn inner_main() -> Result<()> {
     let tofued_config = apply_trust_on_first_use(parsed_config)?;
 
     if cmd == "attach" {
-        let outside_nixpkgs_url = tofued_config.outside_nixpkgs.to_string();
-        return attach_to_previous_container(&flake_dir, &outside_nixpkgs_url);
+        return attach_to_previous_container(&flake_dir);
     }
 
     let use_generated_file_instead = tofued_config.anysnake2.do_not_modify_flake;
@@ -418,12 +426,7 @@ fn inner_main() -> Result<()> {
 
         if let Some(python) = &tofued_config.python {
             //todo
-            fill_venv(
-                &python.version,
-                &python.packages,
-                &tofued_config.outside_nixpkgs,
-                &flake_dir,
-            )?;
+            fill_venv(&python.version, &python.packages, &flake_dir)?;
         };
 
         if cmd == "develop" {
@@ -631,7 +634,6 @@ fn inner_main() -> Result<()> {
 
             let singularity_result = run_singularity(
                 &singularity_args[..],
-                &tofued_config.outside_nixpkgs.to_nix_string(),
                 Some(&run_dir.join("singularity.bash")),
                 &dtach_socket,
                 &flake_dir,
@@ -670,12 +672,14 @@ fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
 /// run a process inside a singularity container.
 fn run_singularity(
     args: &[String],
-    outside_nix_repo_url: &str,
     log_file: Option<&PathBuf>,
     dtach_socket: &Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{outside_nix_repo_url}#singularity");
+    let singularity_url = format!(
+        "{}#singularity",
+        OUTSIDE_NIXPKGS_URL.get().unwrap()
+    );
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
@@ -1005,7 +1009,6 @@ fn safe_python_package_name(input: &str) -> String {
 fn fill_venv(
     python_version: &str,
     python: &HashMap<String, config::TofuPythonPackageDefinition>,
-    outside_nixpkgs_url: &vcs::TofuVCS, //clones: &HashMap<String, HashMap<String, String>>, //target_dir, name, url
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
@@ -1130,7 +1133,6 @@ fn fill_venv(
             info!("installing inside singularity");
             let singularity_result = run_singularity(
                 &singularity_args[..],
-                &outside_nixpkgs_url.to_nix_string(),
                 Some(&venv_dir.join("singularity.bash")),
                 &None,
                 flake_dir,
@@ -1309,7 +1311,9 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     let gc_roots = flake_dir.as_ref().join(".gcroots");
     fs::create_dir_all(&gc_roots)?;
 
-    let (without_hash, _) = url.rsplit_once('#').context("GC_root url should contain #")?;
+    let (without_hash, _) = url
+        .rsplit_once('#')
+        .context("GC_root url should contain #")?;
     //first we store and hash the flake itself and record tha.
     let flake_symlink_here = gc_roots.join(without_hash.replace('/', "_"));
     if !flake_symlink_here.exists() {
@@ -1325,7 +1329,7 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     Ok(())
 }
 
-fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
+fn attach_to_previous_container(flake_dir: impl AsRef<Path>) -> Result<()> {
     let mut available: Vec<_> = fs::read_dir(flake_dir.as_ref().join("dtach"))
         .context("Could not find dtach socket directory")?
         .filter_map(Result::ok)
@@ -1334,7 +1338,9 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
         bail!("No session to attach to available");
     } else if available.len() == 1 {
         info!("reattaching to {:?}", available[0].file_name());
-        run_dtach(available[0].path(), outside_nix_repo)
+        run_dtach(
+            available[0].path(),
+        )
     } else {
         available.sort_unstable_by_key(|x| x.file_name());
         loop {
@@ -1345,7 +1351,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
             let line1 = std::io::stdin().lock().lines().next().unwrap().unwrap();
             for (ii, entry) in available.iter().enumerate() {
                 if format!("{ii}") == line1 {
-                    return run_dtach(entry.path(), outside_nix_repo);
+                    return run_dtach(entry.path());
                 }
             }
             println!("sorry I did not understand that. \n");
@@ -1353,8 +1359,8 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>, outside_nix_repo: &
     }
 }
 
-fn run_dtach(p: impl AsRef<Path>, outside_nix_repo: &str) -> Result<()> {
-    let dtach_url = format!("{outside_nix_repo}#dtach");
+fn run_dtach(p: impl AsRef<Path>) -> Result<()> {
+    let dtach_url = format!("{}#dtach", OUTSIDE_NIXPKGS_URL.get().unwrap());
     let nix_full_args = vec![
         "shell".to_string(),
         dtach_url,

@@ -1,15 +1,9 @@
-- python version poetry difference - get the right python into poetry?
-- ancient-poetry useer def ref
-- all the revs into the anysnake2.toml, auto update
-
-- flakes that are paths relative to %ANYSNAKE_ROOT%
-
-
+- flakes that are paths relative to %ANYSNAKE_ROOT% ?
 - does ancientpoetry create a virtualenv? supress.
-
-
 - poetry project in subdirectory of grepo. poetry project in subdir, editable.
 - git+ssh urls for poetry
-
- - why does it pull in pytest 8.1.something when you don't set pytest in 
- the just_python example
+- why does it pull in pytest 8.1.something when you don't set pytest in 
+    the just_python example
+- run all the tests, fix all the examples...
+ - clear up when we're using the github api and when we're doing git ls-remote
+ - auto separate sections in anysnake.toml with newlines

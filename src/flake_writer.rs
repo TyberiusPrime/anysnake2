@@ -197,7 +197,6 @@ pub fn write_flake(
     // pretty print the generated flake
     flake_contents = nix_format(
         &flake_contents,
-        &parsed_config.outside_nixpkgs.to_nix_string(),
         flake_dir,
     )?;
 
@@ -384,10 +383,9 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
 
 fn nix_format(
     input: &str,
-    outside_nixpkgs_url: &str,
     flake_dir: impl AsRef<Path>,
 ) -> Result<String> {
-    let full_url = format!("{outside_nixpkgs_url}#nixfmt");
+    let full_url = format!("{}#nixfmt", crate::OUTSIDE_NIXPKGS_URL.get().unwrap());
     // debug!("registering nixfmt with {}", &full_url);
     super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
@@ -476,7 +474,7 @@ build-backend = "poetry.core.masonry.api"
 
         let full_args = vec![
             "shell".into(),
-            format!("{}#poetry", parsed_config.outside_nixpkgs.to_nix_string(),),
+            format!("{}#poetry", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
             format!(
                 "{}#{}",
                 parsed_config.nixpkgs.url.to_nix_string(),
@@ -750,7 +748,6 @@ fn format_poetry_build_input_overrides(
 ) -> Result<Vec<String>> {
     let mut poetry_overide_entries = Vec::new();
     for (name, spec) in python_packages {
-        debug!("complex python package: {}: {:?}", name, spec);
         if let Some(build_inputs) = spec.poetry2nix.get("buildInputs") {
             let str_build_inputs = build_inputs
                 .as_array()
