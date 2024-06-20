@@ -338,7 +338,9 @@ fn inner_main() -> Result<()> {
     let minimal_parsed_config: config::MinimalConfigToml =
         config::MinimalConfigToml::from_file(&config_file)?;
     let minimal_parsed_config: config::TofuMinimalConfigToml =
-        tofu::tofu_anysnake2_itself(minimal_parsed_config)?;
+        tofu::tofu_anysnake2_itself(minimal_parsed_config,
+                                    &HashMap::new(),
+                                    &mut HashMap::new())?;
 
     switch_to_configured_version(&minimal_parsed_config, &matches)?;
 
@@ -347,7 +349,13 @@ fn inner_main() -> Result<()> {
         //output the version you'd actually be using!
         print_version_and_exit();
     }
-    let tofued_config = apply_trust_on_first_use(parsed_config)?;
+
+    let in_non_spec_but_cached_values = load_cached_values(&flake_dir)?;
+    let mut out_non_spec_but_cached_values: HashMap<String, String> = HashMap::new();
+
+    let tofued_config = apply_trust_on_first_use(parsed_config,
+                                                 &in_non_spec_but_cached_values,
+                                                 &mut out_non_spec_but_cached_values)?;
 
     if cmd == "attach" {
         return attach_to_previous_container(&flake_dir);
@@ -372,7 +380,14 @@ fn inner_main() -> Result<()> {
     let mut tofued_config = tofued_config;
 
     let flake_changed =
-        flake_writer::write_flake(&flake_dir, &mut tofued_config, use_generated_file_instead)?;
+        flake_writer::write_flake(&flake_dir, &mut tofued_config, use_generated_file_instead,
+                                  &in_non_spec_but_cached_values,
+                                  &mut out_non_spec_but_cached_values
+                                  )?;
+
+    if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
+        save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
+    }
 
     perform_clones(&flake_dir, &tofued_config)?;
 
@@ -1407,5 +1422,18 @@ fn write_develop_python_path(
         flake_dir.as_ref().join("develop_python_path.bash"),
         format!("export PYTHONPATH=\"{}\"", &develop_python_paths.join(":")),
     )?;
+    Ok(())
+}
+
+fn load_cached_values(flake_dir: &Path) -> Result<HashMap<String, String>> {
+    let filename = flake_dir.join("cached.json");
+    Ok(ex::fs::read_to_string(&filename).map(|raw|  serde_json::from_str(&raw)).unwrap_or_else(|_| Ok(HashMap::new()))?)
+}
+
+fn save_cached_values(
+    flake_dir: &Path,
+    out_non_spec_but_cached_values: &HashMap<String, String>) -> Result<()> {
+    let out: String = serde_json::to_string_pretty(&out_non_spec_but_cached_values)?;
+    ex::fs::write(flake_dir.join("cached.json"), out)?;
     Ok(())
 }

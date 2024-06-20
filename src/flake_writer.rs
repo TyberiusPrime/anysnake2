@@ -60,6 +60,8 @@ pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::TofuConfigToml,
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<bool> {
     let template = std::include_str!("nix/flake_template.nix");
     let flake_dir: &Path = flake_dir.as_ref();
@@ -80,6 +82,8 @@ pub fn write_flake(
     let mut nixpkgs_pkgs = BTreeSet::new();
     let mut git_tracked_files = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
+    
+
 
     // we always need the flake utils.
     inputs.push(InputFlake::new(
@@ -123,6 +127,8 @@ pub fn write_flake(
         &filenames.pyproject_toml,
         &filenames.poetry_lock,
         flake_dir,
+        in_non_spec_but_cached_values,
+        out_non_spec_but_cached_values  
     )?;
 
     /* flake_contents = match &parsed_config.flakes {
@@ -220,7 +226,7 @@ pub fn write_flake(
     )?;
 
     run_git_add(&git_tracked_files, flake_dir)?;
-
+    
     Ok(res)
 }
 
@@ -290,6 +296,8 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 /// prepare what we put into pyprojec.toml
 fn prep_packages_for_pyproject_toml(
     input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>
 ) -> Result<toml::Table> {
     let mut result = toml::Table::new();
     for (name, spec) in input {
@@ -337,12 +345,25 @@ fn prep_packages_for_pyproject_toml(
                     // poetry does not do mercurial
                     // but nix does.
                     // and poetry does paths.
-                    // and inshallah, either the nix isolation is bad enough to allow all
-                    // /nix/store paths, or poetry2nix is smart enough to detect them,
-                    // or we will teach it ourselves that we need that path.
-                    let path_and_hash = prefetch_hg_store_path(url, rev)?;
+                    // so we can put the nix store path into poetry.toml
+                    // later rewrite it to work inside poetry2nix (which assumes relativ paths)
+                    // and add the nix fetchhg to the python packages src. 
+                    let path_key = format!("mercurial/{url}/{rev}/path");
+                    let hash_key = format!("mercurial/{url}/{rev}/sha256");
+                    let path = in_non_spec_but_cached_values.get(&path_key);
+                    let sha256 = in_non_spec_but_cached_values.get(&hash_key);
+                    let (path, sha256) = match (path, sha256) {
+                        (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
+                        _ => {
+                            let path_and_hash = prefetch_hg_store_path(url, rev)?;
+                            (path_and_hash.path, path_and_hash.sha256)
+                        }
+                    };
+                    out_non_spec_but_cached_values.insert(path_key, path.clone());
+                    out_non_spec_but_cached_values.insert(hash_key, sha256.clone());
+
                     let mut out_map = toml::Table::new();
-                    out_map.insert("path".to_string(), path_and_hash.path.into());
+                    out_map.insert("path".to_string(), path.into());
                     let src = format!(
                         "(
                             pkgs.fetchhg {{
@@ -350,7 +371,6 @@ fn prep_packages_for_pyproject_toml(
                                     rev = \"{rev}\";
                                     hash = \"{sha256}\";
                             }})",
-                        sha256 = path_and_hash.sha256
                     );
                     spec.poetry2nix.insert("src".to_string(), src.into());
                     result.insert(name.to_string(), toml::Value::Table(out_map));
@@ -819,6 +839,8 @@ fn add_python(
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
     flake_dir: &Path,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>
 ) -> Result<()> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     match &mut parsed_config.python {
@@ -829,7 +851,10 @@ fn add_python(
             }
             let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
-            let mut out_python_packages = prep_packages_for_pyproject_toml(&mut python.packages)?;
+            let mut out_python_packages = prep_packages_for_pyproject_toml(&mut python.packages, 
+                                                                           in_non_spec_but_cached_values,
+                                                                           out_non_spec_but_cached_values
+                                                                           )?;
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages
                     .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
@@ -995,3 +1020,4 @@ fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
 
     Ok(())
 }
+
