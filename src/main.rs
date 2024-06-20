@@ -338,9 +338,7 @@ fn inner_main() -> Result<()> {
     let minimal_parsed_config: config::MinimalConfigToml =
         config::MinimalConfigToml::from_file(&config_file)?;
     let minimal_parsed_config: config::TofuMinimalConfigToml =
-        tofu::tofu_anysnake2_itself(minimal_parsed_config,
-                                    &HashMap::new(),
-                                    &mut HashMap::new())?;
+        tofu::tofu_anysnake2_itself(minimal_parsed_config, &HashMap::new(), &mut HashMap::new())?;
 
     switch_to_configured_version(&minimal_parsed_config, &matches)?;
 
@@ -353,9 +351,11 @@ fn inner_main() -> Result<()> {
     let in_non_spec_but_cached_values = load_cached_values(&flake_dir)?;
     let mut out_non_spec_but_cached_values: HashMap<String, String> = HashMap::new();
 
-    let tofued_config = apply_trust_on_first_use(parsed_config,
-                                                 &in_non_spec_but_cached_values,
-                                                 &mut out_non_spec_but_cached_values)?;
+    let tofued_config = apply_trust_on_first_use(
+        parsed_config,
+        &in_non_spec_but_cached_values,
+        &mut out_non_spec_but_cached_values,
+    )?;
 
     if cmd == "attach" {
         return attach_to_previous_container(&flake_dir);
@@ -379,11 +379,13 @@ fn inner_main() -> Result<()> {
     //lookup_clones(&mut tofued_config)?;
     let mut tofued_config = tofued_config;
 
-    let flake_changed =
-        flake_writer::write_flake(&flake_dir, &mut tofued_config, use_generated_file_instead,
-                                  &in_non_spec_but_cached_values,
-                                  &mut out_non_spec_but_cached_values
-                                  )?;
+    let flake_changed = flake_writer::write_flake(
+        &flake_dir,
+        &mut tofued_config,
+        use_generated_file_instead,
+        &in_non_spec_but_cached_values,
+        &mut out_non_spec_but_cached_values,
+    )?;
 
     if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
         save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
@@ -691,10 +693,7 @@ fn run_singularity(
     dtach_socket: &Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!(
-        "{}#singularity",
-        OUTSIDE_NIXPKGS_URL.get().unwrap()
-    );
+    let singularity_url = format!("{}#singularity", OUTSIDE_NIXPKGS_URL.get().unwrap());
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
@@ -1353,9 +1352,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>) -> Result<()> {
         bail!("No session to attach to available");
     } else if available.len() == 1 {
         info!("reattaching to {:?}", available[0].file_name());
-        run_dtach(
-            available[0].path(),
-        )
+        run_dtach(available[0].path())
     } else {
         available.sort_unstable_by_key(|x| x.file_name());
         loop {
@@ -1427,12 +1424,14 @@ fn write_develop_python_path(
 
 fn load_cached_values(flake_dir: &Path) -> Result<HashMap<String, String>> {
     let filename = flake_dir.join("cached.json");
-    Ok(ex::fs::read_to_string(&filename).map(|raw|  serde_json::from_str(&raw)).unwrap_or_else(|_| Ok(HashMap::new()))?)
+    Ok(ex::fs::read_to_string(filename)
+        .map_or_else(|_| Ok(HashMap::new()), |raw| serde_json::from_str(&raw))?)
 }
 
 fn save_cached_values(
     flake_dir: &Path,
-    out_non_spec_but_cached_values: &HashMap<String, String>) -> Result<()> {
+    out_non_spec_but_cached_values: &HashMap<String, String>,
+) -> Result<()> {
     let out: String = serde_json::to_string_pretty(&out_non_spec_but_cached_values)?;
     ex::fs::write(flake_dir.join("cached.json"), out)?;
     Ok(())

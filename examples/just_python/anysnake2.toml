@@ -15,6 +15,8 @@ pandas="1.5.1"
 black=""
 tomli=">1.2"
 hatchling=""
+numpy={version = "pypi:2.0.0", poetry2nix = {preferWheel=true}}
+
 #requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
 requests = { version = "pypi:2.32.2" }
 example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
@@ -32,6 +34,7 @@ url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a2
 
 [poetry2nix]
 url = "github:nix-community/poetry2nix/master/2c6d07717af20e45fa5b2c823729126be91a3cdf"
+preferWheels=true
 #pytest=""
 
 

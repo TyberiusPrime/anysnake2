@@ -184,6 +184,22 @@ impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
     }
 }
 
+impl TofuToNewest<config::TofuPoetry2Nix> for Option<config::Poetry2Nix> {
+    fn tofu_to_newest(
+        self,
+        toml_name: &[&str],
+        updates: &mut TomlUpdates,
+        default_url: &str,
+    ) -> Result<config::TofuPoetry2Nix> {
+        let prefer_wheels = self.as_ref().and_then(|x| x.prefer_wheels).unwrap_or(true);
+        let input = self.and_then(|x| x.url);
+        Ok(config::TofuPoetry2Nix {
+            source: tofu_repo_to_newest(toml_name, updates, input, default_url)?,
+            prefer_wheels,
+        })
+    }
+}
+
 impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
     fn tofu_to_newest(
         self,
@@ -651,7 +667,11 @@ pub fn tofu_anysnake2_itself(
 ) -> Result<config::TofuMinimalConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(&mut updates, in_non_spec_but_cached_values, out_non_spec_but_cached_values)?;
+    let tofued = config.tofu(
+        &mut updates,
+        in_non_spec_but_cached_values,
+        out_non_spec_but_cached_values,
+    )?;
     if !tofued.anysnake2.do_not_modify_flake {
         change_toml_file(&config_file, updates)?;
     } else if !updates.is_empty() {
@@ -666,11 +686,15 @@ pub fn apply_trust_on_first_use(
     //todo: Where ist the flake stuff?
     config: config::ConfigToml,
     in_non_spec_but_cached_values: &HashMap<String, String>,
-    out_non_spec_but_cached_values: &mut HashMap<String, String>
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<TofuConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(&mut updates, in_non_spec_but_cached_values, out_non_spec_but_cached_values)?;
+    let tofued = config.tofu(
+        &mut updates,
+        in_non_spec_but_cached_values,
+        out_non_spec_but_cached_values,
+    )?;
     change_toml_file(&config_file, updates)?;
     Ok(tofued)
 }

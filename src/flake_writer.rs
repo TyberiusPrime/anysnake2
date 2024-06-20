@@ -82,8 +82,6 @@ pub fn write_flake(
     let mut nixpkgs_pkgs = BTreeSet::new();
     let mut git_tracked_files = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
-    
-
 
     // we always need the flake utils.
     inputs.push(InputFlake::new(
@@ -128,7 +126,7 @@ pub fn write_flake(
         &filenames.poetry_lock,
         flake_dir,
         in_non_spec_but_cached_values,
-        out_non_spec_but_cached_values  
+        out_non_spec_but_cached_values,
     )?;
 
     /* flake_contents = match &parsed_config.flakes {
@@ -226,7 +224,7 @@ pub fn write_flake(
     )?;
 
     run_git_add(&git_tracked_files, flake_dir)?;
-    
+
     Ok(res)
 }
 
@@ -297,7 +295,7 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 fn prep_packages_for_pyproject_toml(
     input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
-    out_non_spec_but_cached_values: &mut HashMap<String, String>
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<toml::Table> {
     let mut result = toml::Table::new();
     for (name, spec) in input {
@@ -347,11 +345,12 @@ fn prep_packages_for_pyproject_toml(
                     // and poetry does paths.
                     // so we can put the nix store path into poetry.toml
                     // later rewrite it to work inside poetry2nix (which assumes relativ paths)
-                    // and add the nix fetchhg to the python packages src. 
+                    // and add the nix fetchhg to the python packages src.
                     let path_key = format!("mercurial/{url}/{rev}/path");
                     let hash_key = format!("mercurial/{url}/{rev}/sha256");
                     let path = in_non_spec_but_cached_values.get(&path_key);
                     let sha256 = in_non_spec_but_cached_values.get(&hash_key);
+                    #[allow(clippy::pedantic)]
                     let (path, sha256) = match (path, sha256) {
                         (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
                         _ => {
@@ -451,6 +450,7 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
     nixpkgs: &config::TofuNixpkgs,
@@ -780,6 +780,7 @@ fn format_poetry_build_input_overrides(
 ) -> Result<Vec<String>> {
     let mut poetry_overide_entries = Vec::new();
     for (name, spec) in python_packages {
+        let mut override_python_attrs = HashMap::new();
         let mut overrides = HashMap::new();
         if let Some(build_inputs) = spec.poetry2nix.get("buildInputs") {
             let str_build_inputs = build_inputs
@@ -797,7 +798,7 @@ fn format_poetry_build_input_overrides(
                                 "Build input was not a list of strings package definition for {name}",
                             )
                         })?;
-                        if v.starts_with("(") {
+                        if v.starts_with('(') {
                             v.to_string()
                         } else {
                             format!("prev.{v}")
@@ -806,24 +807,43 @@ fn format_poetry_build_input_overrides(
                 })
                 .collect::<Result<Vec<String>>>()?
                 .join(" ");
-            overrides.insert("buildInputs", format!("(old.buildInputs or []) ++ [{str_build_inputs}]"));
+            override_python_attrs.insert(
+                "buildInputs",
+                format!("(old.buildInputs or []) ++ [{str_build_inputs}]"),
+            );
         }
         if let Some(src) = spec.poetry2nix.get("src") {
-            let src = src.as_str().with_context(|| {
-                format!(
-                    "src was not a string with nix code for {name}",
-                )
-            })?;
-            overrides.insert("src", format!("{src}"));
+            let src = src
+                .as_str()
+                .with_context(|| format!("src was not a string with nix code for {name}",))?;
+            override_python_attrs.insert("src", src.to_string());
         }
-        if !overrides.is_empty() {
-            let str_overrides = overrides
+        if let Some(prefer_wheel) = spec.poetry2nix.get("preferWheel") {
+            let prefer_wheel = prefer_wheel
+                .as_bool()
+                .with_context(|| format!("preferWheel was not a boolean for {name}",))?;
+            overrides.insert("preferWheel", format!("{prefer_wheel}"));
+        }
+        if !(override_python_attrs.is_empty() && overrides.is_empty()) {
+            let str_overrides = override_python_attrs
                 .iter()
                 .map(|(k, v)| format!("{k} = {v};"))
                 .collect::<Vec<String>>()
                 .join(" ");
             let safe_name = safe_python_package_name(name);
-            poetry_overide_entries.push(format!("{safe_name} = prev.{safe_name}.overridePythonAttrs (old: {{{str_overrides}}});"));
+            let first_part = if overrides.is_empty() {
+                format!("prev.{safe_name}")
+            } else {
+                let override_str = overrides
+                    .iter()
+                    .map(|(k, v)| format!("{k} = {v};"))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                format!("(prev.{safe_name}.override {{{override_str}}})",)
+            };
+            poetry_overide_entries.push(format!(
+                "{safe_name} = {first_part}.overridePythonAttrs (old: {{{str_overrides}}});"
+            ));
         }
     }
     Ok(poetry_overide_entries)
@@ -840,7 +860,7 @@ fn add_python(
     poetry_lock_path: &Path,
     flake_dir: &Path,
     in_non_spec_but_cached_values: &HashMap<String, String>,
-    out_non_spec_but_cached_values: &mut HashMap<String, String>
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<()> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
     match &mut parsed_config.python {
@@ -851,10 +871,11 @@ fn add_python(
             }
             let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
-            let mut out_python_packages = prep_packages_for_pyproject_toml(&mut python.packages, 
-                                                                           in_non_spec_but_cached_values,
-                                                                           out_non_spec_but_cached_values
-                                                                           )?;
+            let mut out_python_packages = prep_packages_for_pyproject_toml(
+                &mut python.packages,
+                in_non_spec_but_cached_values,
+                out_non_spec_but_cached_values,
+            )?;
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages
                     .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
@@ -886,7 +907,7 @@ fn add_python(
 
             inputs.push(InputFlake::new(
                 "poetry2nix",
-                &parsed_config.poetry2nix,
+                &parsed_config.poetry2nix.source,
                 &[],
             ));
 
@@ -922,16 +943,17 @@ fn add_python(
                     poetry_build_input_overrides.join("\n"),
                 ),
             );
+            let prefer_wheels = parsed_config.poetry2nix.prefer_wheels;
             definitions.insert(
                 "python_package".to_string(),
-                "mkPoetryEnv {
+                format!(
+                "mkPoetryEnv {{
                                   projectDir = ./poetry_rewritten;
                                   python = python_version;
-                                  preferWheels = true;
+                                  preferWheels = {prefer_wheels};
                                   overrides = poetry_overrides;
-                              }"
-                .to_string(),
-            );
+                }}"
+            ));
             nixpkgs_pkgs.insert("python_package".to_string());
 
             //flake_contents
@@ -1006,18 +1028,17 @@ fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
     let filename = "pyproject.toml";
     let input_filename = flake_dir.join("poetry").join(filename);
     let output_filename = flake_dir.join("poetry_rewritten").join(filename);
-    let raw = ex::fs::read_to_string(&input_filename)?;
+    let raw = ex::fs::read_to_string(input_filename)?;
     let out = raw.replace("/nix/store/", "../");
-    ex::fs::write(&output_filename, out)?;
+    ex::fs::write(output_filename, out)?;
 
     let filename = "poetry.lock";
     let input_filename = flake_dir.join("poetry").join(filename);
     let output_filename = flake_dir.join("poetry_rewritten").join(filename);
-    let raw = ex::fs::read_to_string(&input_filename)?;
+    let raw = ex::fs::read_to_string(input_filename)?;
     let search_re = regex::Regex::new(r"(\.\./)+nix/store/").unwrap();
     let out = search_re.replace(&raw, "../../").to_string(); //todo: do it without the alloc
-    ex::fs::write(&output_filename, out)?;
+    ex::fs::write(output_filename, out)?;
 
     Ok(())
 }
-
