@@ -71,7 +71,7 @@ pub struct ConfigToml {
     pub nixpkgs: Option<NixPkgs>,
     pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
     pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
-    pub poetry2nix: Option<ParsedVCSInsideURLTag>,
+    pub poetry2nix: Option<Poetry2Nix>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -96,7 +96,7 @@ pub struct TofuConfigToml {
     pub nixpkgs: TofuNixpkgs,
     pub outside_nixpkgs: TofuVCS,
     pub ancient_poetry: TofuVCS,
-    pub poetry2nix: TofuVCS,
+    pub poetry2nix: TofuPoetry2Nix,
     pub flake_util: TofuVCS,
     pub clone_regexps: Option<HashMap<String, String>>,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
@@ -114,6 +114,18 @@ pub struct TofuConfigToml {
 #[derive(Debug, Deserialize)]
 pub struct ParsedVCSInsideURLTag {
     pub url: Option<ParsedVCS>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Poetry2Nix {
+    pub url: Option<ParsedVCS>,
+    pub prefer_wheels: Option<bool>,
+}
+
+#[derive(Debug)]
+pub struct TofuPoetry2Nix {
+    pub source: TofuVCS,
+    pub prefer_wheels: bool,
 }
 
 impl ConfigToml {
@@ -343,20 +355,6 @@ impl PythonPackageSource {
             url.starts_with("hg+https:/") {
                 let vcs = ParsedVCS::try_from(url)?;
                 PythonPackageSource::Vcs(vcs)
-            /* } else if url.starts_with("pypi:") {
-            let (_, version_and_url) = url.split_once(":").unwrap();
-            if version_and_url.is_empty() {
-                PythonPackageSource::PyPi {
-                    url: None,
-                    version: None,
-                }
-            } else {
-                let (version, url) = version_and_url
-                    .split_once("/")
-                    .map(|(a, b)| (Some(a.to_string()), Some(b.to_string())))
-                    .unwrap_or((Some(version_and_url.to_string()), None));
-                PythonPackageSource::PyPi { version, url }
-            } */
             } else {
                 PythonPackageSource::Url(url.to_string())
             },

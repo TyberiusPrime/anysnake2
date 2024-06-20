@@ -7,3 +7,7 @@
 - run all the tests, fix all the examples...
  - clear up when we're using the github api and when we're doing git ls-remote
  - auto separate sections in anysnake.toml with newlines
+
+ - test cases for
+  - prefer wheels
+  - prefer wheel
