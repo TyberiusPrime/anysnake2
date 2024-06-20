@@ -164,7 +164,7 @@ impl TryFrom<&str> for ParsedVCS {
 
     /// Parse from a nix-like url, but not supporting the flake registry..
     ///
-    /// Like the examples from the nix manual, we parse
+    /// Like the examples from the nix manual, we parse:
     /// - `github:NixOS/nixpkgs`: The master branch of the NixOS/nixpkgs repository on GitHub.
     /// - `github:NixOS/nixpkgs/nixos-20.09`: The nixos-20.09 branch of the nixpkgs repository.
     /// - `github:NixOS/nixpkgs/a3a3dda3bacf61e8a39258a0ed9c924eeca8e293`: A specific revision of the nixpkgs repository.
@@ -174,9 +174,10 @@ impl TryFrom<&str> for ParsedVCS {
     /// - `git+https://github.com/NixOS/patchelf?ref=master&rev=f34751b88bd07d7f44f5cd3200fb4122bf916c7e`: A specific branch and revision of a Git repository.
     ///
     /// In addition we understand:
+    /// - `hg+https://hg.sr.ht/~tyberius_prime/hello_flake?rev=ed4abef5589800a2f1cf43282b46f180bc46fa0d` (so does nix, actually. No support for mercurial branches so far). Not supported for python packages, though
     /// - github:NixOS/nixpkgs//24.05: The 24.05 *tag* of that repo (empty branch...)
     /// - `git+https://github.com/NixOS/patchelf?rev=4.05`: A specific branch of a Git repository.
-    ///  - `github:NixOS/patchelf/master/f34751b88bd07d7f44f5cd3200fb4122bf916c7e` to be the specific branch and revision of a Github repository.
+    /// - `github:NixOS/patchelf/master/f34751b88bd07d7f44f5cd3200fb4122bf916c7e` to be the specific branch and revision of a Github repository.
     ///    (that's mostly a 'we ignore the branch', but it's useful so you can strip of the tag and
     ///    get the newest from that branch tofued)
 

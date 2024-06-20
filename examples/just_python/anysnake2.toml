@@ -1,19 +1,13 @@
 [anysnake2]
 url="dev"
 
-[outside_nixpkgs]
-url = "github:nixos/nixpkgs/master/23.11"
-
-[ancient_poetry]
-url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
-
 [nixpkgs]
 url = "github:nixos/nixpkgs/master/23.11"
 
 
-[python] 
-version="3.10" 
-ecosystem_date="2022-11-23" 
+[python]
+version="3.10"
+ecosystem_date="2022-11-23"
 preferWheels = true
 
 [python.packages]
@@ -27,13 +21,21 @@ example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/mas
 dppd = {poetry2nix.buildInputs = ["setuptools"]}
 dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
 pyscaffold = "3.1"
+lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
+pytest=""
+
+[outside_nixpkgs]
+url = "github:nixos/nixpkgs/master/23.11"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/2c6d07717af20e45fa5b2c823729126be91a3cdf"
 #pytest=""
 
 
 [flake-util]
 url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
-
-[poetry2nix]
-url = "github:nix-community/poetry2nix/master/2c6d07717af20e45fa5b2c823729126be91a3cdf"
 
 
