@@ -325,8 +325,13 @@ fn prep_packages_for_pyproject_toml(
                     //bail!("invalid python version spec {}{}", name, version_constraint);
                 }
             }
-            config::TofuPythonPackageSource::Url(url)
-            | config::TofuPythonPackageSource::PyPi { url, .. } => {
+            config::TofuPythonPackageSource::PyPi { version } => {
+                result.insert(
+                    name.to_string(),
+                    toml::Value::String(format!("=={version}")),
+                );
+            }
+            config::TofuPythonPackageSource::Url(url) => {
                 let mut out_map: toml::Table = toml::Table::new();
                 out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
                 result.insert(name.to_string(), toml::Value::Table(out_map));
@@ -454,6 +459,7 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
 fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
     nixpkgs: &config::TofuNixpkgs,
+    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
@@ -508,6 +514,17 @@ build-backend = "poetry.core.masonry.api"
         let full_url = ancient_poetry.to_nix_string();
         let str_date = date.format("%Y-%m-%d").to_string();
 
+        let exclusion_list = python_packages
+            .iter()
+            .filter_map(|(name, spec)| {
+                match &spec.source {
+                    config::TofuPythonPackageSource::PyPi { version } => Some(format!("{name}={version}")),
+                    _ => None,
+                }
+            })
+            .join(" ")
+            ;
+
         let full_args = vec![
             "shell".into(),
             format!("{}#poetry", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
@@ -521,6 +538,8 @@ build-backend = "poetry.core.masonry.api"
             pyproject_toml_path.to_string_lossy().to_string(),
             "-o".into(),
             poetry_lock_path.to_string_lossy().to_string(),
+            "-e".into(),
+            exclusion_list
         ];
         debug!("running ancient-poetry: {:?}", &full_args);
         let out = Command::new("nix")
@@ -892,6 +911,7 @@ fn add_python(
             ancient_poetry(
                 &parsed_config.ancient_poetry,
                 &parsed_config.nixpkgs,
+                &python.packages,
                 &out_python_packages,
                 pyproject_toml_path,
                 poetry_lock_path,
@@ -947,13 +967,14 @@ fn add_python(
             definitions.insert(
                 "python_package".to_string(),
                 format!(
-                "mkPoetryEnv {{
+                    "mkPoetryEnv {{
                                   projectDir = ./poetry_rewritten;
                                   python = python_version;
                                   preferWheels = {prefer_wheels};
                                   overrides = poetry_overrides;
                 }}"
-            ));
+                ),
+            );
             nixpkgs_pkgs.insert("python_package".to_string());
 
             //flake_contents

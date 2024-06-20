@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 #[allow(unused_imports)]
 use log::{debug, info};
 use toml_edit::DocumentMut;
@@ -147,3 +147,22 @@ pub fn get_proxy_req() -> Result<ureq::Agent> {
     }
     Ok(agent.build())
 }
+
+pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Result<String> {
+    let json = get_proxy_req()?
+        .get(&format!("https://pypi.org/pypi/{package_name}/json"))
+        .call()?
+        .into_string()?;
+    let json: serde_json::Value = serde_json::from_str(&json)?;
+    let files = json["releases"][&pypi_version]
+        .as_array()
+        .context("No releases found")?;
+    for file in files {
+        if file["packagetype"] == "sdist" {
+            return Ok(file["url"].as_str().context("no url in json")?.to_string());
+        }
+    }
+    bail!("Could not find a sdist release");
+}
+
+

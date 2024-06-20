@@ -15,7 +15,7 @@ pandas="1.5.1"
 black=""
 tomli=">1.2"
 hatchling=""
-polars={version = "pypi:0.20.31", poetry2nix = {preferWheel =true}}
+polars={version = "pypi:0.20.31"}
 
 #requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
 requests = { version = "pypi:2.32.2" }
@@ -30,6 +30,7 @@ pytest=""
 url = "github:nixos/nixpkgs/master/24.05"
 
 [ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=961eb418d95583dad83b35619b1973874b4c5bab"
 #url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
 
 [poetry2nix]

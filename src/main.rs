@@ -338,7 +338,7 @@ fn inner_main() -> Result<()> {
     let minimal_parsed_config: config::MinimalConfigToml =
         config::MinimalConfigToml::from_file(&config_file)?;
     let minimal_parsed_config: config::TofuMinimalConfigToml =
-        tofu::tofu_anysnake2_itself(minimal_parsed_config, &HashMap::new(), &mut HashMap::new())?;
+        tofu::tofu_anysnake2_itself(minimal_parsed_config)?;
 
     switch_to_configured_version(&minimal_parsed_config, &matches)?;
 
@@ -353,8 +353,6 @@ fn inner_main() -> Result<()> {
 
     let tofued_config = apply_trust_on_first_use(
         parsed_config,
-        &in_non_spec_but_cached_values,
-        &mut out_non_spec_but_cached_values,
     )?;
 
     if cmd == "attach" {
@@ -847,18 +845,18 @@ fn clone(
     if dir_empty(&final_dir)? {
         info!("cloning {}/{} from {:?}", parent_dir, name, source);
         match source {
-            config::TofuPythonPackageSource::VersionConstraint(_) => {
+            config::TofuPythonPackageSource::PyPi { .. }
+            | config::TofuPythonPackageSource::VersionConstraint(_) => {
                 let safe_name = safe_python_package_name(name);
                 let actual_version =
                     extract_python_package_version_from_poetry_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
-                let url = tofu::get_pypi_package_source_url(&safe_name, &actual_version)
+                let url = util::get_pypi_package_source_url(&safe_name, &actual_version)
                     .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
-            config::TofuPythonPackageSource::PyPi { version: _, url }
-            | config::TofuPythonPackageSource::Url(url) => {
+            config::TofuPythonPackageSource::Url(url) => {
                 download_and_unzip(url, &final_dir)?;
             }
             config::TofuPythonPackageSource::Vcs(tofu_vcs) => {

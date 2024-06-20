@@ -346,7 +346,7 @@ pub enum TofuPythonPackageSource {
     VersionConstraint(String),
     Url(String),
     Vcs(TofuVCS),
-    PyPi { version: String, url: String },
+    PyPi { version: String },
 }
 
 impl PythonPackageSource {
@@ -452,7 +452,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
                     ));
                 }
-                let allowed_keys =&["url","version","poetry2nix", "editable"];
+                let allowed_keys = &["url", "version", "poetry2nix", "editable"];
                 for key in &parsed {
                     if !allowed_keys.contains(&key.0.as_str()) {
                         return Err(serde::de::Error::custom(format!(
@@ -508,7 +508,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 let poetry2nix = match parsed.get("poetry2nix") {
                     Some(entry) => Ok(entry
                         .as_table()
-                        .map(|t| t.clone())
+                        .cloned()
                         .context("poetry2nix was not a table")
                         .map_err(serde::de::Error::custom)?),
                     None => Ok(toml::map::Map::new()),
