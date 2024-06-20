@@ -824,7 +824,7 @@ fn format_poetry_build_input_overrides(
                 .with_context(|| format!("preferWheel was not a boolean for {name}",))?;
             overrides.insert("preferWheel", format!("{prefer_wheel}"));
         }
-        if !(override_python_attrs.is_empty() && overrides.is_empty()) {
+        if !override_python_attrs.is_empty() || !overrides.is_empty() {
             let str_overrides = override_python_attrs
                 .iter()
                 .map(|(k, v)| format!("{k} = {v};"))

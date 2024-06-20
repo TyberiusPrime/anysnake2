@@ -11,3 +11,5 @@
  - test cases for
   - prefer wheels
   - prefer wheel
+
+  - the nixpkgs url is not written to the flake correctly.

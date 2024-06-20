@@ -1,10 +1,12 @@
 use crate::vcs::{ParsedVCS, TofuVCS};
 use anyhow::{Context, Result};
 
+#[allow(unused_imports)]
+use log::debug;
 use serde::de::Deserializer;
-use serde::{Deserialize};
+use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::prelude::v1::Result as StdResult;
 
 pub trait GetRecursive {
@@ -197,7 +199,9 @@ impl<'de> Deserialize<'de> for ParsedVCSorDev {
         Ok(if parsed == "dev" {
             ParsedVCSorDev::Dev
         } else {
-            ParsedVCSorDev::Vcs(ParsedVCS::try_from(parsed.as_str()).map_err(serde::de::Error::custom)?)
+            ParsedVCSorDev::Vcs(
+                ParsedVCS::try_from(parsed.as_str()).map_err(serde::de::Error::custom)?,
+            )
         })
     }
 }
@@ -329,15 +333,12 @@ pub struct BuildPythonPackageInfo {
     pub overrides: Option<Vec<String>>,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum PythonPackageSource {
     VersionConstraint(String),
     Url(String),
     Vcs(ParsedVCS),
-    PyPi {
-        version: Option<String>,
-    },
+    PyPi { version: Option<String> },
 }
 
 #[derive(Debug, Clone)]
@@ -351,8 +352,10 @@ pub enum TofuPythonPackageSource {
 impl PythonPackageSource {
     fn from_url(url: &str) -> Result<PythonPackageSource> {
         Ok(
-            if url.starts_with("github:") | url.starts_with("git+https") | 
-            url.starts_with("hg+https:/") {
+            if url.starts_with("github:")
+                | url.starts_with("git+https")
+                | url.starts_with("hg+https:/")
+            {
                 let vcs = ParsedVCS::try_from(url)?;
                 PythonPackageSource::Vcs(vcs)
             } else {
@@ -439,8 +442,27 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 })
             }
             StrOrHashMap::HashMap(parsed) => {
+                if parsed.contains_key("preferWheel") {
+                    return Err(serde::de::Error::custom(
+                        "preferWheel is not a valid key, did you mean poetry2nix.preferWheel?",
+                    ));
+                }
+                if parsed.contains_key("buildInputs") {
+                    return Err(serde::de::Error::custom(
+                        "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
+                    ));
+                }
+                let allowed_keys =&["url","version","poetry2nix", "editable"];
+                for key in &parsed {
+                    if !allowed_keys.contains(&key.0.as_str()) {
+                        return Err(serde::de::Error::custom(format!(
+                            "Invalid key {key:?} in package definition",
+                        )));
+                    }
+                }
                 let url = parsed.get("url");
                 let version = parsed.get("version");
+
                 if url.is_some() && version.is_some() {
                     return Err(serde::de::Error::custom(
                         "Both url and version are used, but only one is allowed. ",
@@ -483,11 +505,14 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         }
                     }
                 };
-                let poetry2nix = parsed
-                    .get("poetry2nix")
-                    .and_then(toml::Value::as_table)
-                    .unwrap_or(&toml::map::Map::new())
-                    .clone();
+                let poetry2nix = match parsed.get("poetry2nix") {
+                    Some(entry) => Ok(entry
+                        .as_table()
+                        .map(|t| t.clone())
+                        .context("poetry2nix was not a table")
+                        .map_err(serde::de::Error::custom)?),
+                    None => Ok(toml::map::Map::new()),
+                }?;
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
