@@ -113,7 +113,7 @@ pub struct TofuConfigToml {
 
 #[derive(Debug, Deserialize)]
 pub struct ParsedVCSInsideURLTag {
-    pub url: ParsedVCS,
+    pub url: Option<ParsedVCS>,
 }
 
 impl ConfigToml {
@@ -340,7 +340,8 @@ pub enum TofuPythonPackageSource {
 impl PythonPackageSource {
     fn from_url(url: &str) -> Result<PythonPackageSource> {
         Ok(
-            if url.starts_with("github:") | url.starts_with("git+https") {
+            if url.starts_with("github:") | url.starts_with("git+https") | 
+            url.starts_with("hg+https:/") {
                 let vcs = ParsedVCS::try_from(url)?;
                 PythonPackageSource::Vcs(vcs)
             /* } else if url.starts_with("pypi:") {

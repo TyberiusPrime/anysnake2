@@ -369,10 +369,10 @@ fn inner_main() -> Result<()> {
 
     let tofued_config = tofued_config;
     //lookup_clones(&mut tofued_config)?;
-    let tofued_config = tofued_config;
+    let mut tofued_config = tofued_config;
 
     let flake_changed =
-        flake_writer::write_flake(&flake_dir, &tofued_config, use_generated_file_instead)?;
+        flake_writer::write_flake(&flake_dir, &mut tofued_config, use_generated_file_instead)?;
 
     perform_clones(&flake_dir, &tofued_config)?;
 

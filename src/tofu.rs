@@ -145,7 +145,7 @@ impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
         let res = tofu_repo_to_tag(
             toml_name,
             updates,
-            self.map(|x| x.url),
+            self.and_then(|x| x.url),
             default_url,
             tag_regex,
         )?;
@@ -162,7 +162,7 @@ impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<vcs::TofuVCS> {
-        tofu_repo_to_newest(toml_name, updates, self.map(|x| x.url), default_url)
+        tofu_repo_to_newest(toml_name, updates, self.and_then(|x| x.url), default_url)
     }
 }
 
@@ -674,31 +674,7 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
     Ok(new_format)
 }
 
- fn prefetch_hg_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    let nix_prefetch_hg_url = format!("{}#nix-prefetch-hg", outside_nixpkgs_url);
-    let nix_prefetch_hg_url_args = &[
-        "shell",
-        &nix_prefetch_hg_url,
-        "-c",
-        "nix-prefetch-hg",
-        url,
-        rev,
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_hg_url_args)
-        .output()
-        .context("failed on nix-prefetch-hg")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split('\n');
-    let old_format = lines
-        .last()
-        .expect("Could not parse nix-prefetch-hg output");
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-
+ 
 fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
     /*
          * nix-universal-prefetch pythonPackages.fetchPypi \
@@ -801,7 +777,7 @@ fn get_newest_pypi_version(package_name: &str) -> Result<String> {
     Ok(version.to_string())
 }
 
-fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
+pub fn convert_hash_to_subresource_format(hash: &str) -> Result<String> {
     if hash.is_empty() {
         return Err(anyhow!(
             "convert_hash_to_subresource_format called with empty hash"
@@ -1034,14 +1010,13 @@ fn tofu_python_package_definition(
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),
-            config::PythonPackageSource::Vcs(parsed_vcs) => match parsed_vcs {
-                ParsedVCS::Mercurial { .. } => bail!("Poetry does not support mercurial."),
-                _ => Vcs(tofu_repo_to_newest(
+            config::PythonPackageSource::Vcs(parsed_vcs) => {
+                Vcs(tofu_repo_to_newest(
                     &["python", "packages", name, "url"],
                     updates,
                     Some(parsed_vcs.clone()),
                     "",
-                )?),
+                )?)
             },
             config::PythonPackageSource::PyPi { version, url } => {
                 let pypi_version = match version.as_ref().map(String::as_str) {

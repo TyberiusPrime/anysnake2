@@ -58,7 +58,7 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
 
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
-    parsed_config: &config::TofuConfigToml,
+    parsed_config: &mut config::TofuConfigToml,
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
 ) -> Result<bool> {
     let template = std::include_str!("nix/flake_template.nix");
@@ -104,11 +104,7 @@ pub fn write_flake(
         rust_extensions,
     );
 
-    add_flakes(
-        parsed_config,
-        &mut inputs,
-        &mut nixpkgs_pkgs,
-    );
+    add_flakes(parsed_config, &mut inputs, &mut nixpkgs_pkgs);
 
     add_r(
         parsed_config,
@@ -126,6 +122,7 @@ pub fn write_flake(
         &mut git_tracked_files,
         &filenames.pyproject_toml,
         &filenames.poetry_lock,
+        flake_dir,
     )?;
 
     /* flake_contents = match &parsed_config.flakes {
@@ -195,10 +192,7 @@ pub fn write_flake(
         .replace("#%DEFINITIONS%#", &format_definitions(&definitions));
 
     // pretty print the generated flake
-    flake_contents = nix_format(
-        &flake_contents,
-        flake_dir,
-    )?;
+    flake_contents = nix_format(&flake_contents, flake_dir)?;
 
     /* if !overlays.is_empty() {
         flake_contents = flake_contents.replace(
@@ -295,8 +289,8 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
 
 /// prepare what we put into pyprojec.toml
 fn prep_packages_for_pyproject_toml(
-    input: &HashMap<String, config::TofuPythonPackageDefinition>,
-) -> toml::Table {
+    input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
+) -> Result<toml::Table> {
     let mut result = toml::Table::new();
     for (name, spec) in input {
         match &spec.source {
@@ -331,16 +325,40 @@ fn prep_packages_for_pyproject_toml(
                 out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
                 result.insert(name.to_string(), toml::Value::Table(out_map));
             }
-            config::TofuPythonPackageSource::Vcs(vcs) => {
-                let (url, rev, _branch) = vcs.get_url_rev_branch();
-                let mut out_map = toml::Table::new();
-                out_map.insert("git".to_string(), toml::Value::String(url));
-                out_map.insert("rev".to_string(), toml::Value::String(rev.to_string()));
-                result.insert(name.to_string(), toml::Value::Table(out_map));
-            }
+            config::TofuPythonPackageSource::Vcs(vcs) => match vcs {
+                vcs::TofuVCS::Git { .. } | vcs::TofuVCS::GitHub { .. } => {
+                    let (url, rev, _branch) = vcs.get_url_rev_branch();
+                    let mut out_map = toml::Table::new();
+                    out_map.insert("git".to_string(), toml::Value::String(url));
+                    out_map.insert("rev".to_string(), toml::Value::String(rev.to_string()));
+                    result.insert(name.to_string(), toml::Value::Table(out_map));
+                }
+                vcs::TofuVCS::Mercurial { url, rev } => {
+                    // poetry does not do mercurial
+                    // but nix does.
+                    // and poetry does paths.
+                    // and inshallah, either the nix isolation is bad enough to allow all
+                    // /nix/store paths, or poetry2nix is smart enough to detect them,
+                    // or we will teach it ourselves that we need that path.
+                    let path_and_hash = prefetch_hg_store_path(url, rev)?;
+                    let mut out_map = toml::Table::new();
+                    out_map.insert("path".to_string(), path_and_hash.path.into());
+                    let src = format!(
+                        "(
+                            pkgs.fetchhg {{
+                                    url = \"{url}\";
+                                    rev = \"{rev}\";
+                                    hash = \"{sha256}\";
+                            }})",
+                        sha256 = path_and_hash.sha256
+                    );
+                    spec.poetry2nix.insert("src".to_string(), src.into());
+                    result.insert(name.to_string(), toml::Value::Table(out_map));
+                }
+            },
         }
     }
-    result
+    Ok(result)
     /* for (name, spec) in build_packages.iter() {
         let rev_override = match spec.get("method") {
             Some(method) => {
@@ -381,10 +399,7 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
     request
 }
 
-fn nix_format(
-    input: &str,
-    flake_dir: impl AsRef<Path>,
-) -> Result<String> {
+fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     let full_url = format!("{}#nixfmt", crate::OUTSIDE_NIXPKGS_URL.get().unwrap());
     // debug!("registering nixfmt with {}", &full_url);
     super::register_nix_gc_root(&full_url, flake_dir)?;
@@ -417,7 +432,8 @@ fn nix_format(
 }
 
 fn ancient_poetry(
-    parsed_config: &config::TofuConfigToml,
+    ancient_poetry: &vcs::TofuVCS,
+    nixpkgs: &config::TofuNixpkgs,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
@@ -469,17 +485,13 @@ build-backend = "poetry.core.masonry.api"
         || poetry_lock_path.metadata()?.len() == 0
     {
         //todo make configurable
-        let full_url = parsed_config.ancient_poetry.to_nix_string();
+        let full_url = ancient_poetry.to_nix_string();
         let str_date = date.format("%Y-%m-%d").to_string();
 
         let full_args = vec![
             "shell".into(),
             format!("{}#poetry", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
-            format!(
-                "{}#{}",
-                parsed_config.nixpkgs.url.to_nix_string(),
-                python_major_minor
-            ),
+            format!("{}#{}", nixpkgs.url.to_nix_string(), python_major_minor),
             full_url,
             "-c".into(),
             "ancient-poetry".into(),
@@ -748,6 +760,7 @@ fn format_poetry_build_input_overrides(
 ) -> Result<Vec<String>> {
     let mut poetry_overide_entries = Vec::new();
     for (name, spec) in python_packages {
+        let mut overrides = HashMap::new();
         if let Some(build_inputs) = spec.poetry2nix.get("buildInputs") {
             let str_build_inputs = build_inputs
                 .as_array()
@@ -764,13 +777,33 @@ fn format_poetry_build_input_overrides(
                                 "Build input was not a list of strings package definition for {name}",
                             )
                         })?;
-                        format!("prev.{v}")
+                        if v.starts_with("(") {
+                            v.to_string()
+                        } else {
+                            format!("prev.{v}")
+                    }
                     })
                 })
                 .collect::<Result<Vec<String>>>()?
                 .join(" ");
+            overrides.insert("buildInputs", format!("(old.buildInputs or []) ++ [{str_build_inputs}]"));
+        }
+        if let Some(src) = spec.poetry2nix.get("src") {
+            let src = src.as_str().with_context(|| {
+                format!(
+                    "src was not a string with nix code for {name}",
+                )
+            })?;
+            overrides.insert("src", format!("{src}"));
+        }
+        if !overrides.is_empty() {
+            let str_overrides = overrides
+                .iter()
+                .map(|(k, v)| format!("{k} = {v};"))
+                .collect::<Vec<String>>()
+                .join(" ");
             let safe_name = safe_python_package_name(name);
-            poetry_overide_entries.push(format!("{safe_name} = prev.{safe_name}.overridePythonAttrs (old: {{buildInputs = (old.buildInputs or []) ++ [{str_build_inputs}];}});"));
+            poetry_overide_entries.push(format!("{safe_name} = prev.{safe_name}.overridePythonAttrs (old: {{{str_overrides}}});"));
         }
     }
     Ok(poetry_overide_entries)
@@ -778,16 +811,17 @@ fn format_poetry_build_input_overrides(
 
 #[allow(clippy::too_many_arguments)]
 fn add_python(
-    parsed_config: &config::TofuConfigToml,
+    parsed_config: &mut config::TofuConfigToml,
     inputs: &mut Vec<InputFlake>,
     definitions: &mut BTreeMap<String, String>,
     nixpkgs_pkgs: &mut BTreeSet<String>,
     git_tracked_files: &mut Vec<String>,
     pyproject_toml_path: &Path,
     poetry_lock_path: &Path,
+    flake_dir: &Path,
 ) -> Result<()> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
-    match &parsed_config.python {
+    match &mut parsed_config.python {
         Some(python) => {
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
                 bail!(
@@ -795,8 +829,7 @@ fn add_python(
             }
             let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
-            let python_packages = &python.packages;
-            let mut out_python_packages = prep_packages_for_pyproject_toml(python_packages);
+            let mut out_python_packages = prep_packages_for_pyproject_toml(&mut python.packages)?;
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages
                     .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
@@ -807,19 +840,24 @@ fn add_python(
             }
 
             //out_python_packages.sort();
+            let python_version = python.version.clone();
+            let ecosystem_date = python.parsed_ecosystem_date()?;
 
             ancient_poetry(
-                parsed_config,
+                &parsed_config.ancient_poetry,
+                &parsed_config.nixpkgs,
                 &out_python_packages,
                 pyproject_toml_path,
                 poetry_lock_path,
-                &python.version,
+                &python_version,
                 &python_major_minor,
-                python.parsed_ecosystem_date()?,
+                ecosystem_date,
             )?;
 
+            rewrite_poetry(flake_dir)?;
+
             let poetry_build_input_overrides =
-                format_poetry_build_input_overrides(python_packages)?;
+                format_poetry_build_input_overrides(&python.packages)?;
 
             inputs.push(InputFlake::new(
                 "poetry2nix",
@@ -862,7 +900,7 @@ fn add_python(
             definitions.insert(
                 "python_package".to_string(),
                 "mkPoetryEnv {
-                                  projectDir = ./poetry;
+                                  projectDir = ./poetry_rewritten;
                                   python = python_version;
                                   preferWheels = true;
                                   overrides = poetry_overrides;
@@ -880,8 +918,8 @@ fn add_python(
                 out_additional_mkpython_arguments_func,
             ) */
             .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev) */
-            git_tracked_files.push("poetry/poetry.lock".to_string());
-            git_tracked_files.push("poetry/pyproject.toml".to_string());
+            git_tracked_files.push("poetry_rewritten/poetry.lock".to_string());
+            git_tracked_files.push("poetry_rewritten/pyproject.toml".to_string());
         }
         None => {
             if poetry_lock_path.exists() {
@@ -889,6 +927,71 @@ fn add_python(
             }
         }
     };
+
+    Ok(())
+}
+
+struct PrefetchResult {
+    path: String,
+    sha256: String,
+}
+
+fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+    let nix_prefetch_hg_url = format!(
+        "{}#nix-prefetch-hg",
+        crate::OUTSIDE_NIXPKGS_URL.get().unwrap()
+    );
+    let nix_prefetch_hg_url_args = vec![
+        "shell",
+        &nix_prefetch_hg_url,
+        "-c",
+        "nix-prefetch-hg",
+        url,
+        rev,
+    ];
+    let mut proc = Command::new("nix");
+    proc.args(nix_prefetch_hg_url_args);
+    debug!("running {proc:?}");
+    let proc_res = proc.output().context("failed on nix-prefetch-hg")?;
+    if !proc_res.status.success() {
+        bail!("nix-prefetch-hg failed with code {}", proc_res.status);
+    }
+
+    let stdout = std::str::from_utf8(&proc_res.stdout)?.trim();
+    let stderr = std::str::from_utf8(&proc_res.stderr)?.trim();
+    let lines = stderr.split('\n'); // path is is in stderr.
+    let path = lines
+        .filter_map(|x| x.split_once("path is "))
+        .map(|(_, x)| x)
+        .next()
+        .with_context(|| {
+            format!("Could not find 'path is ' line in nix-prefetch-hg output. Output was {stdout}")
+        })?
+        .to_string();
+    let hash = stdout.trim();
+    let sha256 = crate::tofu::convert_hash_to_subresource_format(hash)?;
+
+    Ok(PrefetchResult { path, sha256 })
+}
+
+/// rewrite all /nix/store references in poetry.toml and lock into ../, and place in new folder
+fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
+    ex::fs::create_dir_all(flake_dir.join("poetry_rewritten"))?;
+
+    let filename = "pyproject.toml";
+    let input_filename = flake_dir.join("poetry").join(filename);
+    let output_filename = flake_dir.join("poetry_rewritten").join(filename);
+    let raw = ex::fs::read_to_string(&input_filename)?;
+    let out = raw.replace("/nix/store/", "../");
+    ex::fs::write(&output_filename, out)?;
+
+    let filename = "poetry.lock";
+    let input_filename = flake_dir.join("poetry").join(filename);
+    let output_filename = flake_dir.join("poetry_rewritten").join(filename);
+    let raw = ex::fs::read_to_string(&input_filename)?;
+    let search_re = regex::Regex::new(r"(\.\./)+nix/store/").unwrap();
+    let out = search_re.replace(&raw, "../../").to_string(); //todo: do it without the alloc
+    ex::fs::write(&output_filename, out)?;
 
     Ok(())
 }
