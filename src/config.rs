@@ -325,7 +325,6 @@ pub enum PythonPackageSource {
     Vcs(ParsedVCS),
     PyPi {
         version: Option<String>,
-        url: Option<String>,
     },
 }
 
@@ -461,10 +460,6 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         if constraint.starts_with("pypi:") {
                             PythonPackageSource::PyPi {
                                 version: Some(constraint.split_once(':').unwrap().1.to_string()),
-                                url: parsed
-                                    .get("cached_url")
-                                    .and_then(toml::Value::as_str)
-                                    .map(ToString::to_string),
                             }
                         } else {
                             PythonPackageSource::VersionConstraint(constraint.to_string())

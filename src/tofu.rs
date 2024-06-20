@@ -18,11 +18,21 @@ enum PrefetchHashResult {
 const NIXPKGS_TAG_REGEX: &str = r"\d\d\.\d\d$";
 
 trait Tofu<A> {
-    fn tofu(self, updates: &mut TomlUpdates) -> Result<A>;
+    fn tofu(
+        self,
+        updates: &mut TomlUpdates,
+        in_non_spec_but_cached_values: &HashMap<String, String>,
+        out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    ) -> Result<A>;
 }
 
 impl Tofu<config::TofuConfigToml> for config::ConfigToml {
-    fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuConfigToml> {
+    fn tofu(
+        self,
+        updates: &mut TomlUpdates,
+        in_non_spec_but_cached_values: &HashMap<String, String>,
+        out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    ) -> Result<config::TofuConfigToml> {
         Ok(config::TofuConfigToml {
             anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: {
@@ -74,9 +84,17 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             rust: self
                 .rust
                 .tofu_to_newest(&["rust"], updates, "github:oxalica/rust-overlay")?,
-            python: self.python.tofu(updates)?,
+            python: self.python.tofu(
+                updates,
+                in_non_spec_but_cached_values,
+                out_non_spec_but_cached_values,
+            )?,
             container: self.container,
-            flakes: self.flakes.tofu(updates)?,
+            flakes: self.flakes.tofu(
+                updates,
+                in_non_spec_but_cached_values,
+                out_non_spec_but_cached_values,
+            )?,
             dev_shell: self.dev_shell,
             r: self
                 .r
@@ -210,7 +228,12 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
 }
 
 impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config::Flake>> {
-    fn tofu(self, updates: &mut TomlUpdates) -> Result<HashMap<String, config::TofuFlake>> {
+    fn tofu(
+        self,
+        updates: &mut TomlUpdates,
+        _in_non_spec_but_cached_values: &HashMap<String, String>,
+        _out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    ) -> Result<HashMap<String, config::TofuFlake>> {
         match self {
             None => Ok(HashMap::new()),
             Some(flakes) => flakes
@@ -237,7 +260,12 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
 }
 
 impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
-    fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuMinimalConfigToml> {
+    fn tofu(
+        self,
+        updates: &mut TomlUpdates,
+        _in_non_spec_but_cached_values: &HashMap<String, String>,
+        _out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    ) -> Result<config::TofuMinimalConfigToml> {
         let anysnake = match self.anysnake2 {
             Some(value) => value,
             None => config::Anysnake2 {
@@ -618,10 +646,12 @@ fn _tofu_repo_to_newest(
 #[allow(clippy::module_name_repetitions)]
 pub fn tofu_anysnake2_itself(
     config: config::MinimalConfigToml,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<config::TofuMinimalConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(&mut updates)?;
+    let tofued = config.tofu(&mut updates, in_non_spec_but_cached_values, out_non_spec_but_cached_values)?;
     if !tofued.anysnake2.do_not_modify_flake {
         change_toml_file(&config_file, updates)?;
     } else if !updates.is_empty() {
@@ -635,10 +665,12 @@ pub fn tofu_anysnake2_itself(
 pub fn apply_trust_on_first_use(
     //todo: Where ist the flake stuff?
     config: config::ConfigToml,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>
 ) -> Result<TofuConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(&mut updates)?;
+    let tofued = config.tofu(&mut updates, in_non_spec_but_cached_values, out_non_spec_but_cached_values)?;
     change_toml_file(&config_file, updates)?;
     Ok(tofued)
 }
@@ -674,7 +706,7 @@ fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<
     Ok(new_format)
 }
 
- 
+
 fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
     /*
          * nix-universal-prefetch pythonPackages.fetchPypi \
@@ -973,15 +1005,26 @@ fn tofu_clones(
 }
 
 impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
-    fn tofu(self, updates: &mut TomlUpdates) -> Result<Option<config::TofuPython>> {
+    fn tofu(
+        self,
+        updates: &mut TomlUpdates,
+        in_non_spec_but_cached_values: &HashMap<String, String>,
+        out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    ) -> Result<Option<config::TofuPython>> {
         match self {
             Some(inner_self) => {
                 let tofu_packages: Result<HashMap<_, _>> = inner_self
                     .packages
                     .into_iter()
                     .map(|(key, value)| {
-                        let new = tofu_python_package_definition(&key, &value, updates)
-                            .with_context(|| format!("Tofu python package failed: {key}"))?;
+                        let new = tofu_python_package_definition(
+                            &key,
+                            &value,
+                            updates,
+                            in_non_spec_but_cached_values,
+                            out_non_spec_but_cached_values,
+                        )
+                        .with_context(|| format!("Tofu python package failed: {key}"))?;
                         Ok((key, new))
                     })
                     .collect();
@@ -1002,6 +1045,8 @@ fn tofu_python_package_definition(
     name: &str,
     ppd: &config::PythonPackageDefinition,
     updates: &mut TomlUpdates,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
 ) -> Result<config::TofuPythonPackageDefinition> {
     use config::TofuPythonPackageSource::*;
     Ok(config::TofuPythonPackageDefinition {
@@ -1010,35 +1055,31 @@ fn tofu_python_package_definition(
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),
-            config::PythonPackageSource::Vcs(parsed_vcs) => {
-                Vcs(tofu_repo_to_newest(
-                    &["python", "packages", name, "url"],
-                    updates,
-                    Some(parsed_vcs.clone()),
-                    "",
-                )?)
-            },
-            config::PythonPackageSource::PyPi { version, url } => {
+            config::PythonPackageSource::Vcs(parsed_vcs) => Vcs(tofu_repo_to_newest(
+                &["python", "packages", name, "url"],
+                updates,
+                Some(parsed_vcs.clone()),
+                "",
+            )?),
+            config::PythonPackageSource::PyPi { version } => {
                 let pypi_version = match version.as_ref().map(String::as_str) {
                     None | Some("") => get_newest_pypi_version(name)
                         .with_context(|| format!("Could not get pypi version for {name}"))?,
                     Some(version) => version.to_string(),
                 };
-                let new_url = match url {
-                    None => true,
-                    Some(ref url) => !url.contains(&format!("-{pypi_version}.")),
-                };
-                let new_url = if new_url {
-                    get_pypi_package_source_url(name, &pypi_version)
-                        .context("Could not find pypi sdist url")?
-                } else {
-                    url.as_ref().unwrap().to_string()
-                };
+                let url_key = format!("pypi-{name}-{pypi_version}");
+                let new_url = in_non_spec_but_cached_values.get(&url_key).map_or_else(
+                    || {
+                        get_pypi_package_source_url(name, &pypi_version)
+                            .context("Could not find pypi sdist url")
+                    },
+                    |url| Ok(url.to_string()),
+                )?;
+                out_non_spec_but_cached_values.insert(url_key, new_url.clone());
+
                 let mut out = toml_edit::Table::new().into_inline_table();
-                out.insert("cached_url", new_url.clone().into());
                 out.insert("version", format!("pypi:{pypi_version}").into());
-                let push = (new_url != url.as_deref().unwrap_or(""))
-                    || (pypi_version != version.as_deref().unwrap_or(""));
+                let push = pypi_version != version.as_deref().unwrap_or("");
 
                 if push {
                     updates.push((
