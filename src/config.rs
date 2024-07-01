@@ -150,6 +150,8 @@ pub struct NixPkgs {
     pub packages: Option<Vec<String>>,
     #[serde(default = "NixPkgs::default_allow_unfree")]
     pub allow_unfree: bool,
+
+    pub permitted_insecure_packages: Option<Vec<String>>,
 }
 
 impl NixPkgs {

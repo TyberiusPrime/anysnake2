@@ -15,6 +15,7 @@
         inherit system overlays;
         config = {
           allowUnfree = "%ALLOW_UNFREE%";
+          permittedInsecurePackages = [ "%PERMITTED_INSECURE_PACKAGES%" ];
         };
       };
       mach-nix_ = "%MACHNIX%";
