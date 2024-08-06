@@ -698,7 +698,8 @@ fn run_singularity(
         let using_dtach = if let Some(dtach_socket) = &dtach_socket {
             let dtach_dir = flake_dir.join("dtach");
             fs::create_dir_all(dtach_dir)?;
-            let dtach_url = singularity_url.replace("#singularity", "#dtach");
+            let dtach_url = format!("{}#dtach", OUTSIDE_NIXPKGS_URL.get().unwrap());
+
             register_nix_gc_root(&dtach_url, flake_dir)?;
             nix_full_args.extend(vec![
                 //vec just to shut up clippy
@@ -717,7 +718,7 @@ fn run_singularity(
 
         nix_full_args.extend(vec![
             //vec just to shutup clippy
-            "shell".to_string(),
+            "shell".into(),
             singularity_url.clone(),
             "-c".into(),
             "singularity".into(),
