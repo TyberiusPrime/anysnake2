@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 #[allow(unused_imports)]
 use log::{debug, info};
 use toml_edit::DocumentMut;
@@ -49,6 +49,7 @@ pub type TomlUpdates = Vec<(Vec<String>, toml_edit::Item)>;
 
 fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
     for (k, v) in document.iter_mut() {
+        info!("order key {k}");
         if let toml_edit::Item::Table(t) = v {
             let position = order
                 .get(k.get())
@@ -82,10 +83,20 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
                 for p in &path[1..path.len()] {
-                    if let toml_edit::Item::Value(_t) = x { // if it was previously a value...
-                        *x = toml_edit::Item::Value(
-                            toml_edit::Table::new().into_inline_table().into(),
-                        );
+                    match x {
+                        toml_edit::Item::Value(v) => {
+                            match v {
+                                toml_edit::Value::InlineTable(_) => {}
+                                _ => {
+                                    // if it was previously a value...
+                                    debug!("turning into inline table {p:?}, {x:?}");
+                                    *x = toml_edit::Item::Value(
+                                        toml_edit::Table::new().into_inline_table().into(),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                     x = &mut x[p];
                 }
@@ -97,21 +108,22 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
 
         let order: HashMap<&str, usize> = [
             ("anysnake2", 0),
-            ("nixpkgs", 3),
-            ("clones", 4),
-            ("python", 10),
-            ("python.packages", 11),
-            ("R", 12),
-            ("rust", 13),
-            ("flakes", 14),
-            ("dev_shell", 20),
-            ("container", 21),
-            ("env", 22),
-            ("cmd", 23),
-            ("outside_nixpkgs", 96),
-            ("ancient_poetry", 97),
-            ("poetry2nix", 98),
-            ("flake_util", 99),
+            ("nixpkgs", 30),
+            ("clones", 40),
+            ("clone_regexps", 50),
+            ("python", 100),
+            ("python.packages", 110),
+            ("R", 120),
+            ("rust", 130),
+            ("flakes", 140),
+            ("dev_shell", 200),
+            ("container", 210),
+            ("env", 220),
+            ("cmd", 230),
+            ("outside_nixpkgs", 960),
+            ("ancient_poetry", 970),
+            ("poetry2nix", 980),
+            ("flake-util", 990),
         ]
         .into_iter()
         .collect();
@@ -164,5 +176,3 @@ pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Re
     }
     bail!("Could not find a sdist release");
 }
-
-

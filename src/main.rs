@@ -917,7 +917,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 {
                     let msg = format!(
                             "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
-                        Cowardly refusing to throw away old checkout."
+                        Cowardly refusing to throw away old checkout in {final_dir:?}."
                         );
                     bail!(msg);
                 }

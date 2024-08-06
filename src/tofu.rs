@@ -18,17 +18,37 @@ enum PrefetchHashResult {
 const NIXPKGS_TAG_REGEX: &str = r"\d\d\.\d\d$";
 
 trait Tofu<A> {
-    fn tofu(
-        self,
-        updates: &mut TomlUpdates,
-    ) -> Result<A>;
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<A>;
 }
 
 impl Tofu<config::TofuConfigToml> for config::ConfigToml {
-    fn tofu(
-        self,
-        updates: &mut TomlUpdates,
-    ) -> Result<config::TofuConfigToml> {
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuConfigToml> {
+        let converted_clone_regexps = match self.clone_regexps {
+            Some(cr) => Some(clone_regex_strings_to_regex(cr)?),
+            None => None,
+        };
+        let parsed_clones: Option<HashMap<String, HashMap<String, ParsedVCS>>> = match self.clones {
+            Some(clones) => Some({
+                let parsed_clones: Result<_> = clones
+                    .into_iter()
+                    .map(|(target_folder, entries)| {
+                        let parsed_entries: Result<HashMap<String, ParsedVCS>> = entries
+                            .into_iter()
+                            .map(|(k, v)| {
+                                let replaced_v = apply_clone_regexps(&v, &converted_clone_regexps);
+                                let parsed_v = ParsedVCS::try_from(replaced_v.as_str()).context(
+                            "Failed to parse clone url. Before regex: {v:?}, after: {replaced_v:?}",
+                        )?;
+                                Ok((k, parsed_v))
+                            })
+                            .collect();
+                        Ok((target_folder, parsed_entries?))
+                    })
+                    .collect();
+                parsed_clones?
+            }),
+            None => None,
+        };
         Ok(config::TofuConfigToml {
             anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: {
@@ -71,8 +91,8 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 updates,
                 "github:numtide/flake-utils",
             )?,
-            clone_regexps: self.clone_regexps,
-            clones: match self.clones {
+            clone_regexps: converted_clone_regexps,
+            clones: match parsed_clones {
                 Some(clones) => Some(tofu_clones(clones, updates)?),
                 None => None,
             },
@@ -80,19 +100,42 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             rust: self
                 .rust
                 .tofu_to_newest(&["rust"], updates, "github:oxalica/rust-overlay")?,
-            python: self.python.tofu(
-                updates,
-            )?,
+            python: self.python.tofu(updates)?,
             container: self.container,
-            flakes: self.flakes.tofu(
-                updates,
-            )?,
+            flakes: self.flakes.tofu(updates)?,
             dev_shell: self.dev_shell,
             r: self
                 .r
                 .tofu_to_newest(&["R"], updates, "github:TyberiusPrime/nixR")?,
         })
     }
+}
+
+fn clone_regex_strings_to_regex(
+    clone_regex: HashMap<String, String>,
+) -> Result<Vec<(regex::Regex, String)>> {
+    let res: Result<Vec<_>> = clone_regex
+        .into_iter()
+        .map(|(k, v)| {
+            let re = regex::Regex::new(&k)?;
+            Ok((re, v))
+        })
+        .collect();
+    res
+}
+
+fn apply_clone_regexps(
+    input: &str,
+    converted_clone_regexps: &Option<Vec<(regex::Regex, String)>>,
+) -> String {
+    if let Some(converted_clone_regexps) = converted_clone_regexps {
+        for (search, replacement) in converted_clone_regexps {
+            if search.is_match(input) {
+                return search.replace_all(input, replacement).to_string();
+            }
+        }
+    }
+    return input.to_string();
 }
 
 trait TofuToNewest<A> {
@@ -199,6 +242,8 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<Option<config::TofuRust>> {
+        let mut url_toml_name: Vec<&str> = toml_name.iter().map(|s| *s).collect();
+        url_toml_name.push("url");
         Ok(match self {
             None => None,
             Some(rust) => {
@@ -207,7 +252,7 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
                 }
                 Some(config::TofuRust {
                     version: rust.version,
-                    url: tofu_repo_to_newest(toml_name, updates, rust.url, default_url)?,
+                    url: tofu_repo_to_newest(&url_toml_name, updates, rust.url, default_url)?,
                 })
             }
         })
@@ -221,12 +266,18 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<Option<config::TofuR>> {
+        let mut url_toml_name = toml_name
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>();
+        url_toml_name.push("url".to_string());
+        let ref_url_toml_name: Vec<&str> = url_toml_name.iter().map(|s| s.as_str()).collect();
         Ok(match self {
             None => None,
             Some(inner_self) => Some(config::TofuR {
                 date: inner_self.date,
                 packages: inner_self.packages,
-                url: tofu_repo_to_newest(toml_name, updates, inner_self.url, default_url)?,
+                url: tofu_repo_to_newest(&ref_url_toml_name, updates, inner_self.url, default_url)?,
                 override_attrs: inner_self.override_attrs,
                 dependency_overrides: inner_self.dependency_overrides,
                 additional_packages: inner_self.additional_packages,
@@ -236,10 +287,7 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
 }
 
 impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config::Flake>> {
-    fn tofu(
-        self,
-        updates: &mut TomlUpdates,
-    ) -> Result<HashMap<String, config::TofuFlake>> {
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<HashMap<String, config::TofuFlake>> {
         match self {
             None => Ok(HashMap::new()),
             Some(flakes) => flakes
@@ -266,10 +314,7 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
 }
 
 impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
-    fn tofu(
-        self,
-        updates: &mut TomlUpdates,
-    ) -> Result<config::TofuMinimalConfigToml> {
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuMinimalConfigToml> {
         let anysnake = match self.anysnake2 {
             Some(value) => value,
             None => config::Anysnake2 {
@@ -336,6 +381,7 @@ fn _tofu_repo_to_tag(
     tag_regex: &str,
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
+    debug!("tofu_repo_to_tag: {toml_name:?} from {input:?} with /{tag_regex}/");
     let (changed, out) = match &input {
         vcs::ParsedVCS::Git {
             url,
@@ -472,6 +518,7 @@ fn _tofu_repo_to_tag(
         }
     };
     if changed {
+        debug!("changed to {out:?}");
         updates.push((
             toml_name.iter().map(ToString::to_string).collect(),
             value(out.to_string()),
@@ -653,9 +700,7 @@ pub fn tofu_anysnake2_itself(
 ) -> Result<config::TofuMinimalConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(
-        &mut updates,
-    )?;
+    let tofued = config.tofu(&mut updates)?;
     if !tofued.anysnake2.do_not_modify_flake {
         change_toml_file(&config_file, updates)?;
     } else if !updates.is_empty() {
@@ -672,9 +717,7 @@ pub fn apply_trust_on_first_use(
 ) -> Result<TofuConfigToml> {
     let config_file = config.anysnake2_toml_path.as_ref().unwrap().clone();
     let mut updates: TomlUpdates = Vec::new();
-    let tofued = config.tofu(
-        &mut updates,
-    )?;
+    let tofued = config.tofu(&mut updates)?;
     change_toml_file(&config_file, updates)?;
     Ok(tofued)
 }
@@ -992,22 +1035,15 @@ fn tofu_clones(
 }
 
 impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
-    fn tofu(
-        self,
-        updates: &mut TomlUpdates,
-    ) -> Result<Option<config::TofuPython>> {
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<Option<config::TofuPython>> {
         match self {
             Some(inner_self) => {
                 let tofu_packages: Result<HashMap<_, _>> = inner_self
                     .packages
                     .into_iter()
                     .map(|(key, value)| {
-                        let new = tofu_python_package_definition(
-                            &key,
-                            &value,
-                            updates,
-                        )
-                        .with_context(|| format!("Tofu python package failed: {key}"))?;
+                        let new = tofu_python_package_definition(&key, &value, updates)
+                            .with_context(|| format!("Tofu python package failed: {key}"))?;
                         Ok((key, new))
                     })
                     .collect();

@@ -77,7 +77,7 @@ pub struct ConfigToml {
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
-    pub clones: Option<HashMap<String, HashMap<String, ParsedVCS>>>,
+    pub clones: Option<HashMap<String, HashMap<String, String>>>,
     #[serde(default)]
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<Rust>,
@@ -100,7 +100,7 @@ pub struct TofuConfigToml {
     pub ancient_poetry: TofuVCS,
     pub poetry2nix: TofuPoetry2Nix,
     pub flake_util: TofuVCS,
-    pub clone_regexps: Option<HashMap<String, String>>,
+    pub clone_regexps: Option<Vec<(regex::Regex, String)>>,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<TofuRust>,
@@ -112,7 +112,6 @@ pub struct TofuConfigToml {
 }
 
 //todo: refactor
-
 #[derive(Debug, Deserialize)]
 pub struct ParsedVCSInsideURLTag {
     pub url: Option<ParsedVCS>,
@@ -481,6 +480,8 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                             PythonPackageSource::PyPi {
                                 version: Some(constraint.split_once(':').unwrap().1.to_string()),
                             }
+                        } else if constraint == "pypi" {
+                            PythonPackageSource::PyPi { version: Some("".to_string()) }
                         } else {
                             PythonPackageSource::VersionConstraint(constraint.to_string())
                         }

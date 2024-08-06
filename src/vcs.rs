@@ -154,6 +154,7 @@ impl std::fmt::Display for TofuVCS {
     }
 }
 
+#[derive(Debug)]
 pub enum BranchOrTag {
     Branch,
     Tag,

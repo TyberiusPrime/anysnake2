@@ -1,6 +1,6 @@
 - flakes that are paths relative to %ANYSNAKE_ROOT% ?
 - does ancientpoetry create a virtualenv? supress.
-- poetry project in subdirectory of grepo. poetry project in subdir, editable.
+- poetry project in subdirectory of repo. poetry project in subdir, editable.
 - git+ssh urls for poetry
 - why does it pull in pytest 8.1.something when you don't set pytest in 
     the just_python example
@@ -13,3 +13,10 @@
   - prefer wheel
 
   - the nixpkgs url is not written to the flake correctly.
+
+- under what circumstances do we rebuild the editable packages? does that still happen every time we change the python packages (shouldn't...)
+
+- evaluate shpool as dtach replacement
+
+
+- either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.

@@ -1,31 +1,53 @@
 # basic anysnake2.toml example
 [anysnake2]
-rev = "dev" # 1.3.0 is the last failing version
-
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
+url = "dev"
 
 [nixpkgs]
-# the nixpkgs used inside the container
-rev = "21.05" # the nixpgks version or github hash
+url = "github:NixOS/nixpkgs/master/24.05"
 
-[python] # python section is optional
-version="3.8" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
-ecosystem_date="2021-11-21" # you get whatever packages the solver would have produced on that day
-
-[clones.code]
-pypipegraph="@gh/TyberiusPrime/pypipegraph"
-pypipegraph2="@gh/TyberiusPrime/pypipegraph2"
-mdataframe="@gh/MarcoMernberger/mdataframe.git"
-
-[python.packages]
-pypipegraph="editable/code"
-pypipegraph2="editable/code"
-mdataframe="editable/code"
+[python.packages.pypipegraph2]
+editable=true
+url = "github:TyberiusPrime/pypipegraph2/main/264187207ffd4416074bb24d7b440ff5d838f199"
+poetry2nix.nativeBuildInputs = [ "pkgs.rustPlatform.maturinBuildHook", "pkgs.rustPlatform.cargoSetupHook"]
+poetry2nix.overridePythonAttrs = {cargoDeps = """
+	pkgs.rustPlatform.importCargoLock {
+          lockFile = "${src}/Cargo.lock";
+        }
+"""}
 
 [clone_regexps]
-"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
-"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
+"@gh/([^/]+/[^/]+)"="github:$1/$2"
+
+[python] # python section is optional
+version="3.11" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
+ecosystem_date="2023-11-21" # you get whatever packages the solver would have produced on that day
+
+[python.packages]
+# this is how we now specify cloned python packages
+
+pypipegraph={ editable=true, url = "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", poetry2nix.buildInputs = ["setuptools"]}
+mdataframe={ editable=true, url = "github:MarcoMernberger/mdataframe/master/93fd47ffba5f4a0aa59fd02a105ace33a705da71", poetry2nix.buildInputs = ["setuptools"]}
+sklearn = {poetry2nix.buildInputs = ["setuptools"], poetry2nix.env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}}
+setuptools=""
+
+[rust]
+version="1.70.0" # this is the default, but you can override it here
+url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
+
+[outside_nixpkgs]
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/551cd76c920b9eabed3fb095a4091af7676b31ba"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+# and these are the other 'misc' clones that do not get turned into python packages
+[clones.code]
+anysnake2_test_repo= "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f"
 
 

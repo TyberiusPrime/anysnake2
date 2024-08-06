@@ -461,7 +461,8 @@ fn test_python_package_from_flake() {
     assert!(stdout.contains("count_reads_unstranded"));
 }
 
-#[test]
+/* #[test] disabled because poetry2nix right now has no backwards compatibility
+ * for older nixpkgs
 fn test_python_310_nixpkgs_2205() {
     // needs to be copied to test the tofu functionality.
     let ((code, stdout, _stderr), _td) = run_test_tempdir(
@@ -476,7 +477,7 @@ fn test_python_310_nixpkgs_2205() {
     );
     assert!(code == 0);
     assert!(stdout.contains("3.5.5"));
-}
+} */
 
 #[test]
 fn test_python_buildpackage_interdependency_with_overrides() {

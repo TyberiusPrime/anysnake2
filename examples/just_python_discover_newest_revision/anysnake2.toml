@@ -4,14 +4,13 @@
 # package settings
 [anysnake2]
 rev = "dev"
-
-[outside_nixpkgs]
-rev = "24.05" # We use the outside nixpkgs for poetry.
+url = "github:TyberiusPrime/anysnake2/main/1.15.5"
 
 [nixpkgs]
 # the nixpkgs used inside the container
 rev = "23.11" # the nixpgks version or github hash
 packages = ["which"]
+url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [python] # python section is optional
@@ -21,8 +20,10 @@ ecosystem_date="2024-02-16" # you get whatever packages the solver would have pr
 
 [python.packages]
 # for git / github
-plotnine = { git= "https://github.com/has2k1/plotnine"}
-# this plotnine needs a newer mizani than we have on 2022-02-16
-# so we manual fetch an newer version from pypi! 
-mizani = {pypi= "0.11.4"}
+plotnine = { url = "git+https://github.com/has2k1/plotnine"}#
+#, poetry2nix.buildInputs = ["setuptools", "setuptools-scm"] }
+#lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
 
+# this plotnine needs a newer mizani than we have on 2022-02-16
+# so we fetch the newest version from pypi
+mizani = { version = "pypi" } # 'pypi' and 'pypi:' will both work

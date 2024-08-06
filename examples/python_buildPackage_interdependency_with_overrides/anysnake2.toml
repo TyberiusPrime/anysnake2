@@ -2,14 +2,10 @@
 # package settings
 [anysnake2]
 rev = "dev"
-
-[outside_nixpkgs]
-rev = "22.05" # the nixpgks version or github hash
-
+url = "github:TyberiusPrime/anysnake2/main/1.15.5"
 [nixpkgs]
-# the nixpkgs used inside the container
-rev = "22.05" # the nixpgks version or github hash
 packages = ["which"]
+url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [python] # python section is optional
@@ -19,15 +15,26 @@ ecosystem_date="2022-11-23" # you get whatever packages the solver would have pr
 # additional_mkpython_arguments = """
 # """ # must be verbatim nix code
 
-[clones.code]
-# example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
-
 [python.packages]
 # you can use standard python requirements.txt version specification syntax
 # i.e. version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-# you can refer to the repos you cloned
-testrepo={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo", overrides = ["testrepo2"], rev = "97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", hash_97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f = "sha256-mZw37fLouWrA2L+49UOfUsF1MDy/q5pJImw+zczE4wU=" }
-testrepo2={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo2", rev = "a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", hash_a42420f8ba0a6bc9bda0425cd665515fb92dc2b4 = "sha256-tLz9vDTxQqFZPKkkBOZmmNNEhtf6JK2nwWiBKNH6od8="}
+# # you can refer to the repos you cloned
+# testrepo={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo", overrides = ["testrepo2"], rev = "97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", hash_97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f = "sha256-mZw37fLouWrA2L+49UOfUsF1MDy/q5pJImw+zczE4wU=" }
+# testrepo2={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo2", rev = "a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", hash_a42420f8ba0a6bc9bda0425cd665515fb92dc2b4 = "sha256-tLz9vDTxQqFZPKkkBOZmmNNEhtf6JK2nwWiBKNH6od8="}
+testrepo = { url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f" }
+testrepo2 = { url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4" }
+
+[outside_nixpkgs]
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 
 
 # and you can fetch from github, git and mercurial (any nix fetcher actually, see

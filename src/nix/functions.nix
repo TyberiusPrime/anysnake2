@@ -5,7 +5,7 @@
   }: let
   in rec {
     script_file = pkgs.writeScript "reqs.sh" script;
-    derivation = pkgs.runCommand name {} ''
+    derivation = pkgs.runCommand "${name}-2" {} ''
       set -o pipefail
       shopt -s nullglob
       mkdir -p $out/rootfs/usr/lib
@@ -17,7 +17,7 @@
       touch $out/rootfs/etc/passwd
       touch $out/rootfs/etc/group
 
-      mkdir -p $out/rootfs/{bin,etc,share}
+      mkdir -p $out/rootfs/{bin,etc,share,tmp,var/tmp}
       mkdir -p $out/rootfs/usr/{lib/share}
       mkdir -p $out/rootfs/R_libs
 

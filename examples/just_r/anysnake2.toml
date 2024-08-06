@@ -2,20 +2,12 @@
 [anysnake2]
 # We leverage nix flakes to run exactly that version.
 rev = "dev" # replace with fixed version outside of tests/examples
-
-[outside_nixpkgs]
-rev = "21.05"
+url = "github:TyberiusPrime/anysnake2/main/1.15.5"
 
 [nixpkgs]
 rev = "21.05" # the nixpgks version or github hash
 packages = []
-
-[flake-util]
-# the revision used by flake-util
-# rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
-# url = "github:/oxalica/rust-overlay"
-
-[mach-nix]
+url = "github:NixOS/nixpkgs/master/24.05"
 # the revision used by flake-util
 # rev = "dc94135e31d5c90c40a00a6cbdf9330526e8153b" # optional
 # url = "github:/DavHau/mach-nix"
@@ -29,6 +21,31 @@ packages = [
 	"Rcpp",
 	"stringi"
 ]
+url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
+
+[outside_nixpkgs]
+rev = "21.05"
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+
+[R.additional_packages]
+"kedd_1.0.3" = '''{
+      src = pkgs.fetchurl {
+        sha256 = "38760abd8c8e8f69ad85ca7992803060acc44ce68358de1763bd2415fdf83c9f";
+        url = "https://cran.r-project.org/src/contrib/Archive/kedd/kedd_1.0.3.tar.gz";
+      };
+    }
+'''
+
+[R.dependency_overrides]
+Rcpp = '''
+old: old ++ ["R6"]
+'''
 
 [R.override_attrs]
 Rcpp = '''
@@ -39,18 +56,12 @@ postInstall = ''
 }
 '''
 
-[R.dependency_overrides]
-Rcpp = '''
-old: old ++ ["R6"]
-'''
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+# the revision used by flake-util
+# rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
+# url = "github:/oxalica/rust-overlay"
 
-[R.additional_packages]
-"kedd_1.0.3" = '''{
-      src = pkgs.fetchurl {
-        sha256 = "38760abd8c8e8f69ad85ca7992803060acc44ce68358de1763bd2415fdf83c9f";
-        url = "https://cran.r-project.org/src/contrib/Archive/kedd/kedd_1.0.3.tar.gz";
-      };
-    }
-'''
+[mach-nix]
 
 

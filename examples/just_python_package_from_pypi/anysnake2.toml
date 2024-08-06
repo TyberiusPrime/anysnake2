@@ -8,8 +8,7 @@
 
 [anysnake2]
 rev = "dev"
-
-[outside_nixpkgs]
+url = "github:TyberiusPrime/anysnake2/main/1.15.5"
 
 [nixpkgs]
 packages = ["which"]
@@ -21,9 +20,13 @@ ecosystem_date="2022-11-23" # you get whatever packages the solver would have pr
 
 
 [python.packages]
-dppd={pypi="0.26", poetry2nix.buildInputs = ["setuptools"] }
-scanpy={pypi="1.9.3", poetry2nix.buildInputs = ["flit-core", "setuptools-scm"]}
-session-info={pypi="1.0.0", poetry2nix.buildInputs = ["setuptools"]}
+dppd={version="pypi:0.26", poetry2nix.buildInputs = ["setuptools"] }
+scanpy={version="pypi:1.9.3", poetry2nix.buildInputs = ["flit-core", "setuptools-scm"]}
+session-info={version="pypi:1.0.0", poetry2nix.buildInputs = ["setuptools"]}
+
+[outside_nixpkgs]
+
+[poetry2nix]
 
 [cmd.python]
 run = """python
@@ -32,6 +35,4 @@ run = """python
 
 [cmd.xxx]
 run="bash"
-
-[poetry2nix]
 

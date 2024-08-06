@@ -1,5 +1,49 @@
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
+url = "dev" # replace with fixed version outside of tests/examples
+
+[nixpkgs]
+packages = [ # use https://search.nixos.org/packages to search
+	"fish",
+	"netcat",
+	"fd",
+	"ripgrep",
+	"strace",
+	"which",
+	"mercurial", # good test case for breaking site-packages
+	"evcxr",
+	"gcc",
+	"gnumake",
+	] # optional
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[clone_regexps]
+"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
+"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
+
+
+[python] # python section is optional
+version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2021-11-21" # you get whatever packages the solver would have produced on that day
+[python.packages]
+importlib-resources=""
+
+dppd={editable= true, poetry2nix.nativeBuildInputs=["setuptools"]}
+# pandas="<1.0"
+
+
+[R]
+date="2022-05-10" # you get whatever packages were current that day.
+packages = [
+	#"ggplot2",
+	"dplyr",
+	#"xts",
+	]
+url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
+
+[rust]
+# version/rust section is optional. leave of for no rust
+version = "1.55.0" # =stable.
+url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
 # rev = "dev" = do not switch to fixed version, used in development.
 # Otherwise a tag or hash from the anysnake github repo at
 # (default https://github.com/TyberiusPrime/anysnake2).
@@ -14,99 +58,18 @@ rev = "dev" # replace with fixed version outside of tests/examples
 
 [dev_shell]
   shell = "fish"
-
-[nixpkgs]
-#rev = "20.09" # the nixpgks version or github hash
-rev = "21.05" # the nixpgks version or github hash
-# rev = "7e9b0dff974c89e070da1ad85713ff3c20b0ca97"
-# url = "git+https://github.com/NixOS/nixpkgs" # optional
-# url = "github:NixOS/nixpkgs" # prefer the github variant for then we can lookup tags.
-packages = [ # use https://search.nixos.org/packages to search
-	"fish",
-	"netcat",
-	"fd",
-	"ripgrep",
-	"strace",
-	"which",
-	"mercurial", # good test case for breaking site-packages
-	"evcxr",
-	"gcc",
-	"gnumake",
-	] # optional
-
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
-# url = "git+https://github.com/NixOS/nixpkgs" # optional
-
-[flake-util]
-# the revision used by flake-util
-# rev = "7e5bf3925f6fbdfaf50a2a7ca0be2879c4261d19" # optional
-# url = oxalica/rust-overlay
-
-
-[python] # python section is optional
-version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2021-11-21" # you get whatever packages the solver would have produced on that day
-#ecosystem_date="2021-05-20" # you get whatever packages the solver would have produced on that day
-# mach_nix_rev = "3.3.0" # or a sha from https://github.com/DavHau/mach-nix, optional
-# mach_nix_url = "github:DavHau/mach-nix" # optional ( prefer github: for tag lookup independ of nix version)
-
-[python.packages]
-importlib-resources=""
-# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-#scipy=""
-#pypipegraph2=">2.1"
-##mbf_r = "editable/code"  # see [clones.code] below
-#mbf_sampledata = "editable/code"
-#dppd = "editable/code"
-#dppd_plotnine = "editable/code"
-#mercurial="5.8"
-
-dppd="editable/code"
-# pandas="<1.0"
-
-[clones.code] # target directory
-# seperate from python packages so you can clone other stuff as well
-dppd="@gh/TyberiusPrime" # one /-> github.com/TyberiusPrime/dppd
-dppd_plotnine="@gh/TyberiusPrime/dppd_plotnine"
-
-[R]
-ecosystem_tag="2021-10-28_1" # you get whatever packages were current that day.
-packages = [
-	#"ggplot2",
-	"dplyr",
-	#"xts",
-	]
-
-[flakes.hello]
-	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
-	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
-	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	packages = ["defaultPackage.x86_64-linux"]
-
-[rust]
-# version/rust section is optional. leave of for no rust
-version = "1.55.0" # =stable. 
 #i to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
 # rust_overlay_rev = "08de2ff90cc08e7f9523ad97e4c1653b09f703ec" #https://github.com/oxalica/rust-overlay, optional
 # rust_overlay_url = "github:oxalica/rust-overlay"
 
 
 [container]
-#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
 
-[container.volumes_ro]
-"/opt" = "/opt"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_ecdsa_key" = "/etc/ssh/ssh_host_ecdsa_key"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_ed25519_key" = "/etc/ssh/ssh_host_ed25519_key"
-"/machine/opt/infrastructure/client/anysnake/ssh_host_rsa_key" = "/etc/ssh/ssh_host_rsa_key"
-
-
-[container.volumes_rw]
-# home get's special treatment, see first line
-"." = "/project"
-"/var/run/docker.sock" = "/var/run/docker.sock"
+[flakes.hello]
+	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	packages = ["defaultPackage.x86_64-linux"]
 
 
 [container.env]
@@ -114,6 +77,16 @@ MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
 MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
 NICE_HOSTNAME="$NICE_HOSTNAME"
 ANYSNAKE2_SOURCE="$PWD"
+#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+
+[container.volumes_ro]
+"/opt" = "/opt"
+
+
+[container.volumes_rw]
+# home get's special treatment, see first line
+"." = "/project"
+"/var/run/docker.sock" = "/var/run/docker.sock"
 
 
 [cmd.default]
@@ -141,17 +114,6 @@ echo "pre run outside"
 post_run_outside = """
 echo 'post run outside'
 """
-
-[cmd.shell]
-run = """
-echo "Calling fish"
-fish
-"""
-
-[cmd.jupyter]
-run = """
-jupyter notebook
-"""
 # ports are exposed by default (using host network!)
 
 
@@ -162,6 +124,25 @@ hello
 python -m rpy2
 """
 
-[clone_regexps]
-"@gh/([^/]+)"="git+https://github.com/\\1/\\0"
-"@gh/([^/]+/[^/]+)"="git+https://github.com/\\1/"
+[cmd.jupyter]
+run = """
+jupyter notebook
+"""
+
+[cmd.shell]
+run = """
+echo "Calling fish"
+fish
+"""
+
+[outside_nixpkgs]
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

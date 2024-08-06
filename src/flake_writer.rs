@@ -3,7 +3,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use ex::fs;
 use itertools::Itertools;
 #[allow(unused_imports)]
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Write;
@@ -24,7 +24,8 @@ impl InputFlake {
     fn new(name: &str, url: &vcs::TofuVCS, follows: &[&str]) -> Self {
         InputFlake {
             name: name.to_string(),
-            url: url.to_string(),
+            url: url.to_nix_string(), // different  from to_string. To_string is what we need in
+            // anynsake2.toml, to_nix_string is what nix needs to see
             follows: follows.iter().map(ToString::to_string).collect(),
             is_flake: true,
         }
@@ -296,6 +297,7 @@ fn prep_packages_for_pyproject_toml(
     input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
+    pyproject_toml_path: &Path,
 ) -> Result<toml::Table> {
     let mut result = toml::Table::new();
     for (name, spec) in input {
@@ -316,7 +318,7 @@ fn prep_packages_for_pyproject_toml(
                         toml::Value::String(format!("={version_constraint}")),
                     );
                 } else if version_constraint.is_empty() {
-                    result.insert(name.to_string(), toml::Value::String(">0".to_string()));
+                    result.insert(name.to_string(), toml::Value::String("*".to_string()));
                 } else {
                     result.insert(
                         name.to_string(),
@@ -337,11 +339,74 @@ fn prep_packages_for_pyproject_toml(
                 result.insert(name.to_string(), toml::Value::Table(out_map));
             }
             config::TofuPythonPackageSource::Vcs(vcs) => match vcs {
-                vcs::TofuVCS::Git { .. } | vcs::TofuVCS::GitHub { .. } => {
-                    let (url, rev, _branch) = vcs.get_url_rev_branch();
+                vcs::TofuVCS::GitHub {
+                    owner,
+                    repo,
+                    branch: _,
+                    rev,
+                } => {
+                    {
+                        // poetry does nix, but if it's not allowed to create virtual envs,
+                        // it wants to clone into the python folder (!)
+                        // https://github.com/python-poetry/poetry/issues/9470
+                        // so we do the same thing as for mercurial, clone into the nix store,
+                        // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
+                        let (path, sha256) = clone_to_nix_store(
+                            &format!("github:{owner}/{repo}"),
+                            rev,
+                            "git",
+                            prefetch_github_store_path,
+                            in_non_spec_but_cached_values,
+                            out_non_spec_but_cached_values,
+                        )?;
+                        let writeable_path =
+                            copy_for_poetry(&path, &name, &sha256, pyproject_toml_path)?;
+                        let mut out_map = toml::Table::new();
+                        out_map.insert("path".to_string(), writeable_path.into());
+                        let src = format!(
+                            "(
+                            pkgs.fetchFromGitHub {{
+                                    owner = \"{owner}\";
+                                    repo = \"{repo}\";
+                                    rev = \"{rev}\";
+                                    hash = \"{sha256}\";
+                            }})",
+                        );
+                        spec.poetry2nix.insert("src".to_string(), src.into());
+                        result.insert(name.to_string(), toml::Value::Table(out_map));
+                    }
+                }
+                vcs::TofuVCS::Git {
+                    url,
+                    branch: _,
+                    rev,
+                } => {
+                    // poetry does nix, but if it's not allowed to create virtual envs,
+                    // it wants to clone into the python folder (!)
+                    // https://github.com/python-poetry/poetry/issues/9470
+                    // so we do the same thing as for mercurial, clone into the nix store,
+                    // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
+                    let (path, sha256) = clone_to_nix_store(
+                        url,
+                        rev,
+                        "git",
+                        prefetch_git_store_path,
+                        in_non_spec_but_cached_values,
+                        out_non_spec_but_cached_values,
+                    )?;
+                    let writeable_path =
+                        copy_for_poetry(&path, &name, &sha256, pyproject_toml_path)?;
                     let mut out_map = toml::Table::new();
-                    out_map.insert("git".to_string(), toml::Value::String(url));
-                    out_map.insert("rev".to_string(), toml::Value::String(rev.to_string()));
+                    out_map.insert("path".to_string(), writeable_path.into());
+                    let src = format!(
+                        "(
+                            pkgs.fetchgit {{
+                                    url = \"{url}\";
+                                    rev = \"{rev}\";
+                                    hash = \"{sha256}\";
+                            }})",
+                    );
+                    spec.poetry2nix.insert("src".to_string(), src.into());
                     result.insert(name.to_string(), toml::Value::Table(out_map));
                 }
                 vcs::TofuVCS::Mercurial { url, rev } => {
@@ -351,21 +416,14 @@ fn prep_packages_for_pyproject_toml(
                     // so we can put the nix store path into poetry.toml
                     // later rewrite it to work inside poetry2nix (which assumes relativ paths)
                     // and add the nix fetchhg to the python packages src.
-                    let path_key = format!("mercurial/{url}/{rev}/path");
-                    let hash_key = format!("mercurial/{url}/{rev}/sha256");
-                    let path = in_non_spec_but_cached_values.get(&path_key);
-                    let sha256 = in_non_spec_but_cached_values.get(&hash_key);
-                    #[allow(clippy::pedantic)]
-                    let (path, sha256) = match (path, sha256) {
-                        (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
-                        _ => {
-                            let path_and_hash = prefetch_hg_store_path(url, rev)?;
-                            (path_and_hash.path, path_and_hash.sha256)
-                        }
-                    };
-                    out_non_spec_but_cached_values.insert(path_key, path.clone());
-                    out_non_spec_but_cached_values.insert(hash_key, sha256.clone());
-
+                    let (path, sha256) = clone_to_nix_store(
+                        url,
+                        rev,
+                        "mercurial",
+                        prefetch_hg_store_path,
+                        in_non_spec_but_cached_values,
+                        out_non_spec_but_cached_values,
+                    )?;
                     let mut out_map = toml::Table::new();
                     out_map.insert("path".to_string(), path.into());
                     let src = format!(
@@ -402,6 +460,62 @@ fn prep_packages_for_pyproject_toml(
             python_version_from_spec(spec, rev_override.as_deref()),
         )); */
     } */
+}
+
+/// poetry needs *writable* clones of the repos,
+/// because it needs to build egg-infos that write into the checkout
+fn copy_for_poetry(
+    path: &str,
+    name: &str,
+    sha256: &str,
+    pyproject_toml_path: &Path,
+) -> Result<String> {
+    let target_path = pyproject_toml_path
+        .parent()
+        .unwrap()
+        .join(name)
+        .join(sha256);
+    //copy the full path, using cp...
+    if !target_path.exists() {
+        ex::fs::create_dir_all(&target_path.parent().unwrap())?;
+        info!("Copying {} to {}", path, target_path.to_string_lossy());
+        let mut cmd = Command::new("cp");
+        cmd.args(["-r", path, &target_path.to_string_lossy()]);
+        debug!("cmd: {:?}", cmd);
+        cmd.status()?;
+        // now chmod it to be writable
+        Command::new("chmod")
+            .args(["-R", "ug+w", &target_path.to_string_lossy()])
+            .status()?;
+    }
+    Ok(target_path.canonicalize()?.to_string_lossy().to_string())
+}
+
+/// clone a repo to the nix store, return path and sha256 for the relevant fetch method.
+/// also caches the value in the 'non-spec-but-cached' region of .anysnake2_flake
+fn clone_to_nix_store(
+    url: &str,
+    rev: &str,
+    prefix: &str,
+    prefetch_func: impl Fn(&str, &str) -> Result<PrefetchResult>,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
+) -> Result<(String, String)> {
+    let path_key = format!("{prefix}/{url}/{rev}/path");
+    let hash_key = format!("{prefix}/{url}/{rev}/sha256");
+    let path = in_non_spec_but_cached_values.get(&path_key);
+    let sha256 = in_non_spec_but_cached_values.get(&hash_key);
+    #[allow(clippy::pedantic)]
+    let (path, sha256) = match (path, sha256) {
+        (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
+        _ => {
+            let path_and_hash = prefetch_func(url, rev)?;
+            (path_and_hash.path, path_and_hash.sha256)
+        }
+    };
+    out_non_spec_but_cached_values.insert(path_key, path.clone());
+    out_non_spec_but_cached_values.insert(hash_key, sha256.clone());
+    Ok((path, sha256))
 }
 
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
@@ -516,16 +630,15 @@ build-backend = "poetry.core.masonry.api"
 
         let exclusion_list = python_packages
             .iter()
-            .filter_map(|(name, spec)| {
-                match &spec.source {
-                    config::TofuPythonPackageSource::PyPi { version } => Some(format!("{name}={version}")),
-                    _ => None,
+            .filter_map(|(name, spec)| match &spec.source {
+                config::TofuPythonPackageSource::PyPi { version } => {
+                    Some(format!("{name}={version}"))
                 }
+                _ => None,
             })
-            .join(" ")
-            ;
+            .join(" ");
 
-        let full_args = vec![
+        let mut full_args = vec![
             "shell".into(),
             format!("{}#poetry", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
             format!("{}#{}", nixpkgs.url.to_nix_string(), python_major_minor),
@@ -538,9 +651,11 @@ build-backend = "poetry.core.masonry.api"
             pyproject_toml_path.to_string_lossy().to_string(),
             "-o".into(),
             poetry_lock_path.to_string_lossy().to_string(),
-            "-e".into(),
-            exclusion_list
         ];
+        if !exclusion_list.is_empty() {
+            full_args.push("-e".into());
+            full_args.push(exclusion_list);
+        }
         debug!("running ancient-poetry: {:?}", &full_args);
         let out = Command::new("nix")
             .args(full_args)
@@ -801,42 +916,72 @@ fn format_poetry_build_input_overrides(
     for (name, spec) in python_packages {
         let mut override_python_attrs = HashMap::new();
         let mut overrides = HashMap::new();
-        if let Some(build_inputs) = spec.poetry2nix.get("buildInputs") {
-            let str_build_inputs = build_inputs
-                .as_array()
-                .with_context(|| {
-                    format!(
-                        "Build input was not a list of strings package definition for {name}",
-                    )
-                })?
-                .iter()
-                .map(|v| {
-                    Ok({
-                        let v = v.as_str().with_context(|| {
-                            format!(
-                                "Build input was not a list of strings package definition for {name}",
-                            )
-                        })?;
-                        if v.starts_with('(') {
-                            v.to_string()
-                        } else {
-                            format!("prev.{v}")
-                    }
+        for kk in &["buildInputs", "propagatedBuildInputs", "nativeBuildInputs"] {
+            if let Some(build_inputs) = spec.poetry2nix.get(*kk) {
+                let str_build_inputs = build_inputs
+                    .as_array()
+                    .with_context(|| {
+                        format!("{kk} was not a list of strings package definition for {name}",)
+                    })?
+                    .iter()
+                    .map(|v| {
+                        Ok({
+                            let v = v.as_str().with_context(|| {
+                                format!(
+                                    "{kk} was not a list of strings package definition for {name}",
+                                )
+                            })?;
+                            if v.starts_with('(') {
+                                v.to_string()
+                            } else {
+                                format!("prev.{v}")
+                            }
+                        })
                     })
-                })
-                .collect::<Result<Vec<String>>>()?
-                .join(" ");
-            override_python_attrs.insert(
-                "buildInputs",
-                format!("(old.buildInputs or []) ++ [{str_build_inputs}]"),
-            );
+                    .collect::<Result<Vec<String>>>()?
+                    .join(" ");
+                override_python_attrs
+                    .insert(*kk, format!("(old.{kk} or []) ++ [{str_build_inputs}]"));
+            }
         }
+
         if let Some(src) = spec.poetry2nix.get("src") {
             let src = src
                 .as_str()
                 .with_context(|| format!("src was not a string with nix code for {name}",))?;
             override_python_attrs.insert("src", src.to_string());
         }
+
+        if let Some(post_patch) = spec.poetry2nix.get("postPatch") {
+            let post_patch = post_patch
+                .as_str()
+                .with_context(|| format!("postPatch was not a string with nix code for {name}",))?;
+            override_python_attrs.insert("postPatch", format!("''{post_patch}''"));
+        }
+
+        if let Some(envs) = spec.poetry2nix.get("env") {
+            let envs = envs
+                .as_table()
+                .with_context(|| format!("envs was not a table {name}",))?;
+            for (k, v) in envs.iter() {
+                let v = v
+                    .as_str()
+                    .with_context(|| format!("envs entry was not a string for {name}"))?;
+                override_python_attrs.insert(k, format!("''{v}''"));
+            }
+        }
+        if let Some(further) = spec.poetry2nix.get("overridePythonAttrs") {
+            let further = further
+                .as_table()
+                .with_context(|| format!("envs was not a table {name}",))?;
+            for (k, v) in further.iter() {
+                let v = v.as_str().with_context(|| {
+                    format!("envs entry was not a string (with nix code!) for {name}")
+                })?;
+                override_python_attrs.insert(k, format!("{v}"));
+            }
+        }
+
         if let Some(prefer_wheel) = spec.poetry2nix.get("preferWheel") {
             let prefer_wheel = prefer_wheel
                 .as_bool()
@@ -861,10 +1006,11 @@ fn format_poetry_build_input_overrides(
                 format!("(prev.{safe_name}.override {{{override_str}}})",)
             };
             poetry_overide_entries.push(format!(
-                "{safe_name} = {first_part}.overridePythonAttrs (old: {{{str_overrides}}});"
+                "{safe_name} = {first_part}.overridePythonAttrs (old: rec {{{str_overrides}}});"
             ));
         }
     }
+    poetry_overide_entries.sort();
     Ok(poetry_overide_entries)
 }
 
@@ -894,6 +1040,7 @@ fn add_python(
                 &mut python.packages,
                 in_non_spec_but_cached_values,
                 out_non_spec_but_cached_values,
+                pyproject_toml_path,
             )?;
             if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
                 out_python_packages
@@ -1040,6 +1187,127 @@ fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let sha256 = crate::tofu::convert_hash_to_subresource_format(hash)?;
 
     Ok(PrefetchResult { path, sha256 })
+}
+
+fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+    let nix_prefetch_git_url = format!(
+        "{}#nix-prefetch-git",
+        crate::OUTSIDE_NIXPKGS_URL.get().unwrap()
+    );
+    let nix_prefetch_git_url_args = vec![
+        "shell",
+        &nix_prefetch_git_url,
+        "-c",
+        "nix-prefetch-git",
+        url,
+        rev,
+    ];
+    let mut proc = Command::new("nix");
+    proc.args(nix_prefetch_git_url_args);
+    debug!("running {proc:?}");
+    let proc_res = proc.output().context("failed on nix-prefetch-git")?;
+    if !proc_res.status.success() {
+        bail!("nix-prefetch-git failed with code {}", proc_res.status);
+    }
+
+    let stdout = std::str::from_utf8(&proc_res.stdout)?.trim();
+    let _stderr = std::str::from_utf8(&proc_res.stderr)?.trim();
+
+    let structured: HashMap<String, serde_json::Value> =
+        serde_json::from_str(stdout).context("nix-prefetch-git output failed json parsing")?;
+    let old_format = structured
+        .get("sha256")
+        .context("No sha256 in nix-prefetch-git json output")?
+        .as_str()
+        .context("sha256 in nix-prefetch-git json was not a string")?;
+    let sha256 = crate::tofu::convert_hash_to_subresource_format(old_format)?;
+    let path = structured
+        .get("path")
+        .context("No path in nix-prefetch-git json output")?
+        .as_str()
+        .context("path in nix-prefetch-git json output was not a string")?
+        .to_string();
+
+    Ok(PrefetchResult { path, sha256 })
+}
+fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+    //every single one of the nix-prefetch-* fails me here
+    //nix-prefetch-github: doesn't get you the store path
+    //nix-prefetch doesn't actually realize the store path.
+    //so let's do this ourselves...
+    dbg!(url);
+    let (_, owner_repo) = url.split_once("github:").unwrap();
+    let (owner, repo) = owner_repo.split_once("/").unwrap();
+
+    let temp_dir = tempfile::TempDir::with_prefix("anysnake2_nix_prefetch_github")?;
+    {
+        // let td = PathBuf::from("temp"); // if you need to debug
+        let td = temp_dir.path();
+        let default_nix = td.join("default.nix");
+        std::fs::write(
+            &default_nix,
+            format!(
+                "
+                {{ pkgs ? import <nixpkgs> {{}} }}:
+
+                  pkgs.fetchFromGitHub {{
+                    owner = \"{owner}\";
+                    repo = \"{repo}\";
+                    rev = \"{rev}\";
+                    sha256 = pkgs.lib.fakeSha256;
+                  }}
+                "
+            ),
+        )
+        .context("Could not write default.nix")?;
+        let output = Command::new("nix-build")
+            .args(["default.nix"])
+            .current_dir(&td)
+            .output()
+            .context("nix-build call failed")?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let sha_re = regex::Regex::new(r"got:\s+(sha256-[^=]+)").unwrap();
+        let hit = sha_re.captures(&stderr).with_context(||
+            format!("nix-build failed with stdout: {stdout} stderr: {stderr}. Expected got: <sha256> line",
+        ))?;
+        let new_sha = hit.get(1).unwrap().as_str();
+        std::fs::write(
+            &default_nix,
+            format!(
+                "
+                {{ pkgs ? import <nixpkgs> {{}} }}:
+
+                  pkgs.fetchFromGitHub {{
+                    owner = \"{owner}\";
+                    repo = \"{repo}\";
+                    rev = \"{rev}\";
+                    sha256 = \"{new_sha}\";
+                  }}
+                "
+            ),
+        )
+        .context("failed to write default.nix 2nd time")?;
+        let output = Command::new("nix-build")
+            .args(["default.nix"])
+            .current_dir(&td)
+            .output()
+            .context("nix-build call failed")?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            bail!("nix-build for fetchFromGitHub failed: Stdout: {stdout}, stderr: {stderr}");
+        }
+        let result_path = td.join("result");
+        let store_path = result_path
+            .canonicalize()
+            .context("failed to canonicalize nix store path")?;
+        let path = store_path.to_string_lossy().to_string();
+        Ok(PrefetchResult {
+            path,
+            sha256: new_sha.to_string(),
+        })
+    }
 }
 
 /// rewrite all /nix/store references in poetry.toml and lock into ../, and place in new folder

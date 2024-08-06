@@ -1,19 +1,15 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
+url = "dev"
 use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
-
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "21.05" # the nixpgks version or github hash
 packages = [ # use https://search.nixos.org/packages to search
 	"fish",
 ]
+url = "github:NixOS/nixpkgs/master/24.05"
 
 [python] # python section is optional
 version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
@@ -21,23 +17,28 @@ ecosystem_date="2021-08-16" # you get whatever packages the solver would have pr
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-jupyter=""
+notebook=""
 pandas="1.2.0"
 
 [rust]
 version="1.55.0"
+url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
+
+[container.env]
+ANYSNAKE2="1"
 
 # container settings
 [container.volumes_rw]
 "." = "/project" # map the current folder to /project
 
-[container.env]
-ANYSNAKE2="1"
-
 [cmd.default]
 run = """
 cd /project
 jupyter notebook
+"""
+
+[cmd.shell]
+run = """fish
 """
 
 [cmd.test_pre_post]
@@ -59,6 +60,15 @@ post_run_outside = """
 echo "post_run"
 """
 
-[cmd.shell]
-run = """fish
-"""
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
