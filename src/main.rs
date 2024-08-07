@@ -351,9 +351,7 @@ fn inner_main() -> Result<()> {
     let in_non_spec_but_cached_values = load_cached_values(&flake_dir)?;
     let mut out_non_spec_but_cached_values: HashMap<String, String> = HashMap::new();
 
-    let tofued_config = apply_trust_on_first_use(
-        parsed_config,
-    )?;
+    let tofued_config = apply_trust_on_first_use(parsed_config)?;
 
     if cmd == "attach" {
         return attach_to_previous_container(&flake_dir);
@@ -388,6 +386,9 @@ fn inner_main() -> Result<()> {
     if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
         save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
     }
+    let in_non_spec_but_cached_values = out_non_spec_but_cached_values.clone(); // so we don't write
+                                                                                // out again if we
+                                                                                // don't have to
 
     perform_clones(&flake_dir, &tofued_config)?;
 
@@ -442,8 +443,19 @@ fn inner_main() -> Result<()> {
         if let Some(python) = &tofued_config.python {
             //todo
             fill_venv(&python.version, &python.packages, &flake_dir)?;
+            if let Some(r) = &tofued_config.r {
+                add_r_library_path(
+                    &flake_dir,
+                    r,
+                    &mut tofued_config.container,
+                    &in_non_spec_but_cached_values,
+                    &mut out_non_spec_but_cached_values,
+                )?;
+            }
         };
-
+        if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
+            save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
+        }
         if cmd == "develop" {
             if let Some(_python) = &tofued_config.python {
                 todo!();
@@ -1201,6 +1213,83 @@ fn fill_venv(
         }
     }
     Ok(())
+}
+
+/// the R 'binary' itself set's it's LD_LIBRARY_PATH,
+/// but for e.g. rpy2 to work correctly, we need to set the correct LD_LIBRARY_PATH
+/// inside the container
+/// fortunatly, we can ask R about it
+fn add_r_library_path(
+    flake_dir: &Path,
+    r: &config::TofuR,
+    container: &mut config::Container,
+    in_non_spec_but_cached_values: &HashMap<String, String>,
+    out_non_spec_but_cached_values: &mut HashMap<String, String>,
+) -> Result<()> {
+    use std::collections::hash_map::Entry;
+    let key = format!("r_ld_path~{}~{}", sha256::digest(r.url.to_string()), r.date);
+    let ld_library_path = match in_non_spec_but_cached_values.get(&key) {
+        Some(ld_library_path) => ld_library_path.clone(),
+        None => {
+            let ld_library_path = figure_out_r_library_path(flake_dir)?;
+            out_non_spec_but_cached_values.insert(key, ld_library_path.clone());
+            ld_library_path
+        }
+    };
+    match &mut container.env {
+        Some(env) => match env.entry("LD_LIBRARY_PATH".to_string()) {
+            Entry::Occupied(mut e) => {
+                let current = e.get_mut();
+                current.push_str(":");
+                current.push_str(&ld_library_path);
+            }
+            Entry::Vacant(e) => {
+                e.insert(ld_library_path);
+            }
+        },
+        None => {
+            let mut env = HashMap::new();
+            env.insert("LD_LIBRARY_PATH".to_string(), ld_library_path);
+            container.env = Some(env);
+        }
+    }
+    Ok(())
+}
+fn figure_out_r_library_path(flake_dir: &Path) -> Result<String> {
+    let singularity_url = format!("{}#singularity", OUTSIDE_NIXPKGS_URL.get().unwrap());
+    let singularity_args: Vec<String> = vec![
+        "shell".into(),
+        singularity_url,
+        "-c".into(),
+        "singularity".into(),
+        "exec".into(),
+        "--userns".into(),
+        "--cleanenv".into(),
+        //"--no-home".into(),
+        "--no-home".into(),
+        "--bind".into(),
+        "/nix/store:/nix/store:ro".into(),
+        flake_dir.join("result/rootfs").to_string_lossy(),
+        "Rscript".into(),
+        "-e".into(),
+        "cat(Sys.getenv(\"LD_LIBRARY_PATH\"))".into(),
+    ];
+    let cmd = Command::new("nix")
+        .args(&singularity_args[..])
+        .output()
+        .context("Failed to run nix")?;
+    info!("querying Singularity for R ld_library_path ");
+    let stdout = std::str::from_utf8(&cmd.stdout).unwrap();
+    let stderr = std::str::from_utf8(&cmd.stderr).unwrap();
+    if !cmd.status.success() {
+        bail!(
+            "Singularity querying R ld_library_path failed: return code {:?}. Stderr: {:?}",
+            cmd.status.code().unwrap(),
+            stderr
+        );
+    }
+    let ld_libarry_path = stdout.trim();
+    Ok(ld_libarry_path.to_string())
 }
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {

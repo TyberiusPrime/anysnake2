@@ -524,7 +524,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Python {
     pub version: String,
     pub ecosystem_date: String,
@@ -584,6 +584,9 @@ pub struct R {
     pub override_attrs: Option<HashMap<String, String>>,
     pub dependency_overrides: Option<HashMap<String, String>>,
     pub additional_packages: Option<HashMap<String, String>>,
+    //rebuild R with the same nixpkgs that your python is from
+    //preventing glibc issues when using rpy2
+    pub use_inside_nix_pkgs: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -595,6 +598,7 @@ pub struct TofuR {
     pub override_attrs: Option<HashMap<String, String>>,
     pub dependency_overrides: Option<HashMap<String, String>>,
     pub additional_packages: Option<HashMap<String, String>>,
+    pub use_inside_nix_pkgs: Option<bool>,
 }
 
 fn parse_my_date(input: &str) -> Result<chrono::NaiveDate> {

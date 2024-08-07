@@ -880,11 +880,14 @@ fn add_r(
         r_pkg_list.sort();
         r_pkg_list.dedup();
 
+        let nix_nix_pkgs = if r_config.use_inside_nix_pkgs.unwrap_or(true) {"pkgs"} else {"null"};
+
         let r_packages = format!(
             "
                 nixR.R_by_date {{
                     date = \"{}\" ;
                     r_pkg_names = [{}];
+                    nix_pkgs_pkgs = {nix_nix_pkgs};
                     packageOverrideAttrs = {{ {} }};
                     r_dependency_overrides = {{ {} }};
                     additional_packages = {{ {} }};
@@ -1042,10 +1045,6 @@ fn add_python(
                 out_non_spec_but_cached_values,
                 pyproject_toml_path,
             )?;
-            if parsed_config.r.is_some() && !out_python_packages.contains_key("rpy2") {
-                out_python_packages
-                    .insert("rpy2".to_string(), toml::Value::String(">0".to_string()));
-            }
             if python.has_editable_packages() && !out_python_packages.contains_key("pip") {
                 out_python_packages
                     .insert("pip".to_string(), toml::Value::String(">0".to_string()));

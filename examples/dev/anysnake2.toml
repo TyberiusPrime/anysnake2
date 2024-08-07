@@ -1,5 +1,8 @@
 [anysnake2]
 url = "dev" # replace with fixed version outside of tests/examples
+[python.packages.rpy2]
+    version = '*'
+    poetry2nix.env = {R_HOME = '${R_tracked}'}
 
 [nixpkgs]
 packages = [ # use https://search.nixos.org/packages to search
@@ -28,11 +31,12 @@ ecosystem_date="2021-11-21" # you get whatever packages the solver would have pr
 importlib-resources=""
 
 dppd={editable= true, poetry2nix.nativeBuildInputs=["setuptools"]}
+setuptools="" # for dppd editable install
 # pandas="<1.0"
 
 
 [R]
-date="2022-05-10" # you get whatever packages were current that day.
+date="2023-10-25" # you get whatever packages were current that day.
 packages = [
 	#"ggplot2",
 	"dplyr",

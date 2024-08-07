@@ -49,6 +49,18 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             }),
             None => None,
         };
+
+        let python = {
+            match self.r {
+                Some(_) => {
+                    let mut python = self.python.clone();
+                    add_rpy2_if_missing(&mut python, updates);
+                    python
+                }
+                None => self.python.clone(),
+            }
+        };
+
         Ok(config::TofuConfigToml {
             anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: {
@@ -100,7 +112,7 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             rust: self
                 .rust
                 .tofu_to_newest(&["rust"], updates, "github:oxalica/rust-overlay")?,
-            python: self.python.tofu(updates)?,
+            python: python.tofu(updates)?,
             container: self.container,
             flakes: self.flakes.tofu(updates)?,
             dev_shell: self.dev_shell,
@@ -108,6 +120,36 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 .r
                 .tofu_to_newest(&["R"], updates, "github:TyberiusPrime/nixR")?,
         })
+    }
+}
+
+fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUpdates) {
+    if let Some(python) = python {
+        if !python.packages.contains_key(&"rpy2".to_string()) {
+            let source = config::PythonPackageSource::VersionConstraint("*".to_string());
+            let poetry2nix = toml::toml! {
+                env = {R_HOME = "${R_tracked}"}
+            };
+            let def = config::PythonPackageDefinition {
+                source,
+                editable_path: None,
+                poetry2nix,
+            };
+            python.packages.insert("rpy2".to_string(), def);
+            let tbl = "[rpy2]
+    version = '*'
+    poetry2nix.env = {R_HOME = '${R_tracked}'}
+"
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+            updates.push((
+                ["python", "packages", "rpy2"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                tbl["rpy2"].clone(),
+            ));
+        }
     }
 }
 
@@ -281,6 +323,7 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
                 override_attrs: inner_self.override_attrs,
                 dependency_overrides: inner_self.dependency_overrides,
                 additional_packages: inner_self.additional_packages,
+                use_inside_nix_pkgs: inner_self.use_inside_nix_pkgs,
             }),
         })
     }
