@@ -16,16 +16,14 @@ url = "github:nix-community/poetry2nix/master/48e7ed4ef7832efa5a5558e573986c4128
 
 [flakes.hello]
 # 	# rev get's auto detected
- 	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+ 	url = "github:TyberiusPrime/hello_flake/main"
 
 [flakes.hello2]
- 	url = "git+https://github.com/TyberiusPrime/hello_flake?ref=main&rev=f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+ 	url = "git+https://github.com/TyberiusPrime/hello_flake?ref=main"
  	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
 
 [flakes.hello_merucrial]
- 	url = "hg+https://hg.sr.ht/~tyberius_prime/hello_flake?rev=ed4abef5589800a2f1cf43282b46f180bc46fa0d"
-
-
+ 	url = "hg+https://hg.sr.ht/~tyberius_prime/hello_flake"
 
 [flake-util]
 url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

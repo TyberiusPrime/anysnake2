@@ -556,6 +556,7 @@ impl TofuPython {
 #[derive(Deserialize, Debug)]
 pub struct Flake {
     pub url: ParsedVCS,
+    pub dir: Option<String>,
     pub follows: Option<Vec<String>>,
     pub packages: Option<Vec<String>>,
 }
@@ -563,6 +564,7 @@ pub struct Flake {
 #[derive(Debug)]
 pub struct TofuFlake {
     pub url: TofuVCS,
+    pub dir: Option<String>,
     pub follows: Option<Vec<String>>,
     pub packages: Vec<String>,
 }

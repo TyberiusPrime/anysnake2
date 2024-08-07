@@ -346,6 +346,7 @@ impl Tofu<HashMap<String, config::TofuFlake>> for Option<HashMap<String, config:
                         key,
                         config::TofuFlake {
                             url: tofued,
+                            dir: value.dir,
                             follows: value.follows,
                             packages: value.packages.unwrap_or_default(),
                         },

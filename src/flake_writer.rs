@@ -16,15 +16,17 @@ use crate::{run_without_ctrl_c, safe_python_package_name, vcs};
 struct InputFlake {
     name: String,
     url: String,
+    dir: Option<String>,
     follows: Vec<String>,
     is_flake: bool,
 }
 
 impl InputFlake {
-    fn new(name: &str, url: &vcs::TofuVCS, follows: &[&str]) -> Self {
+    fn new(name: &str, url: &vcs::TofuVCS, dir: Option<String>, follows: &[&str]) -> Self {
         InputFlake {
             name: name.to_string(),
             url: url.to_nix_string(), // different  from to_string. To_string is what we need in
+            dir,
             // anynsake2.toml, to_nix_string is what nix needs to see
             follows: follows.iter().map(ToString::to_string).collect(),
             is_flake: true,
@@ -88,12 +90,13 @@ pub fn write_flake(
     inputs.push(InputFlake::new(
         "flake-utils",
         &parsed_config.flake_util,
+        None,
         &[],
     ));
 
     // and nixpkgs is non optional as well.
 
-    inputs.push(InputFlake::new("nixpkgs", &parsed_config.nixpkgs.url, &[]));
+    inputs.push(InputFlake::new("nixpkgs", &parsed_config.nixpkgs.url, None, &[]));
     nixpkgs_pkgs.extend(parsed_config.nixpkgs.packages.clone());
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
@@ -246,6 +249,10 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
             iter.collect()
         } else {
             fl.url.to_string()
+        };
+        let url = match &fl.dir {
+            None => url,
+            Some(dir) => format!("{}?dir={}", url, dir),
         };
         out.push_str(&format!(
             "
@@ -784,6 +791,7 @@ fn add_rust(
             inputs.push(InputFlake::new(
                 "rust-overlay",
                 &rust.url,
+                None,
                 &["nixpkgs", "flake-utils"],
             ));
             overlays.push("import rust-overlay".to_string());
@@ -822,6 +830,7 @@ fn add_flakes(
             inputs.push(InputFlake::new(
                 name,
                 &flake.url, // at this point we must have a rev,
+                flake.dir.clone(),
                 &rev_follows[..],
             ));
             if flake.packages.is_empty() {
@@ -851,7 +860,7 @@ fn add_r(
     }
 
     if let Some(r_config) = &parsed_config.r {
-        inputs.push(InputFlake::new("nixR", &r_config.url, &[]));
+        inputs.push(InputFlake::new("nixR", &r_config.url, None, &[]));
 
         let r_override_args = r_config
             .override_attrs
@@ -880,7 +889,11 @@ fn add_r(
         r_pkg_list.sort();
         r_pkg_list.dedup();
 
-        let nix_nix_pkgs = if r_config.use_inside_nix_pkgs.unwrap_or(true) {"pkgs"} else {"null"};
+        let nix_nix_pkgs = if r_config.use_inside_nix_pkgs.unwrap_or(true) {
+            "pkgs"
+        } else {
+            "null"
+        };
 
         let r_packages = format!(
             "
@@ -1074,6 +1087,7 @@ fn add_python(
             inputs.push(InputFlake::new(
                 "poetry2nix",
                 &parsed_config.poetry2nix.source,
+                None,
                 &[],
             ));
 
