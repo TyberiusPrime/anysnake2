@@ -1,17 +1,28 @@
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "21.05"
+url = "dev" # replace with fixed version outside of tests/examples
 
 [nixpkgs]
-rev = "21.05" # the nixpgks version or github hash
+url = "github:NixOS/nixpkgs/master/24.05"
 
 [python] # python section is optional
-version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2021-10-11" # you get whatever packages the solver would have produced on that day
+version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+ecosystem_date="2023-10-11" # you get whatever packages the solver would have produced on that day
 
 [python.packages]
 solidpython=""
-plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+#plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+plotnine = {url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef" }
+#TODO: This needs to be rewritten to be a git dependency!
+
+[outside_nixpkgs]
+url = "github:NixOS/nixpkgs/master/24.05"
+
+[ancient_poetry]
+url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+[poetry2nix]
+url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+[flake-util]
+url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 
