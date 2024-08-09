@@ -5,7 +5,8 @@ use log::{debug, error};
 use serde::Serialize;
 use version_compare::Version;
 
-use crate::{flake_writer::add_auth, run_without_ctrl_c, util::get_proxy_req};
+use crate::flake_writer::add_auth;
+use anysnake2::{run_without_ctrl_c, util::get_proxy_req};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParsedVCS {
@@ -203,6 +204,9 @@ impl TryFrom<&str> for ParsedVCS {
         } else if input.starts_with("github:") {
             if input.starts_with("github:/") {
                 bail!("github: urls must start with the repo, not /repo. Error in {input}");
+            }
+            if input.contains("dir=") {
+                bail!("github input contains dir=. That has been moved from the rul into a separate value in anysnake2 2.0");
             }
             let mut parts = input.splitn(4, '/');
             let owner = parts
@@ -422,7 +426,7 @@ impl ParsedVCS {
                 let mut proc = std::process::Command::new("nix");
                 proc.args([
                     "shell",
-                    &format!("{}#mercurial", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
+                    &format!("{}#mercurial", anysnake2::get_outside_nixpkgs_url().unwrap()),
                     "-c",
                     "hg",
                     "id",
@@ -431,18 +435,22 @@ impl ParsedVCS {
                 ]);
                 debug!("Running {:?}", proc);
                 let output = proc.output().context("hg id ")?;
-                let stdout =
-                    std::str::from_utf8(&output.stdout).expect("utf-8 decoding failed in hg id output");
+                let stdout = std::str::from_utf8(&output.stdout)
+                    .expect("utf-8 decoding failed in hg id output");
                 if !output.status.success() {
                     let stderr = std::str::from_utf8(&output.stderr)
                         .expect("utf-8 decoding failed in hg id output");
-                    bail!("hg id  failed with status: {}. Stdout: {stdout}, stderr:{stderr}", output.status);
+                    bail!(
+                        "hg id  failed with status: {}. Stdout: {stdout}, stderr:{stderr}",
+                        output.status
+                    );
                 }
                 let sha1_regex = regex::Regex::new(r"[a-f0-9]{40}").unwrap();
                 let rev = sha1_regex
                     .find(stdout)
                     .context("No sha1 found in hg id output")?
-                    .as_str().to_string();
+                    .as_str()
+                    .to_string();
                 Ok(rev)
             }
         }
@@ -486,9 +494,12 @@ pub fn run_git_ls(url: &str, branch: Option<&str>) -> Result<Vec<(String, String
         let mut proc = std::process::Command::new("nix");
         proc.args([
             "shell",
-            // if outside_nippkgs.url is not set in the config, we have to fall back 
+            // if outside_nippkgs.url is not set in the config, we have to fall back
             // to a 'known' git.
-            &format!("{}#git", crate::OUTSIDE_NIXPKGS_URL.get().map_or("github:nixos/nixpkgs/24.05", String::as_str)),
+            &format!(
+                "{}#git",
+                anysnake2::get_outside_nixpkgs_url().unwrap_or("github:nixos/nixpkgs/24.05")
+            ),
             "-c",
             "git",
             "ls-remote",

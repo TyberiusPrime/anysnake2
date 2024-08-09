@@ -1,7 +1,8 @@
 use anyhow::{bail, Context, Result};
 #[allow(unused_imports)]
 use log::{debug, info};
-use toml_edit::DocumentMut;
+use toml_edit::{DocumentMut, Item, Key, KeyMut};
+use version_compare::compare_to;
 
 use std::{
     collections::HashMap,
@@ -70,6 +71,78 @@ fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
     }
 }
 
+fn assign_entry_prefix(key: &mut KeyMut) {
+    {
+        let ld = key.leaf_decor_mut();
+        match ld.prefix() {
+            Some(prefix) => match prefix.as_str() {
+                Some(prefix) => {
+                    let mut lines: Vec<_> =
+                        prefix.split("\n").map(|x| x.trim().to_string()).collect();
+                    if lines.is_empty() {
+                        lines.push("\t".into());
+                    } else {
+                        if lines.len() > 1 && lines.iter().next().unwrap().is_empty() {
+                            lines.remove(0);
+                        }
+                        lines.iter_mut().last().unwrap().push_str("\t");
+                    }
+                    ld.set_prefix(lines.join("\n"))
+                }
+                None => ld.set_prefix("\t"),
+            },
+            None => todo!(),
+        }
+    }
+}
+
+fn descend_assign_scores(tbl: &mut toml_edit::Table, score: usize) {
+    for mut el in tbl.iter_mut() {
+        match el.1 {
+            Item::Table(x) => {
+                x.set_position(score);
+                descend_assign_scores(x, score + 1);
+                x.sort_values();
+                let prefix = x
+                    .decor()
+                    .prefix()
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .trim_start()
+                    .to_string();
+                if prefix.is_empty() {
+                    x.decor_mut().set_prefix("\n\n");
+                } else {
+                    x.decor_mut().set_prefix(format!("\n\n{prefix}"));
+                }
+            }
+            Item::Value(v) => match v {
+                toml_edit::Value::Array(arr) => {
+                    assign_entry_prefix(&mut el.0);
+                    if arr.len() > 1 {
+                        for value in arr.iter_mut() {
+                            let mut old = value
+                                .decor()
+                                .prefix()
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .trim()
+                                .to_string();
+                            if old.starts_with("#") {
+                                old.insert(0, ' ');
+                            }
+                            value.decor_mut().set_prefix(format!("{old}\n\t\t"));
+                        }
+                    }
+                }
+                _ => {
+                    assign_entry_prefix(&mut el.0);
+                }
+            },
+            _ => {}
+        }
+    }
+}
 pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()> {
     let toml = std::fs::read_to_string(toml_path).expect("Could not reread config file");
     let mut doc = toml.parse::<DocumentMut>().expect("invalid doc");
@@ -89,7 +162,6 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
                                 toml_edit::Value::InlineTable(_) => {}
                                 _ => {
                                     // if it was previously a value...
-                                    debug!("turning into inline table {p:?}, {x:?}");
                                     *x = toml_edit::Item::Value(
                                         toml_edit::Table::new().into_inline_table().into(),
                                     );
@@ -105,36 +177,71 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
                 *x = value;
             }
         }
-
-        let order: HashMap<&str, usize> = [
-            ("anysnake2", 0),
-            ("nixpkgs", 30),
-            ("clones", 40),
-            ("clone_regexps", 50),
-            ("python", 100),
-            ("python.packages", 110),
-            ("R", 120),
-            ("rust", 130),
-            ("flakes", 140),
-            ("dev_shell", 200),
-            ("container", 210),
-            ("env", 220),
-            ("cmd", 230),
-            ("outside_nixpkgs", 960),
-            ("ancient_poetry", 970),
-            ("poetry2nix", 980),
-            ("flake-util", 990),
-        ]
-        .into_iter()
-        .collect();
-        apply_table_order(&mut doc, &order);
-
-        let out_toml = doc.to_string();
-        std::fs::write(toml_path, out_toml).context("failed to rewrite config file")?;
-        info!("Wrote updated {:?}", toml_path);
     }
 
+    //doc["nixpkgs"].as_table_mut().unwrap().sort_values_by(comp);
+    for el in doc.iter_mut() {
+        match el.1 {
+            toml_edit::Item::Table(x) => {
+                let score = get_score(el.0.get());
+                x.set_position(score);
+                descend_assign_scores(x, score + 1);
+                x.sort_values();
+                let prefix = x
+                    .decor()
+                    .prefix()
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .trim_start()
+                    .to_string();
+                if prefix.is_empty() {
+                    x.decor_mut().set_prefix("\n\n");
+                } else {
+                    x.decor_mut().set_prefix(format!("\n\n{prefix}"));
+                }
+            }
+            _ => {
+                unimplemented!("el {}, not a table, unexpected", el.0)
+            }
+        }
+    }
+
+    let out_toml = doc.to_string();
+    std::fs::write(toml_path, out_toml.trim_start()).context("failed to rewrite config file")?;
+    info!("Wrote updated {:?}", toml_path);
+
     Ok(())
+}
+
+const ORDER_SCORES: &[(&str, usize)] = &[
+    ("anysnake2", 1000),
+    ("nixpkgs", 3000),
+    ("clones", 4000),
+    ("clone_regexps", 5000),
+    ("python", 10000),
+    ("python.packages", 11000),
+    ("R", 12000),
+    ("rust", 13000),
+    ("flakes", 14000),
+    ("dev_shell", 20000),
+    ("container", 21000),
+    ("env", 22000),
+    ("cmd", 23000),
+    ("dev_shell", 25000),
+    ("outside_nixpkgs", 96000),
+    ("ancient_poetry", 97000),
+    ("poetry2nix", 98000),
+    ("flake-util", 99000),
+];
+
+fn get_score(key: &str) -> usize {
+    let mut res = 10000000;
+    for (k, v) in ORDER_SCORES {
+        if key.starts_with(k) {
+            res = *v;
+        }
+    }
+    res
 }
 
 /// retrieve an url, possibly using the http proxy from the environment
@@ -175,4 +282,22 @@ pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Re
         }
     }
     bail!("Could not find a sdist release");
+}
+
+
+#[cfg(test)]
+mod test {
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_auto_formatting() {
+        let input_filename = "tests/toml_reorder/in.toml";
+        let output_filename = "tests/toml_reorder/out.toml";
+        ex::fs::copy(input_filename, output_filename).unwrap();
+        super::change_toml_file(&PathBuf::from(output_filename), vec![]).unwrap();
+        let actual = ex::fs::read_to_string(output_filename).unwrap();
+        let should = ex::fs::read_to_string("tests/toml_reorder/should.toml").unwrap();
+        assert_eq!(actual, should);
+        ex::fs::remove_file(output_filename).unwrap();
+    }
 }

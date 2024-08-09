@@ -1,0 +1,236 @@
+# fully featured anysnake2.toml example
+# this is fully tofu resolved as well.
+
+[anysnake2]
+# We leverage nix flakes to run exactly that version.
+# rev = "dev" = do not switch to fixed version, used in development.
+# You can leave this off initially, it will be filled with the newest version
+	url = "dev" # replace with fixed version outside of tests/examples.
+	use_binary = false # default, optional, switches the default url. Ignored if url = is set.
+
+
+# The rev must be a tag or sha-hash from the following configured url.
+# url = "https://github.com/TyberiusPrime/anysnake2_release_flakes" # if you want to override this.
+# (if use_binary is false, the default is  https://github.com/TyberiusPrime/anysnake2),
+# and there will be a rust build step involved.
+
+# do_not_modify_flake = true # if set to true,
+                             # flake/flake.nix is never overwritten,
+							 # but stored in flake/flake.generated.nix.
+							 # And nix build is called every run
+							 # This is an escape hatch.
+
+
+
+# the nixpkgs used to run singularity, git and nixfmt
+[nixpkgs]
+	allow_unfree = true # set to true to allow unfree packages from nixpkgs
+	packages = [ # use https://search.nixos.org/packages to search
+		"fish", # can be any nixpkgs package. Use () for complicated expressions
+		"netcat",
+		"varscan", # unfree example
+	#"docker-client"
+	] # optional
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[clones.code] # target directory
+# Unlike python.package.<xyz>.editable = true/folder
+# these just get cloned into the target directory (once).
+# if you change the rev here and have an already existing checkout
+# anysnake2 will abort
+	fpick= "git+https://github.com//TyberiusPrime/fpick?ref=main&rev=0ddd3756be8a603ae05cabc1b001ebe01e3c38a0"
+
+
+[clone_regexps]
+# to make cloning internal repositories etc easier,
+# we support regexs to replace URLs *in the clones only*
+	"@gh/([^/]+/[^/]+)"="git+https://github.com/$2/$1"
+
+
+[python] # python section is optional
+	ecosystem_date="2023-08-08" # you get whatever packages the solver would have produced on that day
+	version="3.12" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+
+
+[python.packages]
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7" }
+	dppd_plotnine = {editable = true, url= "github:TyberiusPrime/dppd_plotnine/master/7bc50de3dc05ad2f07b593d446331bfbe287e63d" }
+# mercurial example
+	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1"}
+# The source definition is fairly flexible and follows the url definitions for nix flakes
+# see https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake.html#flake-references
+	plotnine = {url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
+# so we have something that has an 'entrypoint'
+	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7" } # editable may be a folder!
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+	pypipegraph2=">2."
+# You can circumvent the ecosystem date restriction from above
+# by manually specifying a fixed pypi version
+	scanpy = "pypi:1.9.6"
+	scipy=""
+# packages that depend on otehr packages from this list should 'just work'.
+
+	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f" }
+	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4" }
+
+
+[python.packages.rpy2]
+	poetry2nix.env = {R_HOME = '${R_tracked}'}
+	version = '*'
+
+
+[R] # R section is optional
+# the date definies the R version, bioconductor version and R packages you get.
+	date="2021-10-27" # see https://github.com/TyberiusPrime/nixR/blob/main/generated/readme.md for available dates
+	packages = [
+		"ACA",
+		"Rcpp"
+	]
+	url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
+
+
+# you can apply overrideAttrs to
+# individual R packages, for those times you really really need to patch 'em
+# see https://nixos.org/manual/nixpkgs/stable/#sec-pkg-overrideAttrs
+# they take a function just like the example below
+[R.override_attrs]
+	ACA = '''
+old: {
+postInstall = ''
+  echo "Yes" >$out/library/ACA/override_in_place
+'';
+}
+'''
+
+
+# version/rust section is optional. leave of for no rust
+#to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
+[rust]
+	url = "github:oxalica/rust-overlay/master/fecfe4d7c96fea2982c7907997b387a6b52c1093"
+	version = "1.55.0" # stable version to add to nixpkgs.packages.
+
+
+# default packages is ["defaultPackage.x86_64-linux"],
+# in which case you can ommit this entry
+# packages = ["defaultPackage.x86_64-linux"]
+[flakes.STAR] # You can pull in arbitrary packages from arbitrary flakes
+	dir = "STAR" # changed from anysnake < 2.0
+	rev = "8d50ea4a3e1a1e69ba9f7c1981913e4862ab49ef"
+	url = "github:IMTMarburg/flakes/main/356700f69497e12371aab6fe529d276893aaaf16"
+
+
+[flakes.hello]
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
+# relative paths are tricky:
+# you can use an url like $ANYSNAKE2_ROOT/path/to/flake for local flakes
+# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
+	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+
+
+[container]
+# home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+	dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
+
+
+[container.volumes_ro]
+	"/opt" = "/opt"
+
+
+[container.volumes_rw]
+# #home get's special treatment, container section
+# if you want to give the singularity container access to docker
+# note that that's essentially root access
+# "/var/run/docker.sock" = "/var/run/docker.sock"
+	"." = "/project"
+
+
+# define enviromental variables
+[env]
+	MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
+	MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
+
+
+# Commands are optional and let you define predefined
+# scripts to run.
+[cmd.default]
+# the post_run runs even if the run failed
+	post_run_inside = """
+echo "post run inside - status was $ANYSNAKE_RUN_STATUS"
+"""
+# runs independend of the sucess inside (same as post_run_inside)
+	post_run_outside = """
+echo 'post run outside'
+"""
+# if this fails, execution stops without starting the container
+	pre_run_outside = """
+echo "pre run outside"
+"""
+# run happens inside the container
+	run = """
+echo 'run_inside'
+set -x # show what we're executing
+cd /project
+echo 'pythonpath $PYTHONPATH'
+python run.py
+hello
+no_such-command
+"""
+# this runs *while* the singularity process is running,
+# and get's killed() when the singularity process finishes
+	while_run_outside ="""
+while :
+do
+	# usage idea: snapshot zfs at regular intervals
+	sleep 100;
+done
+"""
+
+
+[cmd.jupyter]
+# network ports are exposed by default (using host network!)
+	run = """
+jupyter
+"""
+
+
+[cmd.shell]
+	run = """fish
+"""
+
+
+[cmd.test_R]
+	run = """
+R -e "library(ACA); library(Rcpp); print(sessionInfo())"
+"""
+
+
+[cmd.test_rpy2]
+	run = """
+python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library(ACA);'); ro.r('library(Rcpp);'); print(ro.r('sessionInfo()'))"
+"""
+
+
+[dev_shell] # optional
+	inputs = [ # optional
+		# these are packages that show up only when you do 'nix develop'
+		"rust-analyzer"
+	]
+	shell = "fish" # optional
+
+
+[outside_nixpkgs]
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+
+[poetry2nix]
+	url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

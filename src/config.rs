@@ -141,7 +141,7 @@ impl ConfigToml {
         let raw_config =
             fs::read_to_string(&abs_config_path).context("Could not read config file")?;
         let mut parsed_config: ConfigToml = Self::from_str(&raw_config).with_context(|| {
-            crate::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+            anysnake2::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
         })?;
         parsed_config.anysnake2_toml_path = Some(abs_config_path);
         Ok(parsed_config)
@@ -162,7 +162,7 @@ impl MinimalConfigToml {
             fs::read_to_string(&abs_config_path).context("Could not read config file")?;
         let mut parsed_config: MinimalConfigToml =
             Self::from_str(&raw_config).with_context(|| {
-                crate::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+                anysnake2::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
             })?;
         parsed_config.anysnake2_toml_path = Some(abs_config_path);
         Ok(parsed_config)

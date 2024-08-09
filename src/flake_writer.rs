@@ -10,7 +10,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::{run_without_ctrl_c, safe_python_package_name, vcs};
+use anysnake2::{run_without_ctrl_c, safe_python_package_name};
+use crate::vcs;
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -545,7 +546,7 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
 }
 
 fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
-    let full_url = format!("{}#nixfmt", crate::OUTSIDE_NIXPKGS_URL.get().unwrap());
+    let full_url = format!("{}#nixfmt", anysnake2::get_outside_nixpkgs_url().unwrap());
     // debug!("registering nixfmt with {}", &full_url);
     super::register_nix_gc_root(&full_url, flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
@@ -647,7 +648,7 @@ build-backend = "poetry.core.masonry.api"
 
         let mut full_args = vec![
             "shell".into(),
-            format!("{}#poetry", crate::OUTSIDE_NIXPKGS_URL.get().unwrap()),
+            format!("{}#poetry", anysnake2::get_outside_nixpkgs_url().unwrap()),
             format!("{}#{}", nixpkgs.url.to_nix_string(), python_major_minor),
             full_url,
             "-c".into(),
@@ -1167,7 +1168,7 @@ struct PrefetchResult {
 fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let nix_prefetch_hg_url = format!(
         "{}#nix-prefetch-hg",
-        crate::OUTSIDE_NIXPKGS_URL.get().unwrap()
+        anysnake2::get_outside_nixpkgs_url().unwrap()
     );
     let nix_prefetch_hg_url_args = vec![
         "shell",
@@ -1205,7 +1206,7 @@ fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
 fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let nix_prefetch_git_url = format!(
         "{}#nix-prefetch-git",
-        crate::OUTSIDE_NIXPKGS_URL.get().unwrap()
+        anysnake2::get_outside_nixpkgs_url().unwrap()
     );
     let nix_prefetch_git_url_args = vec![
         "shell",
@@ -1248,7 +1249,6 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //nix-prefetch-github: doesn't get you the store path
     //nix-prefetch doesn't actually realize the store path.
     //so let's do this ourselves...
-    panic!("Combine with the one in tofu");
     let (_, owner_repo) = url.split_once("github:").unwrap();
     let (owner, repo) = owner_repo.split_once("/").unwrap();
 

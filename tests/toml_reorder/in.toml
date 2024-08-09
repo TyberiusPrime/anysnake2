@@ -1,21 +1,17 @@
 # fully featured anysnake2.toml example
 # this is fully tofu resolved as well.
 
-[python.packages.rpy2]
-    version = '*'
-    poetry2nix.env = {R_HOME = '${R_tracked}'}
-
 [anysnake2]
 # We leverage nix flakes to run exactly that version.
 # rev = "dev" = do not switch to fixed version, used in development.
-url = "dev" # replace with fixed version outside of tests/examples. 
 # You can leave this off initially, it will be filled with the newest version
+	url = "dev" # replace with fixed version outside of tests/examples.
 
-use_binary = false; default, optional, switches the default url. Ignored if url = is set.
+use_binary = false # default, optional, switches the default url. Ignored if url = is set.
 
 # The rev must be a tag or sha-hash from the following configured url.
 # url = "https://github.com/TyberiusPrime/anysnake2_release_flakes" # if you want to override this.
-# (if use_binary is false, the default is  https://github.com/TyberiusPrime/anysnake2), 
+# (if use_binary is false, the default is  https://github.com/TyberiusPrime/anysnake2),
 # and there will be a rust build step involved.
 
 # do_not_modify_flake = true # if set to true,
@@ -25,17 +21,21 @@ use_binary = false; default, optional, switches the default url. Ignored if url 
 							 # This is an escape hatch.
 
 
-# the nixpkgs used to run singularity and nixfmt
 
+# the nixpkgs used to run singularity, git and nixfmt
 [nixpkgs]
 url = "github:NixOS/nixpkgs/master/24.05"
 packages = [ # use https://search.nixos.org/packages to search
-	"fish",
+	"fish", # can be any nixpkgs package. Use () for complicated expressions
 	"netcat",
 	"varscan", # unfree example
 	#"docker-client"
 	] # optional
 allow_unfree = true # set to true to allow unfree packages from nixpkgs
+
+[python.packages.rpy2]
+    version = '*'
+    poetry2nix.env = {R_HOME = '${R_tracked}'}
 
 
 [clones.code] # target directory
@@ -102,56 +102,52 @@ postInstall = ''
 '';
 }
 '''
-	
-[rust]
-# version/rust section is optional. leave of for no rust
-version = "1.55.0" # =stable.
-url = "github:oxalica/rust-overlay/master/fecfe4d7c96fea2982c7907997b387a6b52c1093"
-	# default packages is ["defaultPackage.x86_64-linux"],
-	# in which case you can ommit this entry
-	# packages = ["defaultPackage.x86_64-linux"]
 
-[flakes.STAR]
+# version/rust section is optional. leave of for no rust
+#to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
+[rust]
+version = "1.55.0" # stable version to add to nixpkgs.packages.
+url = "github:oxalica/rust-overlay/master/fecfe4d7c96fea2982c7907997b387a6b52c1093"
+
+# default packages is ["defaultPackage.x86_64-linux"],
+# in which case you can ommit this entry
+# packages = ["defaultPackage.x86_64-linux"]
+[flakes.STAR] # You can pull in arbitrary packages from arbitrary flakes
 	url = "github:IMTMarburg/flakes/main/356700f69497e12371aab6fe529d276893aaaf16"
 	dir = "STAR" # changed from anysnake < 2.0
     rev = "8d50ea4a3e1a1e69ba9f7c1981913e4862ab49ef"
 
-# You can pull in arbitrary packages from arbitrary flakes
-
 [flakes.hello]
-	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
-	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
 	# relative paths are tricky:
 	# you can use an url like $ANYSNAKE2_ROOT/path/to/flake for local flakes
 	# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
+	url = "github:TyberiusPrime/hello_flake/main/f32e7e451e9463667f6a1ddb7a662ec70d35144b"
+	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-#i to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
 
 
 [container]
-#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
-dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
+	# home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+	dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
 
 [container.volumes_ro]
-"/opt" = "/opt"
+	"/opt" = "/opt"
 
 [container.volumes_rw]
 # #home get's special treatment, container section
-"." = "/project"
 # if you want to give the singularity container access to docker
 # note that that's essentially root access
 # "/var/run/docker.sock" = "/var/run/docker.sock"
+	"." = "/project"
 
-
-[env]
 # define enviromental variables
+[env]
 MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
 MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
 
 
 # Commands are optional and let you define predefined
 # scripts to run.
-
 [cmd.default]
 # run happens inside the container
 run = """
@@ -184,12 +180,13 @@ echo 'post run outside'
 while_run_outside ="""
 while :
 do
-    # usage idea: snapshot zfs at regular intervals
+	# usage idea: snapshot zfs at regular intervals
 	sleep 100;
 done
 """
 
 [cmd.jupyter]
+# network ports are exposed by default (using host network!)
 run = """
 jupyter
 """
@@ -199,7 +196,6 @@ jupyter
 run = """fish
 """
 
-# network ports are exposed by default (using host network!)
 
 [cmd.test_R]
 run = """
@@ -229,5 +225,3 @@ url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52
 
 [flake-util]
 url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
-
-

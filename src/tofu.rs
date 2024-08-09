@@ -7,9 +7,9 @@ use log::{debug, error, info, warn};
 
 use crate::{
     config::{self, TofuAnysnake2, TofuConfigToml},
-    util::{change_toml_file, get_proxy_req, TomlUpdates},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
+use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
 
 enum PrefetchHashResult {
     Hash(String),
@@ -244,7 +244,7 @@ impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
             default_url,
             tag_regex,
         )?;
-        crate::OUTSIDE_NIXPKGS_URL.set(res.to_nix_string()).unwrap();
+        anysnake2::define_outside_nipkgs_url(res.to_nix_string());
 
         Ok(res)
     }

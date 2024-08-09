@@ -1,12 +1,14 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
+
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
+use anysnake2::util::{add_line_numbers, dir_empty, CloneStringLossy};
+use anysnake2::{install_ctrl_c_handler, run_without_ctrl_c, ErrorWithExitCode, safe_python_package_name};
 use clap::{Arg, ArgMatches};
 use config::PythonPackageDefinition;
 use ex::fs;
 use indoc::indoc;
-use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use python_parsing::parse_egg;
 use regex::Regex;
@@ -17,12 +19,14 @@ use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::sync::OnceLock;
 use std::{collections::HashMap, str::FromStr};
 use tofu::apply_trust_on_first_use;
-use util::{add_line_numbers, dir_empty, CloneStringLossy};
+
+mod config;
+mod flake_writer;
+mod python_parsing;
+mod tofu;
+mod vcs;
 
 /* TODO
 
@@ -43,32 +47,7 @@ use util::{add_line_numbers, dir_empty, CloneStringLossy};
 
 */
 
-mod config;
-mod flake_writer;
-mod python_parsing;
-mod tofu;
-mod util;
-mod vcs;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-#[derive(Debug)]
-pub struct ErrorWithExitCode {
-    msg: String,
-    exit_code: i32,
-}
-
-impl ErrorWithExitCode {
-    fn new(exit_code: i32, msg: String) -> Self {
-        ErrorWithExitCode { msg, exit_code }
-    }
-}
-
-impl std::fmt::Display for ErrorWithExitCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
 
 fn main() {
     // we wrap  the actual main to enable exit codes.
@@ -86,26 +65,6 @@ fn main() {
             std::process::exit(0);
         }
     }
-}
-
-lazy_static! {
-    /// whether ctrl-c can terminate us right now.
-    static ref CTRL_C_ALLOWED: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
-}
-
-lazy_static! {
-    ///Set after reading the config so we can call nix shell .. from anywhere
-    static ref OUTSIDE_NIXPKGS_URL: OnceLock<String> = OnceLock::new();
-}
-
-fn install_ctrl_c_handler() -> Result<()> {
-    let c = CTRL_C_ALLOWED.clone();
-    Ok(ctrlc::set_handler(move || {
-        if c.load(Ordering::Relaxed) {
-            error!("anysnake aborted");
-            std::process::exit(1);
-        }
-    })?)
 }
 
 fn parse_args() -> ArgMatches {
@@ -689,13 +648,6 @@ fn inner_main() -> Result<()> {
     Ok(())
 }
 
-fn run_without_ctrl_c<T>(func: impl Fn() -> Result<T>) -> Result<T> {
-    CTRL_C_ALLOWED.store(false, Ordering::SeqCst);
-    let res = func();
-    CTRL_C_ALLOWED.store(true, Ordering::SeqCst);
-    res
-}
-
 /// run a process inside a singularity container.
 fn run_singularity(
     args: &[String],
@@ -703,14 +655,14 @@ fn run_singularity(
     dtach_socket: &Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{}#singularity", OUTSIDE_NIXPKGS_URL.get().unwrap());
+    let singularity_url = format!("{}#singularity", anysnake2::get_outside_nixpkgs_url().unwrap());
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
         let using_dtach = if let Some(dtach_socket) = &dtach_socket {
             let dtach_dir = flake_dir.join("dtach");
             fs::create_dir_all(dtach_dir)?;
-            let dtach_url = format!("{}#dtach", OUTSIDE_NIXPKGS_URL.get().unwrap());
+            let dtach_url = format!("{}#dtach", anysnake2::get_outside_nixpkgs_url().unwrap());
 
             register_nix_gc_root(&dtach_url, flake_dir)?;
             nix_full_args.extend(vec![
@@ -831,7 +783,7 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
     {
         let tf = ex::fs::File::create(&download_filename)?;
         let mut btf = std::io::BufWriter::new(tf);
-        let mut req = util::get_proxy_req()?.get(url).call()?.into_reader();
+        let mut req = anysnake2::util::get_proxy_req()?.get(url).call()?.into_reader();
         std::io::copy(&mut req, &mut btf)?;
     }
     //call tar to unpack
@@ -865,7 +817,7 @@ fn clone(
                     extract_python_package_version_from_poetry_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
-                let url = util::get_pypi_package_source_url(&safe_name, &actual_version)
+                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, &actual_version)
                     .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
@@ -1024,10 +976,6 @@ fn replace_env_vars(input: &str) -> String {
         output = output.replace(&format!("${{{k}}}"), &v);
     }
     output
-}
-
-fn safe_python_package_name(input: &str) -> String {
-    input.replace('_', "-")
 }
 
 // deal with the editable packages.
@@ -1256,7 +1204,7 @@ fn add_r_library_path(
     Ok(())
 }
 fn figure_out_r_library_path(flake_dir: &Path) -> Result<String> {
-    let singularity_url = format!("{}#singularity", OUTSIDE_NIXPKGS_URL.get().unwrap());
+    let singularity_url = format!("{}#singularity", anysnake2::get_outside_nixpkgs_url().unwrap());
     let singularity_args: Vec<String> = vec![
         "shell".into(),
         singularity_url,
@@ -1460,7 +1408,7 @@ fn attach_to_previous_container(flake_dir: impl AsRef<Path>) -> Result<()> {
 }
 
 fn run_dtach(p: impl AsRef<Path>) -> Result<()> {
-    let dtach_url = format!("{}#dtach", OUTSIDE_NIXPKGS_URL.get().unwrap());
+    let dtach_url = format!("{}#dtach", anysnake2::get_outside_nixpkgs_url().unwrap());
     let nix_full_args = vec![
         "shell".to_string(),
         dtach_url,
