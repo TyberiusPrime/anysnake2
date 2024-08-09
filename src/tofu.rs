@@ -1146,9 +1146,17 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
                     })
                     .collect();
 
+                let date = inner_self.ecosystem_date.unwrap_or_else(|| {
+                    //today in yyyy-mm-dd
+                    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                    let toml_path = vec!["python".to_string(), "ecosystem_date".to_string()];
+                    updates.push((toml_path, value(date.clone())));
+                    date
+                });
+
                 Ok(Some(config::TofuPython {
                     version: inner_self.version,
-                    ecosystem_date: inner_self.ecosystem_date,
+                    ecosystem_date: date,
                     packages: tofu_packages?,
                 }))
             }

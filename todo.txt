@@ -21,5 +21,6 @@
 
 
 -- combine prefetchers from tofu and flake writer ( one gets the path, the other doesn't...)
--- if not python date is specified, rewrite to today.
 -- garbage collection for poetry clones?
+-- rpy2 site path hacks?
+-- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?

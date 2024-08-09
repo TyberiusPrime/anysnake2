@@ -558,7 +558,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Python {
     pub version: String,
-    pub ecosystem_date: String,
+    pub ecosystem_date: Option<String>,
     pub packages: HashMap<String, PythonPackageDefinition>,
 }
 
