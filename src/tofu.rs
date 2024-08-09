@@ -601,6 +601,10 @@ fn tofu_repo_to_newest(
                     branch: branch.to_string(),
                     rev: rev.to_string(),
                 };
+                updates.push((
+                    toml_name.iter().map(ToString::to_string).collect(),
+                    value(newest.to_string()),
+                ));
             }
         }
     }

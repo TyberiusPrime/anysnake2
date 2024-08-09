@@ -12,7 +12,6 @@
   - prefer wheels
   - prefer wheel
 
-  - the nixpkgs url is not written to the flake correctly.
 
 - under what circumstances do we rebuild the editable packages? does that still happen every time we change the python packages (shouldn't...)
 
@@ -20,3 +19,9 @@
 
 
 - either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.
+
+
+-- combine prefetchers from tofu and flake writer
+- sort order when using python.packages.xyz
+-- if not python date is specified, rewrite to today.
+--if no R date is specified, rewrite to latest

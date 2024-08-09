@@ -1248,7 +1248,7 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //nix-prefetch-github: doesn't get you the store path
     //nix-prefetch doesn't actually realize the store path.
     //so let's do this ourselves...
-    dbg!(url);
+    panic!("Combine with the one in tofu");
     let (_, owner_repo) = url.split_once("github:").unwrap();
     let (owner, repo) = owner_repo.split_once("/").unwrap();
 

@@ -6,13 +6,14 @@ url = "github:NixOS/nixpkgs/master/24.05"
 
 [python] # python section is optional
 version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2023-10-11" # you get whatever packages the solver would have produced on that day
+ecosystem_date="2024-08-01" # you get whatever packages the solver would have produced on that day
 
 [python.packages]
 solidpython=""
 #plotnine = {method = "fetchFromGitHub", owner = "has2k1", repo = "plotnine", rev = "6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"}
-plotnine = {url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef" }
-#TODO: This needs to be rewritten to be a git dependency!
+plotnine = {url = "github:has2k1/plotnine/main" }
+euclid3 = {poetry2nix.nativeBuildInputs = ["setuptools"]}
+#TODO: This needs to be rewritten to be a git dependency automatically!
 
 [outside_nixpkgs]
 url = "github:NixOS/nixpkgs/master/24.05"
