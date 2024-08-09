@@ -129,18 +129,24 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUp
         if !python.packages.contains_key(&"rpy2".to_string()) {
             let source = config::PythonPackageSource::VersionConstraint("*".to_string());
             let poetry2nix = toml::toml! {
-                env = {R_HOME = "${R_tracked}"}
+                [env] 
+                    R_HOME = "${R_tracked}"
+                    NIX_LDFLAGS = "-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib"
+                    postPatch = "
+                      substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
+                              \"os.environ['R_HOME'] = openrlib.R_HOME
+                              os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
+                    "
             };
             let def = config::PythonPackageDefinition {
                 source,
                 editable_path: None,
-                poetry2nix,
+                poetry2nix: poetry2nix.clone(),
                 pre_poetry_patch: None,
             };
             python.packages.insert("rpy2".to_string(), def);
-            let tbl = "[rpy2]
+            /* let tbl = "[rpy2]
     version = '*'
-    poetry2nix.env = {R_HOME = '${R_tracked}'}
 "
             .parse::<toml_edit::DocumentMut>()
             .unwrap();
@@ -150,7 +156,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUp
                     .map(ToString::to_string)
                     .collect(),
                 tbl["rpy2"].clone(),
-            ));
+            )); */
         }
     }
 }

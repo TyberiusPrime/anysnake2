@@ -18,7 +18,8 @@
       touch $out/rootfs/etc/group
 
       mkdir -p $out/rootfs/{bin,etc,share,tmp,var/tmp}
-      mkdir -p $out/rootfs/usr/{lib/share}
+      mkdir -p $out/rootfs/usr/lib
+      mkdir -p $out/rootfs/usr/lib/share
       mkdir -p $out/rootfs/R_libs
 
       set -x

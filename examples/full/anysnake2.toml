@@ -29,6 +29,8 @@
 		"fish",
 		"netcat",
 		"varscan", # unfree example
+		"gnumake",
+		"gnused",
 	#"docker-client"
 	] # optional
 	url = "github:NixOS/nixpkgs/master/24.05"
@@ -49,32 +51,41 @@
 
 
 [python] # python section is optional
-	ecosystem_date="2023-08-08" # you get whatever packages the solver would have produced on that day
+	ecosystem_date = "2024-08-09"
 	version="3.12" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
 [python.packages]
+#cffi = "pypi:1.15.1"
 # The source definition is fairly flexible and follows the url definitions for nix flakes
 # see https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake.html#flake-references
-	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7"}
-	dppd_plotnine = {editable = true, url= "github:TyberiusPrime/dppd_plotnine/master/0c6f0f3360abaff04e8d608323b8169f68ce8c36" }
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", poetry2nix.nativeBuildInputs=['setuptools']}
 # mercurial example
-	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1"}
+	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", poetry2nix.nativeBuildInputs=['setuptools']}
 # so we have something that has an 'entrypoint'
-	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7" } # editable may be a folder!
+	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", poetry2nix.nativeBuildInputs=['setuptools'] } # editable may be a folder!
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	pypipegraph2=">2.0"
 # You can circumvent the ecosystem date restriction from above
 # by manually specifying a fixed pypi version
 	scanpy = "pypi:1.9.6"
 	scipy=""
+#sometimes you just need to supply a nativeBuildInput to get poetry2nix working, but do not want to specify the version
+	session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
+# or for C dependencies
 # packages that depend on otehr packages from this list should 'just work'.
 
-	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f" }
-	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4" }
+	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", poetry2nix.nativeBuildInputs=['setuptools']}
+	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", poetry2nix.nativeBuildInputs=['setuptools']}
 
 
-[python.packages.plotnine] 
+[python.packages.plotnine]
+# and this is how you patch it after poetry's dependency resolution
+# but before it's actually being ubuld
+	poetry2nix.postPatch = """
+	substituteInPlace setup.py --replace-fail "version=versioneer.get_version()," "version='0.8.0'," \
+		--replace-fail "cmdclass=versioneer.get_cmdclass()," ""
+"""
 # escape hatch for packages that just can't define their version number from the checked out
 # path. ( We copy the package to the nix store, then supply poetry with a writeable version
 # for it to figure out the package version number. Some packages that's not enough)
@@ -83,11 +94,6 @@
 	sed -i 's/git_refnames = ""/git_refnames = " (tag: v0.8.0)"/' plotnine/_version.py
 """
 	url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"
-
-
-[python.packages.rpy2]
-	poetry2nix.env = {R_HOME = '${R_tracked}'}
-	version = '*'
 
 
 [R] # R section is optional
