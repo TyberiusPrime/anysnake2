@@ -481,7 +481,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                                 version: Some(constraint.split_once(':').unwrap().1.to_string()),
                             }
                         } else if constraint == "pypi" {
-                            PythonPackageSource::PyPi { version: Some("".to_string()) }
+                            PythonPackageSource::PyPi { version: Some(String::default())}
                         } else {
                             PythonPackageSource::VersionConstraint(constraint.to_string())
                         }

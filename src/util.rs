@@ -1,13 +1,9 @@
 use anyhow::{bail, Context, Result};
 #[allow(unused_imports)]
 use log::{debug, info};
-use toml_edit::{DocumentMut, Item, Key, KeyMut};
-use version_compare::compare_to;
+use toml_edit::{DocumentMut, Item, KeyMut};
 
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 /// A trait for converting a path to a string, with a lossy conversion.
 pub trait CloneStringLossy {
@@ -48,29 +44,6 @@ pub fn dir_empty(path: &Path) -> Result<bool> {
 
 pub type TomlUpdates = Vec<(Vec<String>, toml_edit::Item)>;
 
-fn apply_table_order(document: &mut DocumentMut, order: &HashMap<&str, usize>) {
-    for (k, v) in document.iter_mut() {
-        info!("order key {k}");
-        if let toml_edit::Item::Table(t) = v {
-            let position = order
-                .get(k.get())
-                .map_or_else(|| k.chars().next().unwrap() as usize * 255, |x| *x);
-            t.set_position(position);
-
-            for (k2, v2) in t.iter_mut() {
-                let k2k = format!("{}.{}", k.get(), k2.get());
-                if let toml_edit::Item::Table(t2) = v2 {
-                    let position2 = order.get(k2k.as_str()).map_or_else(
-                        || (position + (k2.get().chars().next().unwrap() as usize)),
-                        |x| *x,
-                    );
-                    t2.set_position(position2);
-                }
-            }
-        }
-    }
-}
-
 fn assign_entry_prefix(key: &mut KeyMut) {
     {
         let ld = key.leaf_decor_mut();
@@ -78,14 +51,14 @@ fn assign_entry_prefix(key: &mut KeyMut) {
             Some(prefix) => match prefix.as_str() {
                 Some(prefix) => {
                     let mut lines: Vec<_> =
-                        prefix.split("\n").map(|x| x.trim().to_string()).collect();
+                        prefix.split('\n').map(|x| x.trim().to_string()).collect();
                     if lines.is_empty() {
                         lines.push("\t".into());
                     } else {
-                        if lines.len() > 1 && lines.iter().next().unwrap().is_empty() {
+                        if lines.len() > 1 && lines.first().unwrap().is_empty() {
                             lines.remove(0);
                         }
-                        lines.iter_mut().last().unwrap().push_str("\t");
+                        lines.iter_mut().last().unwrap().push('\t');
                     }
                     ld.set_prefix(lines.join("\n"))
                 }
@@ -128,7 +101,7 @@ fn descend_assign_scores(tbl: &mut toml_edit::Table, score: usize) {
                                 .unwrap_or("")
                                 .trim()
                                 .to_string();
-                            if old.starts_with("#") {
+                            if old.starts_with('#') {
                                 old.insert(0, ' ');
                             }
                             value.decor_mut().set_prefix(format!("{old}\n\t\t"));
@@ -156,19 +129,16 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
             let mut x = &mut doc[&path[0]];
             if path.len() > 1 {
                 for p in &path[1..path.len()] {
-                    match x {
-                        toml_edit::Item::Value(v) => {
-                            match v {
-                                toml_edit::Value::InlineTable(_) => {}
-                                _ => {
-                                    // if it was previously a value...
-                                    *x = toml_edit::Item::Value(
-                                        toml_edit::Table::new().into_inline_table().into(),
-                                    );
-                                }
+                    if let toml_edit::Item::Value(v) = x {
+                        match v {
+                            toml_edit::Value::InlineTable(_) => {}
+                            _ => {
+                                // if it was previously a value...
+                                *x = toml_edit::Item::Value(
+                                    toml_edit::Table::new().into_inline_table().into(),
+                                );
                             }
                         }
-                        _ => {}
                     }
                     x = &mut x[p];
                 }
@@ -283,7 +253,6 @@ pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Re
     }
     bail!("Could not find a sdist release");
 }
-
 
 #[cfg(test)]
 mod test {

@@ -1163,8 +1163,8 @@ fn fill_venv(
     Ok(())
 }
 
-/// the R 'binary' itself set's it's LD_LIBRARY_PATH,
-/// but for e.g. rpy2 to work correctly, we need to set the correct LD_LIBRARY_PATH
+/// the R 'binary' itself set's it's `LD_LIBRARY_PATH`,
+/// but for e.g. rpy2 to work correctly, we need to set the correct `LD_LIBRARY_PATH`
 /// inside the container
 /// fortunatly, we can ask R about it
 fn add_r_library_path(
@@ -1176,6 +1176,7 @@ fn add_r_library_path(
 ) -> Result<()> {
     use std::collections::hash_map::Entry;
     let key = format!("r_ld_path~{}~{}", sha256::digest(r.url.to_string()), r.date);
+    #[allow(clippy::single_match_else)] 
     let ld_library_path = match in_non_spec_but_cached_values.get(&key) {
         Some(ld_library_path) => ld_library_path.clone(),
         None => {
@@ -1188,7 +1189,7 @@ fn add_r_library_path(
         Some(env) => match env.entry("LD_LIBRARY_PATH".to_string()) {
             Entry::Occupied(mut e) => {
                 let current = e.get_mut();
-                current.push_str(":");
+                current.push(':');
                 current.push_str(&ld_library_path);
             }
             Entry::Vacant(e) => {

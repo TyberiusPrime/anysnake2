@@ -253,7 +253,7 @@ fn format_input_defs(inputs: &[InputFlake]) -> String {
         };
         let url = match &fl.dir {
             None => url,
-            Some(dir) => format!("{}?dir={}", url, dir),
+            Some(dir) => format!("{url}?dir={dir}"),
         };
         out.push_str(&format!(
             "
@@ -300,7 +300,8 @@ fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
     )
 }
 
-/// prepare what we put into pyprojec.toml
+/// prepare what we put into pyproject.toml
+#[allow(clippy::too_many_lines)]
 fn prep_packages_for_pyproject_toml(
     input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
@@ -332,7 +333,6 @@ fn prep_packages_for_pyproject_toml(
                         name.to_string(),
                         toml::Value::String(version_constraint.to_string()),
                     );
-                    //bail!("invalid python version spec {}{}", name, version_constraint);
                 }
             }
             config::TofuPythonPackageSource::PyPi { version } => {
@@ -368,7 +368,7 @@ fn prep_packages_for_pyproject_toml(
                             out_non_spec_but_cached_values,
                         )?;
                         let writeable_path =
-                            copy_for_poetry(&path, &name, &sha256, pyproject_toml_path)?;
+                            copy_for_poetry(&path, name, &sha256, pyproject_toml_path)?;
                         let mut out_map = toml::Table::new();
                         out_map.insert("path".to_string(), writeable_path.into());
                         let src = format!(
@@ -403,7 +403,7 @@ fn prep_packages_for_pyproject_toml(
                         out_non_spec_but_cached_values,
                     )?;
                     let writeable_path =
-                        copy_for_poetry(&path, &name, &sha256, pyproject_toml_path)?;
+                        copy_for_poetry(&path, name, &sha256, pyproject_toml_path)?;
                     let mut out_map = toml::Table::new();
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
@@ -449,25 +449,6 @@ fn prep_packages_for_pyproject_toml(
         }
     }
     Ok(result)
-    /* for (name, spec) in build_packages.iter() {
-        let rev_override = match spec.get("method") {
-            Some(method) => {
-                if method == "useFlake" {
-                    let flake_name = spec.get("flake_name").unwrap_or(name);
-                    Some(get_flake_rev(flake_name, flakes_config).with_context(|| {
-                        format!("no flake revision in flake {} used by {}", flake_name, name)
-                    })?)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-        /* res.push((
-            name.to_string(),
-            python_version_from_spec(spec, rev_override.as_deref()),
-        )); */
-    } */
 }
 
 /// poetry needs *writable* clones of the repos,
@@ -485,7 +466,7 @@ fn copy_for_poetry(
         .join(sha256);
     //copy the full path, using cp...
     if !target_path.exists() {
-        ex::fs::create_dir_all(&target_path.parent().unwrap())?;
+        ex::fs::create_dir_all(target_path.parent().unwrap())?;
         info!("Copying {} to {}", path, target_path.to_string_lossy());
         let mut cmd = Command::new("cp");
         cmd.args(["-r", path, &target_path.to_string_lossy()]);
@@ -500,7 +481,7 @@ fn copy_for_poetry(
 }
 
 /// clone a repo to the nix store, return path and sha256 for the relevant fetch method.
-/// also caches the value in the 'non-spec-but-cached' region of .anysnake2_flake
+/// also caches the value in the 'non-spec-but-cached' region of `.anysnake2_flake`
 fn clone_to_nix_store(
     url: &str,
     rev: &str,
@@ -980,7 +961,7 @@ fn format_poetry_build_input_overrides(
             let envs = envs
                 .as_table()
                 .with_context(|| format!("envs was not a table {name}",))?;
-            for (k, v) in envs.iter() {
+            for (k, v) in envs {
                 let v = v
                     .as_str()
                     .with_context(|| format!("envs entry was not a string for {name}"))?;
@@ -991,11 +972,11 @@ fn format_poetry_build_input_overrides(
             let further = further
                 .as_table()
                 .with_context(|| format!("envs was not a table {name}",))?;
-            for (k, v) in further.iter() {
+            for (k, v) in further {
                 let v = v.as_str().with_context(|| {
                     format!("envs entry was not a string (with nix code!) for {name}")
                 })?;
-                override_python_attrs.insert(k, format!("{v}"));
+                override_python_attrs.insert(k, v.to_string());
             }
         }
 
@@ -1250,7 +1231,7 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //nix-prefetch doesn't actually realize the store path.
     //so let's do this ourselves...
     let (_, owner_repo) = url.split_once("github:").unwrap();
-    let (owner, repo) = owner_repo.split_once("/").unwrap();
+    let (owner, repo) = owner_repo.split_once('/').unwrap();
 
     let temp_dir = tempfile::TempDir::with_prefix("anysnake2_nix_prefetch_github")?;
     {
@@ -1275,7 +1256,7 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         .context("Could not write default.nix")?;
         let output = Command::new("nix-build")
             .args(["default.nix"])
-            .current_dir(&td)
+            .current_dir(td)
             .output()
             .context("nix-build call failed")?;
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1303,7 +1284,7 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         .context("failed to write default.nix 2nd time")?;
         let output = Command::new("nix-build")
             .args(["default.nix"])
-            .current_dir(&td)
+            .current_dir(td)
             .output()
             .context("nix-build call failed")?;
         let stdout = String::from_utf8_lossy(&output.stdout);

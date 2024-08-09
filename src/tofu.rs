@@ -11,7 +11,7 @@ use crate::{
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
 
-enum PrefetchHashResult {
+pub enum PrefetchHashResult {
     Hash(String),
     HaveToUseFetchGit,
 }
@@ -125,6 +125,7 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
 
 fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUpdates) {
     if let Some(python) = python {
+        #[allow(clippy::map_entry)]
         if !python.packages.contains_key(&"rpy2".to_string()) {
             let source = config::PythonPackageSource::VersionConstraint("*".to_string());
             let poetry2nix = toml::toml! {
@@ -177,7 +178,7 @@ fn apply_clone_regexps(
             }
         }
     }
-    return input.to_string();
+    input.to_string()
 }
 
 trait TofuToNewest<A> {
@@ -284,7 +285,7 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
         updates: &mut TomlUpdates,
         default_url: &str,
     ) -> Result<Option<config::TofuRust>> {
-        let mut url_toml_name: Vec<&str> = toml_name.iter().map(|s| *s).collect();
+        let mut url_toml_name: Vec<&str> = toml_name.to_vec();
         url_toml_name.push("url");
         Ok(match self {
             None => None,
@@ -313,7 +314,7 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
             .map(ToString::to_string)
             .collect::<Vec<String>>();
         url_toml_name.push("url".to_string());
-        let ref_url_toml_name: Vec<&str> = url_toml_name.iter().map(|s| s.as_str()).collect();
+        let ref_url_toml_name: Vec<&str> = url_toml_name.iter().map(String::as_str).collect();
         Ok(match self {
             None => None,
             Some(inner_self) => Some(config::TofuR {
@@ -837,7 +838,7 @@ fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> 
 }
 */
 
-fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
+pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
     let url = format!("https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",);
 
     let stdout = Command::new("nix-prefetch-url")
