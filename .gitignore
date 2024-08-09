@@ -11,6 +11,7 @@ takea
 /result
 examples/**/result
 examples/**/code
+examples/**/hackonme
 examples/**/.anysnake2_flake
 examples/**/venv
 hello_flake
