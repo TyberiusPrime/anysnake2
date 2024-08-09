@@ -135,6 +135,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUp
                 source,
                 editable_path: None,
                 poetry2nix,
+                pre_poetry_patch: None,
             };
             python.packages.insert("rpy2".to_string(), def);
             let tbl = "[rpy2]
@@ -317,16 +318,64 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
         let ref_url_toml_name: Vec<&str> = url_toml_name.iter().map(String::as_str).collect();
         Ok(match self {
             None => None,
-            Some(inner_self) => Some(config::TofuR {
-                date: inner_self.date,
-                packages: inner_self.packages,
-                url: tofu_repo_to_newest(&ref_url_toml_name, updates, inner_self.url, default_url)?,
-                override_attrs: inner_self.override_attrs,
-                dependency_overrides: inner_self.dependency_overrides,
-                additional_packages: inner_self.additional_packages,
-                use_inside_nix_pkgs: inner_self.use_inside_nix_pkgs,
-            }),
+            Some(inner_self) => {
+                let url =
+                    tofu_repo_to_newest(&ref_url_toml_name, updates, inner_self.url, default_url)?;
+                let date = match inner_self.date {
+                    Some(date) => date,
+                    None => {
+                        let date = find_newest_nixr_date(&url)?;
+                        let mut date_toml_name = toml_name
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<String>>();
+                        date_toml_name.push("date".to_string());
+                        updates.push((date_toml_name, value(date.to_string())));
+                        //time to findout
+                        date
+                    }
+                };
+
+                Some(config::TofuR {
+                    date,
+                    packages: inner_self.packages,
+                    url,
+                    override_attrs: inner_self.override_attrs,
+                    dependency_overrides: inner_self.dependency_overrides,
+                    additional_packages: inner_self.additional_packages,
+                    use_inside_nix_pkgs: inner_self.use_inside_nix_pkgs,
+                })
+            }
         })
+    }
+}
+
+fn find_newest_nixr_date(url: &TofuVCS) -> Result<String> {
+    match url {
+        TofuVCS::GitHub {
+            owner,
+            repo,
+            branch: _,
+            rev,
+        } => {
+            let url = format!(
+                "https://raw.githubusercontent.com/{owner}/{repo}/{rev}/generated/readme.md"
+            );
+            let text = get_proxy_req()?.get(&url).call()?.into_string()?;
+            let date_re = regex::Regex::new(r"(\d{4}-\d{2}-\d{2})")?;
+            let mut all_dates = date_re
+                .find_iter(&text)
+                .map(|x| x.as_str())
+                .collect::<Vec<_>>();
+            all_dates.sort();
+            let last_date = all_dates
+                .last()
+                .with_context(|| format!("Could not find dates on {url}"))?;
+            Ok(last_date.to_string())
+        }
+        _ => {
+            bail!("Only know how to determite newest date for R from nixR github, not from other VCS. Add it manually, please");
+        }
     }
 }
 
@@ -1118,6 +1167,7 @@ fn tofu_python_package_definition(
     Ok(config::TofuPythonPackageDefinition {
         editable_path: ppd.editable_path.clone(),
         poetry2nix: ppd.poetry2nix.clone(),
+        pre_poetry_patch: ppd.pre_poetry_patch.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),

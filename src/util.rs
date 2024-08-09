@@ -64,7 +64,10 @@ fn assign_entry_prefix(key: &mut KeyMut) {
                 }
                 None => ld.set_prefix("\t"),
             },
-            None => todo!(),
+            None => {
+                //debug!("{}", key);
+                ld.set_prefix("\t");
+            }
         }
     }
 }

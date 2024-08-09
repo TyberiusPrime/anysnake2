@@ -10,8 +10,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anysnake2::{run_without_ctrl_c, safe_python_package_name};
 use crate::vcs;
+use anysnake2::{run_without_ctrl_c, safe_python_package_name};
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -97,7 +97,12 @@ pub fn write_flake(
 
     // and nixpkgs is non optional as well.
 
-    inputs.push(InputFlake::new("nixpkgs", &parsed_config.nixpkgs.url, None, &[]));
+    inputs.push(InputFlake::new(
+        "nixpkgs",
+        &parsed_config.nixpkgs.url,
+        None,
+        &[],
+    ));
     nixpkgs_pkgs.extend(parsed_config.nixpkgs.packages.clone());
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
@@ -354,7 +359,7 @@ fn prep_packages_for_pyproject_toml(
                     rev,
                 } => {
                     {
-                        // poetry does nix, but if it's not allowed to create virtual envs,
+                        // poetry does git, but if it's not allowed to create virtual envs,
                         // it wants to clone into the python folder (!)
                         // https://github.com/python-poetry/poetry/issues/9470
                         // so we do the same thing as for mercurial, clone into the nix store,
@@ -367,8 +372,13 @@ fn prep_packages_for_pyproject_toml(
                             in_non_spec_but_cached_values,
                             out_non_spec_but_cached_values,
                         )?;
-                        let writeable_path =
-                            copy_for_poetry(&path, name, &sha256, pyproject_toml_path)?;
+                        let writeable_path = copy_for_poetry(
+                            &path,
+                            name,
+                            &sha256,
+                            pyproject_toml_path,
+                            &spec.pre_poetry_patch,
+                        )?;
                         let mut out_map = toml::Table::new();
                         out_map.insert("path".to_string(), writeable_path.into());
                         let src = format!(
@@ -389,7 +399,7 @@ fn prep_packages_for_pyproject_toml(
                     branch: _,
                     rev,
                 } => {
-                    // poetry does nix, but if it's not allowed to create virtual envs,
+                    // poetry does git, but if it's not allowed to create virtual envs,
                     // it wants to clone into the python folder (!)
                     // https://github.com/python-poetry/poetry/issues/9470
                     // so we do the same thing as for mercurial, clone into the nix store,
@@ -402,8 +412,13 @@ fn prep_packages_for_pyproject_toml(
                         in_non_spec_but_cached_values,
                         out_non_spec_but_cached_values,
                     )?;
-                    let writeable_path =
-                        copy_for_poetry(&path, name, &sha256, pyproject_toml_path)?;
+                    let writeable_path = copy_for_poetry(
+                        &path,
+                        name,
+                        &sha256,
+                        pyproject_toml_path,
+                        &spec.pre_poetry_patch,
+                    )?;
                     let mut out_map = toml::Table::new();
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
@@ -458,12 +473,17 @@ fn copy_for_poetry(
     name: &str,
     sha256: &str,
     pyproject_toml_path: &Path,
+    pre_poetry_patch: &Option<String>,
 ) -> Result<String> {
+    let pre_poetry_patch_sha = pre_poetry_patch.as_ref()
+        .map(|x| sha256::digest(x))
+        .unwrap_or_else(|| "None".to_string());
+
     let target_path = pyproject_toml_path
         .parent()
         .unwrap()
         .join(name)
-        .join(sha256);
+        .join(format!("{sha256}-{pre_poetry_patch_sha}"));
     //copy the full path, using cp...
     if !target_path.exists() {
         ex::fs::create_dir_all(target_path.parent().unwrap())?;
@@ -476,6 +496,23 @@ fn copy_for_poetry(
         Command::new("chmod")
             .args(["-R", "ug+w", &target_path.to_string_lossy()])
             .status()?;
+        info!("Executing prePoetryPatch for {}", name);
+        if let Some(pre_poetry_patch) = pre_poetry_patch {
+            let mut cmd = Command::new("bash")
+                .current_dir(&target_path)
+                .stdin(Stdio::piped())
+                .spawn()?;
+            {
+                let stdin = cmd.stdin.as_mut().unwrap();
+                stdin.write_all(format!("set -xeou pipefail\n{pre_poetry_patch}").as_bytes())?;
+            }
+            let output = cmd.wait().context("prePoetryPatch failed")?;
+            if output.success() {
+                info!("prePoetryPatch succeeded");
+            } else {
+                bail!("prePoetryPatch failed");
+            }
+        }
     }
     Ok(target_path.canonicalize()?.to_string_lossy().to_string())
 }
@@ -645,7 +682,10 @@ build-backend = "poetry.core.masonry.api"
             full_args.push("-e".into());
             full_args.push(exclusion_list);
         }
-        debug!("running ancient-poetry: {:?}", &full_args);
+        debug!(
+            "running ancient-poetry: nix {}",
+            full_args.iter().map(|x| format!("\"{x}\"")).join(" ")
+        );
         let out = Command::new("nix")
             .args(full_args)
             .current_dir(".")

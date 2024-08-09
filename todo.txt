@@ -1,7 +1,5 @@
 - flakes that are paths relative to %ANYSNAKE_ROOT% ?
-- does ancientpoetry create a virtualenv? supress.
 - poetry project in subdirectory of repo. poetry project in subdir, editable.
-- git+ssh urls for poetry
 - why does it pull in pytest 8.1.something when you don't set pytest in 
     the just_python example
 - run all the tests, fix all the examples...
@@ -11,6 +9,7 @@
  - test cases for
   - prefer wheels
   - prefer wheel
+  ( though that stuff doesn't quite work in poetry2nix right now https://github.com/nix-community/poetry2nix/issues/1403 )
 
 
 - under what circumstances do we rebuild the editable packages? does that still happen every time we change the python packages (shouldn't...)
@@ -21,7 +20,6 @@
 - either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.
 
 
--- combine prefetchers from tofu and flake writer
-- sort order when using python.packages.xyz
+-- combine prefetchers from tofu and flake writer ( one gets the path, the other doesn't...)
 -- if not python date is specified, rewrite to today.
---if no R date is specified, rewrite to latest
+-- garbage collection for poetry clones?

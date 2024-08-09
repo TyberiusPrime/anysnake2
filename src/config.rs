@@ -162,7 +162,10 @@ impl MinimalConfigToml {
             fs::read_to_string(&abs_config_path).context("Could not read config file")?;
         let mut parsed_config: MinimalConfigToml =
             Self::from_str(&raw_config).with_context(|| {
-                anysnake2::ErrorWithExitCode::new(65, format!("Failure parsing {:?}", &abs_config_path))
+                anysnake2::ErrorWithExitCode::new(
+                    65,
+                    format!("Failure parsing {:?}", &abs_config_path),
+                )
             })?;
         parsed_config.anysnake2_toml_path = Some(abs_config_path);
         Ok(parsed_config)
@@ -329,6 +332,7 @@ pub enum ParsedPythonPackageDefinition {
 
 #[derive(Debug, Clone)]
 pub struct BuildPythonPackageInfo {
+    //todo: remove
     pub overrides: Option<Vec<String>>,
 }
 
@@ -369,6 +373,7 @@ pub struct PythonPackageDefinition {
     pub source: PythonPackageSource,
     pub editable_path: Option<String>,
     pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub pre_poetry_patch: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -376,6 +381,7 @@ pub struct TofuPythonPackageDefinition {
     pub source: TofuPythonPackageSource,
     pub editable_path: Option<String>,
     pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub pre_poetry_patch: Option<String>,
 }
 
 #[derive(Debug)]
@@ -428,16 +434,28 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
     {
         let parsed = StrOrHashMap::deserialize(deserializer)?;
         match parsed {
-            StrOrHashMap::String(str) => {
-                let source = if str.contains(':') {
-                    PythonPackageSource::from_url(str.as_str()).map_err(serde::de::Error::custom)?
-                } else {
-                    PythonPackageSource::VersionConstraint(str)
+            StrOrHashMap::String(constraint) => {
+                let source = {
+                    if constraint.starts_with("pypi:") {
+                        PythonPackageSource::PyPi {
+                            version: Some(constraint.split_once(':').unwrap().1.to_string()),
+                        }
+                    } else if constraint == "pypi" {
+                        PythonPackageSource::PyPi {
+                            version: Some(String::default()),
+                        }
+                    } else if constraint.contains(':') {
+                        PythonPackageSource::from_url(constraint.as_str())
+                            .map_err(serde::de::Error::custom)?
+                    } else {
+                        PythonPackageSource::VersionConstraint(constraint)
+                    }
                 };
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: None,
                     poetry2nix: toml::map::Map::new(),
+                    pre_poetry_patch: None,
                 })
             }
             StrOrHashMap::HashMap(parsed) => {
@@ -451,7 +469,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
                     ));
                 }
-                let allowed_keys = &["url", "version", "poetry2nix", "editable"];
+                let allowed_keys = &["url", "version", "poetry2nix", "editable", "pre_poetry_patch"];
                 for key in &parsed {
                     if !allowed_keys.contains(&key.0.as_str()) {
                         return Err(serde::de::Error::custom(format!(
@@ -481,7 +499,9 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                                 version: Some(constraint.split_once(':').unwrap().1.to_string()),
                             }
                         } else if constraint == "pypi" {
-                            PythonPackageSource::PyPi { version: Some(String::default())}
+                            PythonPackageSource::PyPi {
+                                version: Some(String::default()),
+                            }
                         } else {
                             PythonPackageSource::VersionConstraint(constraint.to_string())
                         }
@@ -514,10 +534,21 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         .map_err(serde::de::Error::custom)?),
                     None => Ok(toml::map::Map::new()),
                 }?;
+                let pre_poetry_patch = match parsed.get("pre_poetry_patch") {
+                    Some(entry) => Some(
+                        entry
+                            .as_str()
+                            .context("pre_poetry_patch was not a string")
+                            .map_err(serde::de::Error::custom)?
+                            .to_string(),
+                    ),
+                    None => None,
+                };
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
                     poetry2nix,
+                    pre_poetry_patch,
                 })
             }
         }
@@ -579,7 +610,7 @@ pub struct Container {
 
 #[derive(Deserialize, Debug)]
 pub struct R {
-    pub date: String,
+    pub date: Option<String>,
     pub packages: Vec<String>,
     pub url: Option<ParsedVCS>,
 
