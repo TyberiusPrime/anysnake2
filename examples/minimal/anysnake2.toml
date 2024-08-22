@@ -1,18 +1,23 @@
 [anysnake2]
-url = "github:TyberiusPrime/anysnake2_release_flakes/main/1.15.4"
+	url = "github:TyberiusPrime/anysnake2_release_flakes/main/1.15.4"
 
-[outside_nixpkgs]
-url = "github:NixOS/nixpkgs/master/24.05"
-
-[ancient_poetry]
-url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 [nixpkgs]
-url = "github:NixOS/nixpkgs/master/24.05"
-packages = ['util-linux']
+	packages = ['util-linux']
+	url = "github:NixOS/nixpkgs/master/24.05"
 
-[flake-util]
-url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+[outside_nixpkgs]
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
+
 
 [poetry2nix]
-url = "github:nix-community/poetry2nix/master/a5be1bbbe0af0266147a88e0ec43b18c722f2bb9"
+	url = "github:nix-community/poetry2nix/master/a5be1bbbe0af0266147a88e0ec43b18c722f2bb9"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

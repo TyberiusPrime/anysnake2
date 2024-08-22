@@ -1,50 +1,59 @@
 # basic anysnake2.toml example using python
 [anysnake2]
-rev = "dev"
-url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+	rev = "dev"
+	url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+
 
 [nixpkgs]
-rev = "23.11" 
-packages = ["which"]
-url = "github:NixOS/nixpkgs/master/24.05"
-
-[python.packages]
-#setuptools="" # needed by dppd-plotnine
-
-[python.packages.dppd]
-# could also be version="pypi:0.24"
-url = "https://files.pythonhosted.org/packages/4b/43/0d1b0135841e4f2b9a3208df24abef52dd368be166bb150369d2cd6c9bed/dppd-0.24.tar.gz"
-poetry2nix.buildInputs = ["setuptools"]
-
-[python.packages.dppd-plotnine]
-version="0.2"
-poetry2nix.buildInputs = ["setuptools", "pyscaffold"]
-poetry2nix.propagatedBuildInputs = ["setuptools"]
-poetry2nix.postPatch = """
-	substituteInPlace setup.cfg \
-		--replace-fail "pyscaffold>=3.1a0,<3.2a0" "pyscaffold"
-
-	substituteInPlace setup.py --replace-fail "use_pyscaffold=True" ""
-"""
+	packages = ["which"]
+	rev = "23.11" 
+	url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [python] 
-version="3.10" 
-ecosystem_date="2022-11-23" 
-preferWheels = true
+	ecosystem_date="2022-11-23" 
+	preferWheels = true
+	version="3.10" 
 
+
+[python.packages]
+
+
+#setuptools="" # needed by dppd-plotnine
+
+[python.packages.dppd]
+	poetry2nix.buildInputs = ["setuptools"]
+# could also be version="pypi:0.24"
+	url = "https://files.pythonhosted.org/packages/4b/43/0d1b0135841e4f2b9a3208df24abef52dd368be166bb150369d2cd6c9bed/dppd-0.24.tar.gz"
+
+
+[python.packages.dppd-plotnine]
+	poetry2nix.buildInputs = ["setuptools"]
+	poetry2nix.env.postPatch = """
+	substituteInPlace setup.cfg \
+		--replace-fail "pyscaffold>=3.1a0,<3.2a0" ""
+
+	substituteInPlace setup.py --replace-fail "use_pyscaffold=True" ""
+	# dppd_plotnine version resolution in 0.2 is borked
+	substituteInPlace src/dppd_plotnine/__init__.py --replace-fail "__version__ = get_distribution(dist_name).version" "__version__ = '0.2'"
+"""
+	poetry2nix.propagatedBuildInputs = ["setuptools"]
+	version="0.2"
 
 
 [outside_nixpkgs]
-rev = "23.11" 
-url = "github:NixOS/nixpkgs/master/24.05"
+	rev = "23.11" 
+	url = "github:NixOS/nixpkgs/master/24.05"
+
 
 [ancient_poetry]
-url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
 
 [poetry2nix]
-url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+	url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+
 
 [flake-util]
-url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 

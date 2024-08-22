@@ -31,7 +31,9 @@
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
-         ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/library $out/rootfs/R_libs/ || true
+         if [ -d $path/lib/R/library/ ]; then
+           ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib/R/library $out/rootfs/R_libs/ || true
+         fi
       done
 
       ln -s $out/rootfs/bin $out/rootfs/usr/bin

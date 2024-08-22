@@ -990,12 +990,12 @@ fn format_poetry_build_input_overrides(
             override_python_attrs.insert("src", src.to_string());
         }
 
-        if let Some(post_patch) = spec.poetry2nix.get("postPatch") {
+        /* if let Some(post_patch) = spec.poetry2nix.get("postPatch") {
             let post_patch = post_patch
                 .as_str()
-                .with_context(|| format!("postPatch was not a string with nix code for {name}",))?;
+                .with_context(|| format!("postPatch was not a string with bash code for {name}",))?;
             override_python_attrs.insert("postPatch", format!("''{post_patch}''"));
-        }
+        } */
 
         if let Some(envs) = spec.poetry2nix.get("env") {
             let envs = envs

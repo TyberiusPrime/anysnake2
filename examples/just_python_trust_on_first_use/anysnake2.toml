@@ -3,35 +3,40 @@
 # (example used for testing)
 # package settings
 [anysnake2]
-rev = "dev"
-url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+	rev = "dev"
+	url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+
 
 [nixpkgs]
 # the nixpkgs used inside the container
-packages = ["which"]
-url = "github:NixOS/nixpkgs/master/24.05"
+	packages = ["which"]
+	url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [python] # python section is optional
-version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2024-02-16" # you get whatever packages the solver would have produced on that day
+	ecosystem_date="2024-02-16" # you get whatever packages the solver would have produced on that day
+	version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
 [python.packages]
+	dppd = { url = "git+https://github.com/tyberiusprime/dppd", poetry2nix.buildInputs = ["setuptools"] }
+	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr" , poetry2nix.buildInputs = ["setuptools"] }
+	mizani = { version = "pypi" }
 # example for github and hg. See just_python_discover_newest_revision for git
-plotnine = { url = "github:has2k1/plotnine" }
-dppd = { url = "git+https://github.com/tyberiusprime/dppd", poetry2nix.buildInputs = ["setuptools"] }
-mizani = { version = "pypi" }
-lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr" , poetry2nix.buildInputs = ["setuptools"] }
+	i3-instant-layout = { url = "github:TyberiusPrime/i3-instant-layout", poetry2nix.buildInputs = ["setuptools"] }
+
 
 [outside_nixpkgs]
-url = "github:NixOS/nixpkgs/master/24.05"
+	url = "github:NixOS/nixpkgs/master/24.05"
+
 
 [ancient_poetry]
-url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
 
 [poetry2nix]
-url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+	url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
+
 
 [flake-util]
-url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

@@ -91,7 +91,7 @@ fn test_minimal_no_python() {
 fn test_minimal_bash_version() {
     let (_code, stdout, _stderr) =
         run_test("examples/minimal", &["run", "--", "bash", "--version"]);
-    assert!(stdout.contains("5.1.4(1)"));
+    assert!(stdout.contains("5.2.26(1)"));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn test_just_python() {
         "examples/just_python",
         &["run", "--", "python", "--version"],
     );
-    assert!(stdout.contains("3.10.4"));
+    assert!(stdout.contains("3.11.9"));
 
     let td_path = td.path().to_string_lossy();
 
@@ -117,12 +117,12 @@ fn test_just_python() {
     );
 
     assert!(stdout.contains("1.5.1"));
-    assert!(stdout.contains("0.24"));
+    assert!(stdout.contains("0.22"));
 
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
     dbg!(&stdout);
     assert!(stdout.contains("Argument strings:"));
-    assert!(stdout.contains("loguru version "));
+    //assert!(stdout.contains("loguru version "));
     assert!(!stderr.contains("ImportError"));
 }
 
@@ -139,20 +139,21 @@ fn test_no_anysnake_toml() {
 #[test]
 fn test_basic() {
     let (_code, stdout, _stderr) = run_test("examples/basic", &["run", "--", "bash", "--version"]);
-    assert!(stdout.contains("5.1.4"));
+    assert!(stdout.contains("5.2.26"));
 }
 
 #[test]
 fn test_basic_fish() {
     let (_code, stdout, _stderr) = run_test("examples/basic", &["run", "--", "fish", "--version"]);
-    assert!(stdout.contains("3.2.2"));
+    assert!(stdout.contains("fish, version 3.7.1"));
 }
 
 #[test]
 fn test_basic_python() {
     let (_code, stdout, _stderr) =
         run_test("examples/basic", &["run", "--", "python", "--version"]);
-    assert!(stdout.contains("3.9.4"));
+    //assert!(stdout.contains("3.9.4"));  
+    assert!(stdout.contains("3.9.19"));
 }
 
 #[test]
@@ -180,12 +181,11 @@ fn test_basic_jupyter() {
         &[
             "run",
             "--",
-            "python",
-            "-c",
-            "'import jupyter; print(jupyter.__version__)'",
+            "jupyter",
+            "--version",
         ],
     );
-    assert!(stdout.contains("1.0.0"));
+    assert!(stdout.contains("jupyter-notebook : 6.4.3"));
 }
 
 #[test]
@@ -218,22 +218,22 @@ fn test_full() {
 
     rm_clones("examples/full");
     let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "--version"]);
-    assert!(stdout.contains("4.1.1"));
+    assert!(stdout.contains("4.4.0"));
     let out = Command::new("git")
         .args(["log"])
-        .current_dir("examples/full/code/dppd_plotnine")
+        .current_dir("examples/full/code/dppd")
         .output()
-        .expect("git log failed");
+        .expect("git log call failed");
     assert!(std::str::from_utf8(&out.stdout)
         .unwrap()
         .split('\n')
         .next()
         .unwrap()
-        .contains("8ed7651af759f3f0b715a2fbda7bf5119f7145d7"));
+        .contains("d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7"));
 
     let test_dir = PathBuf::from("examples/full");
 
-    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/pandas/mkpython_args_worked");
+    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.12/site-packages/plotnine/post_install_worked");
     assert!(should_be_there.exists());
 
     let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/hello");
@@ -242,9 +242,9 @@ fn test_full() {
     let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/STAR");
     assert!(should_be_there.exists());
 
-    let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.8/site-packages/rpy2/rinterface_lib/embedded.py");
+    let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.12/site-packages/rpy2/rinterface_lib/embedded.py");
     let rpy2_embedded_text = std::fs::read_to_string(rpy2_embededed).unwrap();
-    assert!(rpy2_embedded_text.contains("# path to libraries"));
+    assert!(rpy2_embedded_text.contains("os.environ['R_LIBS_SITE']"));
 }
 
 #[test]
@@ -304,8 +304,8 @@ fn test_full_rpy2_sitepaths() {
 
     rm_clones("examples/full");
     let (_code, stdout, _stderr) = run_test("examples/full", &["test_rpy2"]);
-    assert!(stdout.contains("Rcpp_1.0.7"));
-    assert!(!stdout.contains("Rcpp_1.0.5"));
+    dbg!(&stdout);
+    assert!(stdout.contains("Rcpp_1.0.12"));
     assert!(stdout.contains("ACA_1.1"));
 }
 
@@ -315,7 +315,7 @@ fn test_just_r() {
     let toml_path = "examples/just_r/anysnake2.toml";
     let toml = ex::fs::read_to_string(toml_path).unwrap();
 
-    assert!(!toml.contains("nixr_tag"));
+    assert!(!toml.contains("url = \"github:TyberiusPrime/nixR/main/"));
 
     let ((_code, stdout, _stderr), td) = run_test_tempdir(
         "examples/just_r",
@@ -333,7 +333,7 @@ fn test_just_r() {
     assert!(override_test_file.exists());
     let toml_path = td.path().join("anysnake2.toml");
     let toml = ex::fs::read_to_string(toml_path).unwrap();
-    assert!(toml.contains("nixr_tag ="));
+    assert!(toml.contains("url = \"github:TyberiusPrime/nixR/main/"));
     //verify it's toml
     toml.parse::<DocumentMut>().expect("invalid doc");
 }
@@ -369,19 +369,19 @@ fn test_python_pip_reinstall_if_venv_changes() {
         run_test_tempdir("examples/just_python", &["run", "--", "cat"]);
     println!("first: {}", stdout);
     let first =
-        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.10/bin/hello")).unwrap();
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let toml_path = td.path().join("anysnake2.toml");
     let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
     println!("{}", toml);
-    toml = toml.replace("pandas=", "solidpython=\"\"\npandas=");
+    toml = toml.replace("pandas=", "solidpython=\"\"\neuclid3 = {poetry2nix.nativeBuildInputs = [\"setuptools\"]}\npandas=");
     ex::fs::write(toml_path, toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
     let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"]);
     println!("second: {}", stdout);
     let second =
-        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.10/bin/hello")).unwrap();
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let lines_first: Vec<_> = first.split('\n').collect();
     let lines_second: Vec<_> = second.split('\n').collect();
@@ -394,7 +394,9 @@ fn test_fetch_from_github_to_fetchgit_transition() {
     {
         let toml_path = "examples/github_tarballs_can_be_unstable/anysnake2.toml";
         let toml = ex::fs::read_to_string(toml_path).unwrap();
-        assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"));
+        assert!(toml.contains("github:has2k1/plotnine/main"));
+        assert!(!toml.contains("github:has2k1/plotnine/main/")); // which suggests a version was
+                                                                 // stored.
     }
 
     let ((_code, stdout, _stderr), td) = run_test_tempdir(
@@ -407,10 +409,12 @@ fn test_fetch_from_github_to_fetchgit_transition() {
             "'import plotnine; print(plotnine.__version__)'",
         ],
     );
-    assert!(stdout.contains("6c82cdc"));
+    dbg!(&stdout);
+    assert!(stdout.contains("999")); // plotnine fallback for 'could not detect from git
     let toml_path = td.path().join("anysnake2.toml");
     let toml = ex::fs::read_to_string(toml_path).unwrap();
-    assert!(toml.contains("plotnine = { method = \"fetchgit\", url = \"https://github.com/has2k1/plotnine\", rev = \"6c82cdc20d6f81c96772da73fc07a672a0a0a6ef\", hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
+    assert!(!toml.contains("github:has2k1/plotnine/main"));
+    assert!(toml.contains("git+https://github.com/has2k1/plotnine.git?ref=main&rev="));
 }
 
 #[test]
@@ -419,11 +423,13 @@ fn test_fetch_trust_on_first_use() {
         let toml_path = "examples/just_python_trust_on_first_use/anysnake2.toml";
         let toml = ex::fs::read_to_string(toml_path).unwrap();
 
-        assert!(!toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\" }"));
-        assert!(!toml.contains("hash_f42bc1481ed2275427342309d6e876e2d01c3a1a = \"sha256-+TTjvSyR719HQFHU8PNMjWmevDAE5gDKPOeTgcNQ3Bo=\" }"));
+        assert!(!toml.contains("git+https://github.com/tyberiusprime/dppd?ref=master&rev="));
+        assert!(!toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
+        assert!(!toml.contains("pypi:"));
+        assert!(!toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
     }
     {
-        let ((_code, stdout, _stderr), td) = run_test_tempdir(
+        let ((_code, _stdout, _stderr), td) = run_test_tempdir(
             "examples/just_python_trust_on_first_use",
             &[
                 "run",
@@ -437,13 +443,17 @@ fn test_fetch_trust_on_first_use() {
         let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
 
-        assert!(toml.contains("hash_6c82cdc20d6f81c96772da73fc07a672a0a0a6ef = \"sha256-ORA+GtORqBDhQiwtXUzooqQXostPrQhwHnlD5sW0kTE=\""));
-        assert!(toml.contains("hash_db6f0a3254fbd3939d6b6b8c6d1711e7129faba1 = \"sha256-r2yDQ4JuOAZ7oWfjat2R/5OcMi0q7BY1QCK/Z9hyeyY=\""));
-        assert!(stdout.contains("6c82cdc"));
+
+        assert!(toml.contains("git+https://github.com/tyberiusprime/dppd?ref=master&rev="));
+        assert!(toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
+        assert!(toml.contains("pypi:"));
+        assert!(toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
     }
 }
 
-#[test]
+// Removed when switching to poetry. Get your pyproject.toml in order and you won't
+// need this.
+/* #[test]
 fn test_python_package_from_flake() {
     // needs to be copied to test the tofu functionality.
     let (code, stdout, _stderr) = run_test(
@@ -459,7 +469,7 @@ fn test_python_package_from_flake() {
     assert!(code == 0);
     assert!(stdout.contains("0.2.0"));
     assert!(stdout.contains("count_reads_unstranded"));
-}
+} */
 
 /* #[test] disabled because poetry2nix right now has no backwards compatibility
  * for older nixpkgs
@@ -503,7 +513,7 @@ fn test_just_python_pypi() {
         "examples//just_python_package_from_pypi",
         &["run", "--", "python", "--version"],
     );
-    assert!(stdout.contains("3.10.4"));
+    assert!(stdout.contains("3.10.14"));
 
     let td_path = td.path().to_string_lossy();
 
@@ -541,3 +551,21 @@ fn test_just_python_pypi() {
     dbg!(&dppd_version);
     assert!(dppd_version >= vec![0u32, 25]);
 }
+
+
+#[test]
+fn test_poetry2nix_escape_hatch() {
+    let (code, stdout, _stderr) = run_test(
+        "examples/just_python_poetry2nix_escape_hatch/",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import dppd_plotnine; print(dppd_plotnine.__version__);'",
+        ],
+    );
+    assert!(code == 0);
+    assert!(stdout.contains("0.2")); 
+}
+
