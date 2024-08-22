@@ -123,7 +123,10 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
     }
 }
 
-fn add_rpy2_if_missing(python: &mut Option<config::Python>, updates: &mut TomlUpdates) {
+fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlUpdates) {
+    // currently this is not feeding back into the anysnake2.toml.
+    // One could argue it should, but then we loose the ability to easily patch this on newer
+    // versions.
     if let Some(python) = python {
         #[allow(clippy::map_entry)]
         if !python.packages.contains_key(&"rpy2".to_string()) {
