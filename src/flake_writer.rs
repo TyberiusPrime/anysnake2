@@ -198,8 +198,11 @@ pub fn write_flake(
     );
 
     flake_contents = insert_nixpkgs_pkgs(&flake_contents, &nixpkgs_pkgs);
-    flake_contents = insert_allow_unfree(&flake_contents, parsed_config.nixpkgs.allow_unfree);
-
+    flake_contents = insert_allow_unfree(
+        &flake_contents,
+        parsed_config.nixpkgs.allow_unfree,
+        &parsed_config.nixpkgs.permitted_insecure_packages,
+    );
     flake_contents = flake_contents
         .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
         .replace("#%INPUTS%", &format_inputs_for_output_arguments(&inputs))
@@ -301,10 +304,20 @@ fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &BTreeSet<String>) ->
     flake_contents.replace("#%NIXPKGS_PACKAGES%#", &str_nixpkgs_pkgs)
 }
 
-fn insert_allow_unfree(flake_contents: &str, allow_unfree: bool) -> String {
-    flake_contents.replace(
+fn insert_allow_unfree(
+    flake_contents: &str,
+    allow_unfree: bool,
+    permitted_insecure_packages: &Option<Vec<String>>,
+) -> String {
+    let flake_contents = flake_contents.replace(
         "\"%ALLOW_UNFREE%\"",
         if allow_unfree { "true" } else { "false" },
+    );
+    flake_contents.replace(
+        "\"%PERMITTED_INSECURE_PACKAGES%\"",
+        &(permitted_insecure_packages
+            .as_ref()
+            .map_or_else(|| String::new(), |x| x.join(" "))),
     )
 }
 

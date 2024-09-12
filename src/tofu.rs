@@ -235,6 +235,7 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
             url: url_and_rev,
             packages: inner_self.packages.unwrap_or_default(),
             allow_unfree: inner_self.allow_unfree,
+            permitted_insecure_packages: inner_self.permitted_insecure_packages,
         };
         Ok(out)
     }

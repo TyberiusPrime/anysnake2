@@ -241,9 +241,11 @@ fn test_basic_projct_folder() {
 }
 
 fn rm_clones(path: &str) {
-    let pb = PathBuf::from(path).join("code");
-    if pb.exists() {
-        std::fs::remove_dir_all(pb).unwrap()
+    for sub in ["code", "hackonme"] {
+        let pb = PathBuf::from(path).join(sub);
+        if pb.exists() {
+            std::fs::remove_dir_all(pb).unwrap()
+        }
     }
 }
 
