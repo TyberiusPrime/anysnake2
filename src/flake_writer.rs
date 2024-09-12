@@ -126,7 +126,7 @@ pub fn write_flake(
         &mut nixpkgs_pkgs,
     );
 
-    add_python(
+    let python_locks_changed = add_python(
         parsed_config,
         &mut inputs,
         &mut definitions,
@@ -225,15 +225,18 @@ pub fn write_flake(
         gitargs.push("poetry/poetry.lock");
     } */
 
-    let res = write_flake_contents(
+    let mut res = write_flake_contents(
         &old_flake_contents,
         &flake_contents,
         use_generated_file_instead,
         &flake_filename,
         flake_dir,
     )?;
+    res = res | python_locks_changed;
 
     run_git_add(&git_tracked_files, flake_dir)?;
+    run_git_commit(flake_dir)?; //after nix 2.23 we will need to commit the flake, possibly. At
+                                //least if we wanted to reference it from another flake
 
     Ok(res)
 }
@@ -475,7 +478,8 @@ fn copy_for_poetry(
     pyproject_toml_path: &Path,
     pre_poetry_patch: &Option<String>,
 ) -> Result<String> {
-    let pre_poetry_patch_sha = pre_poetry_patch.as_ref()
+    let pre_poetry_patch_sha = pre_poetry_patch
+        .as_ref()
         .map(|x| sha256::digest(x))
         .unwrap_or_else(|| "None".to_string());
 
@@ -786,13 +790,34 @@ fn run_git_add(tracked_files: &[String], flake_dir: &Path) -> Result<()> {
             .args(tracked_files)
             .current_dir(flake_dir)
             .output()
-            .context("Failed git add flake.nix")
+            .context("Failed git add")
     })?;
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let msg = format!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}",);
         bail!(msg);
+    }
+    Ok(())
+}
+fn run_git_commit(flake_dir: &Path) -> Result<()> {
+    let output = run_without_ctrl_c(|| {
+        Command::new("git")
+            .arg("commit")
+            .arg("-m")
+            .arg("automatic")
+            .current_dir(flake_dir)
+            .output()
+            .context("Failed git commit")
+    })?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stdout.contains("no changes added") {
+            let msg =
+                format!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}",);
+            bail!(msg);
+        }
     }
     Ok(())
 }
@@ -1064,10 +1089,16 @@ fn add_python(
     flake_dir: &Path,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
-) -> Result<()> {
+) -> Result<bool> {
     //ex::fs::create_dir_all(poetry_lock.parent().unwrap())?;
+    let mut changed = false;
     match &mut parsed_config.python {
         Some(python) => {
+            let original_pyproject_toml =
+                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| "".to_string());
+            let original_poetry_lock =
+                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| "".to_string());
+
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
                 bail!(
                             format!("Python version must be x.y (not x.y.z, z is given by nixpkgs version). Was '{}'", &python.version));
@@ -1170,15 +1201,25 @@ fn add_python(
             .replace("%PYPI_DEPS_DB_REV%", &pypi_debs_db_rev) */
             git_tracked_files.push("poetry_rewritten/poetry.lock".to_string());
             git_tracked_files.push("poetry_rewritten/pyproject.toml".to_string());
+            let new_pyproject_toml =
+                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| "".to_string());
+            let new_poetry_lock =
+                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| "".to_string());
+            if new_pyproject_toml != original_pyproject_toml
+                || new_poetry_lock != original_poetry_lock
+            {
+                changed = true;
+            }
         }
         None => {
             if poetry_lock_path.exists() {
                 ex::fs::remove_file(poetry_lock_path)?;
+                changed = true;
             }
         }
     };
 
-    Ok(())
+    Ok(changed)
 }
 
 struct PrefetchResult {

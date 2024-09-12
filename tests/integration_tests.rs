@@ -12,20 +12,22 @@ fn assert_have_github_api_token() {
     }
 }
 
-fn run_test(cwd: &str, args: &[&str]) -> (i32, String, String) {
+fn run_test(cwd: &str, args: &[&str], remove_old: bool) -> (i32, String, String) {
     assert_have_github_api_token();
     //can't have more than one running from a given folder at a time
     //let lock = NamedLock::create(&cwd.replace("/", "_")).unwrap();
     let lock = NamedLock::create("anysnaketest").unwrap();
     let _guad = lock.lock().unwrap();
     //do not nuke flake dir, you'll overload the github rate limits quickly
-    let flake_lock = PathBuf::from(cwd).join(".anysnake2_flake/flake.lock");
-    if flake_lock.exists() {
-        std::fs::remove_file(flake_lock).unwrap();
-    }
-    let result_dir = PathBuf::from(cwd).join(".anysnake2_flake/result");
-    if result_dir.exists() {
-        std::fs::remove_file(result_dir).unwrap();
+    if remove_old {
+        let flake_lock = PathBuf::from(cwd).join(".anysnake2_flake/flake.lock");
+        if flake_lock.exists() {
+            std::fs::remove_file(flake_lock).unwrap();
+        }
+        let result_dir = PathBuf::from(cwd).join(".anysnake2_flake/result");
+        if result_dir.exists() {
+            std::fs::remove_file(result_dir).unwrap();
+        }
     }
 
     let p = std::env::current_exe()
@@ -76,21 +78,27 @@ fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir
         panic!("Failed to copy to temp dir");
     }
 
-    (run_test(&td.path().to_string_lossy(), args), td)
+    (run_test(&td.path().to_string_lossy(), args, true), td)
 }
 
 #[test]
 fn test_minimal_no_python() {
-    let (code, _stdout, stderr) =
-        run_test("examples/minimal", &["run", "--", "python", "--version"]);
+    let (code, _stdout, stderr) = run_test(
+        "examples/minimal",
+        &["run", "--", "python", "--version"],
+        true,
+    );
     assert!(code == 127);
     assert!(stderr.contains("python: command not found"));
 }
 
 #[test]
 fn test_minimal_bash_version() {
-    let (_code, stdout, _stderr) =
-        run_test("examples/minimal", &["run", "--", "bash", "--version"]);
+    let (_code, stdout, _stderr) = run_test(
+        "examples/minimal",
+        &["run", "--", "bash", "--version"],
+        true,
+    );
     assert!(stdout.contains("5.2.26(1)"));
 }
 
@@ -114,12 +122,13 @@ fn test_just_python() {
             "-c",
             "'import pandas; print(pandas.__version__); import dppd; print(dppd.__version__)'",
         ],
+        true,
     );
 
     assert!(stdout.contains("1.5.1"));
     assert!(stdout.contains("0.22"));
 
-    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"]);
+    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "hello"], true);
     dbg!(&stdout);
     assert!(stdout.contains("Argument strings:"));
     //assert!(stdout.contains("loguru version "));
@@ -131,6 +140,7 @@ fn test_no_anysnake_toml() {
     let (code, _stdout, stderr) = run_test(
         "examples/no_anysnake2_toml",
         &["run", "--", "python", "--version"],
+        true,
     );
     assert!(code == 70);
     assert!(stderr.contains("anysnake2.toml"));
@@ -138,21 +148,26 @@ fn test_no_anysnake_toml() {
 
 #[test]
 fn test_basic() {
-    let (_code, stdout, _stderr) = run_test("examples/basic", &["run", "--", "bash", "--version"]);
+    let (_code, stdout, _stderr) =
+        run_test("examples/basic", &["run", "--", "bash", "--version"], true);
     assert!(stdout.contains("5.2.26"));
 }
 
 #[test]
 fn test_basic_fish() {
-    let (_code, stdout, _stderr) = run_test("examples/basic", &["run", "--", "fish", "--version"]);
+    let (_code, stdout, _stderr) =
+        run_test("examples/basic", &["run", "--", "fish", "--version"], true);
     assert!(stdout.contains("fish, version 3.7.1"));
 }
 
 #[test]
 fn test_basic_python() {
-    let (_code, stdout, _stderr) =
-        run_test("examples/basic", &["run", "--", "python", "--version"]);
-    //assert!(stdout.contains("3.9.4"));  
+    let (_code, stdout, _stderr) = run_test(
+        "examples/basic",
+        &["run", "--", "python", "--version"],
+        true,
+    );
+    //assert!(stdout.contains("3.9.4"));
     assert!(stdout.contains("3.9.19"));
 }
 
@@ -178,19 +193,39 @@ fn test_basic_pre_post_run() {
 fn test_basic_jupyter() {
     let (_code, stdout, _stderr) = run_test(
         "examples/basic",
-        &[
-            "run",
-            "--",
-            "jupyter",
-            "--version",
-        ],
+        &["run", "--", "jupyter", "--version"],
+        true,
     );
     assert!(stdout.contains("jupyter-notebook : 6.4.3"));
 }
 
 #[test]
+fn test_jupyter7() {
+    let ((_code, stdout, _stderr), td) =
+        run_test_tempdir("examples/jupyter7", &["run", "--", "jupyter", "--version"]);
+    assert!(stdout.contains("notebook         : 7.2.1"));
+    let toml_path = td.path().join("anysnake2.toml");
+    let toml_input = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml_out = toml_input.replace("#pandas=", "pandas=");
+    ex::fs::write(toml_path, toml_out).unwrap();
+    let (_code, stdout, _stderr) = run_test(
+        &td.path().to_string_lossy(),
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import pandas; print(pandas.__version__)'",
+        ],
+        false,
+    );
+    assert!(stdout.contains("2.2.2"));
+}
+
+#[test]
 fn test_basic_cargo() {
-    let (_code, stdout, _stderr) = run_test("examples/basic", &["run", "--", "cargo", "--version"]);
+    let (_code, stdout, _stderr) =
+        run_test("examples/basic", &["run", "--", "cargo", "--version"], true);
     assert!(stdout.contains("1.55.0"));
 }
 
@@ -199,6 +234,7 @@ fn test_basic_projct_folder() {
     let (code, stdout, _stderr) = run_test(
         "examples/basic",
         &["run", "--", "ls", "/project/pandas_version.ipynb"],
+        true,
     );
     assert!(stdout.contains("pandas_version.ipynb"));
     assert!(code == 0);
@@ -217,7 +253,8 @@ fn test_full() {
     let _guad = lock.lock().unwrap();
 
     rm_clones("examples/full");
-    let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "R", "--version"]);
+    let (_code, stdout, _stderr) =
+        run_test("examples/full", &["run", "--", "R", "--version"], true);
     assert!(stdout.contains("4.4.0"));
     let out = Command::new("git")
         .args(["log"])
@@ -257,6 +294,7 @@ fn test_full_r_packages() {
     let (_code, stdout, _stderr) = run_test(
         test_dir,
         &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"],
+        true,
     );
     assert!(stdout.contains("ACA_1.1"));
 
@@ -274,7 +312,8 @@ fn test_full_hello() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
 
-    let (_code, stdout, _stderr) = run_test("examples/full", &["run", "--", "hello", "--version"]);
+    let (_code, stdout, _stderr) =
+        run_test("examples/full", &["run", "--", "hello", "--version"], true);
     assert!(stdout.contains("Hello World"));
 }
 
@@ -293,6 +332,7 @@ fn test_full_rpy2() {
             "-c",
             "'import rpy2.robjects as ro; print(ro.r(\"5+5\"));'",
         ],
+        true,
     );
     assert!(stdout.contains("10"));
 }
@@ -303,7 +343,7 @@ fn test_full_rpy2_sitepaths() {
     let _guad = lock.lock().unwrap();
 
     rm_clones("examples/full");
-    let (_code, stdout, _stderr) = run_test("examples/full", &["test_rpy2"]);
+    let (_code, stdout, _stderr) = run_test("examples/full", &["test_rpy2"], true);
     dbg!(&stdout);
     assert!(stdout.contains("Rcpp_1.0.12"));
     assert!(stdout.contains("ACA_1.1"));
@@ -343,6 +383,7 @@ fn test_flake_with_dir() {
     let (_code, stdout, _stderr) = run_test(
         "examples/flake_in_non_root_github",
         &["run", "--", "fastq-dump", "--version"],
+        true,
     );
     assert!(stdout.contains("\"fastq-dump\" version 2.11.2"));
 }
@@ -358,6 +399,7 @@ fn test_python_package_already_pulled_by_other_editable_package() {
             "-c",
             "'import pypipegraph; print(\"imported ppg\")'",
         ],
+        true,
     );
     assert!(stdout.contains("imported ppg"));
 }
@@ -374,11 +416,14 @@ fn test_python_pip_reinstall_if_venv_changes() {
     let toml_path = td.path().join("anysnake2.toml");
     let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
     println!("{}", toml);
-    toml = toml.replace("pandas=", "solidpython=\"\"\neuclid3 = {poetry2nix.nativeBuildInputs = [\"setuptools\"]}\npandas=");
+    toml = toml.replace(
+        "pandas=",
+        "solidpython=\"\"\neuclid3 = {poetry2nix.nativeBuildInputs = [\"setuptools\"]}\npandas=",
+    );
     ex::fs::write(toml_path, toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
-    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"]);
+    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"], true);
     println!("second: {}", stdout);
     let second =
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
@@ -443,7 +488,6 @@ fn test_fetch_trust_on_first_use() {
         let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
 
-
         assert!(toml.contains("git+https://github.com/tyberiusprime/dppd?ref=master&rev="));
         assert!(toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
         assert!(toml.contains("pypi:"));
@@ -465,7 +509,7 @@ fn test_python_package_from_flake() {
             "-c",
             "'import mbf_bam; print(mbf_bam.__version__); print(dir(mbf_bam.mbf_bam))'",
         ],
-    );
+    , true);
     assert!(code == 0);
     assert!(stdout.contains("0.2.0"));
     assert!(stdout.contains("count_reads_unstranded"));
@@ -500,6 +544,7 @@ fn test_python_buildpackage_interdependency_with_overrides() {
             "-c",
             "'import testrepo; print(testrepo.__version__); print(testrepo.testrepo2.__version__)'",
         ],
+        true,
     );
     assert!(code == 0);
     assert!(stdout.contains("0.66"));
@@ -526,6 +571,7 @@ fn test_just_python_pypi() {
             "-c",
             "'import scanpy; print(scanpy.__version__)'",
         ],
+        true,
     );
 
     assert!(stdout.contains("1.9.3"));
@@ -539,6 +585,7 @@ fn test_just_python_pypi() {
             "-c",
             "'import dppd; print(\"dppd_version=\", dppd.__version__)'",
         ],
+        true,
     );
     assert!(stdout.contains("dppd_version="));
     dbg!(&stdout);
@@ -552,7 +599,6 @@ fn test_just_python_pypi() {
     assert!(dppd_version >= vec![0u32, 25]);
 }
 
-
 #[test]
 fn test_poetry2nix_escape_hatch() {
     let (code, stdout, _stderr) = run_test(
@@ -564,8 +610,8 @@ fn test_poetry2nix_escape_hatch() {
             "-c",
             "'import dppd_plotnine; print(dppd_plotnine.__version__);'",
         ],
+        true,
     );
     assert!(code == 0);
-    assert!(stdout.contains("0.2")); 
+    assert!(stdout.contains("0.2"));
 }
-
