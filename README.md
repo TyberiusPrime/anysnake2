@@ -31,24 +31,27 @@ the functionality of Nix lang to be 'hermetic', ie. self contained. Every downlo
 (A side effect here is of course that if the upstream file is changed, your installation will fail loudly - and that's 
 about the only way to loose the reproducibility).
 
-Using just a fixed version of nixpkgs (the community recipe collection) in a flake, you already have a reproducible environment.
+Using just a fixed revision of nixpkgs (the community recipe collection) in a flake, you already have a reproducible environment.
 
 But it is limited to the versions of everything present in that nixpkgs
 revision. Anysnake2 integrates other projects to introduce flexibility.
 
-For example, [mach-nix](https://github.com/DavHau/mach-nix) offers you reproducible python package dependency resolution, by
-a simple trick: You need to specify the date (=[pypi-deps-db](https://github.com/DavHau/pypi-deps-db) date) of the python ecosystem to use. Once that's defined, the dependency
-resolution and which exact packages to install is fixed.  Anysnake2 improves on this be letting you specify a date
+Extending nix (which does not do 'version resolution'), anysnake2 uses the concept of a 'date-locked ecosystem'
+ to get a reproducible set of versions from a given set of requirements, essentially producing 'reproducible lock files'.
 
-R_ecosystem_track offers something similar for R.
-Rust-overlay let's you include arbitrary rust versions. And you can extend the flake with any other flake you like.
+For R this is done using the [nixR](https://github.com/TyberiusPrime/nixR) project, which offers two or more ecosystem dates per bioconductor release.
+
+For python, anysnake2 uses the [ancient-poetry](https://codeberg.com/TyberiusPrime/ancient_poetry) for the version resolution
+in conjunction with [poetry2nix](https://github.com/nix-community/poetry2nix/).
+
+Note that while the defaults are limited to your ecosystem date, you can always override individual packages with exact (and newer!) versions.
 
 # Prerequisites
 
 You need a working nix installation with flakes.
 
 If you're using NixOS, referer to the [nix wiki](https://nixos.wiki/wiki/Flakes#NixOS)
-Otherwise, you could use the  [nix-unstable installer](https://github.com/numtide/nix-unstable-installer).
+Otherwise, you could use the [nix-unstable installer](https://github.com/numtide/nix-unstable-installer).
 
 The following examples use nix to temporarily install anysnake2 (until your next nix-collect-garbage),
 see the [installation section](# Installation)
@@ -62,55 +65,102 @@ containing every option. anysnake2.toml is the default config filename).
 You should find something close to this.
 
 ```toml
+# basic anysnake2.toml example
 # package settings
 [anysnake2]
-rev = "1.0"
+    use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
 
-[outside_nixpkgs]
-# the nixpkgs used to run singularity and nixfmt
-rev = "22.05"
 
 [nixpkgs]
 # the nixpkgs used inside the container
-rev = "22.05" # the nixpgks version or github hash
-packages = [ # use https://search.nixos.org/packages to search
-	"fish",
+        packages = [ # use https://search.nixos.org/packages to search
+        "fish",
 ]
+        url = "github:NixOS/nixpkgs/master/24.05"
+
 
 [python] # python section is optional
-version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2021-04-12" # you get whatever packages the solver would have produced on that day
+        ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
+        version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-jupyter="" 
+        notebook=""
+        pandas="1.2.0"
+
+
+[rust]
+        url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
+        version="1.55.0"
+
+
+[container.env]
+        ANYSNAKE2="1"
 
 
 # container settings
 [container.volumes_rw]
-"." = "/project" # map the current folder to /project
+        "." = "/project" # map the current folder to /project
 
-[env]
-ANYSNAKE2=1
 
 [cmd.default]
-run = """
+        run = """
 cd /project
 jupyter notebook
 """
 
+
 [cmd.shell]
-run = """fish
+        run = """fish
 """
+
+
+[cmd.test_pre_post]
+        post_run_outside = """
+echo "post_run"
+"""
+        pre_run_outside = """
+echo "pre_run"
+"""
+        run = """
+echo "run"
+"""
+        while_run_outside ="""
+while :
+do
+        # write pid to pre_run.txt
+        echo "$BASHPID" > while_run.txt
+        sleep 1;
+done
+"""
+
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+        url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+        url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+
+[poetry2nix]
+        url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+
+[flake-util]
+        url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
 
 ```
 
-This defines an anysnake2 project that uses nixpkgs 21.05, both inside the container, and outside 
+This defines an anysnake2 project that uses nixpkgs 24.05, both inside the container, and outside 
 (which defines the singularity version and auxiliaries used), python from 2021-04-12, and neither R nor Rust.
 
 If you now run `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2`,
-you'll get a jupyter notebook running after some downloading. But the next time
-will be very quick. (See the "singularity won't run" section below if
+you'll get a jupyter notebook running after some downloading (thanks to the 'default' command defined in anysnake2.toml). 
+But the next time will be very quick. (See the "singularity won't run" section below if
 singularity complains about `failed to resolve session directory
 /var/singularity/mnt/session`).
 
@@ -126,7 +176,6 @@ pandas 1.3.0 instead.
 `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 run -- python -c "'import pandas; print(pandas.__version__)'"`.
 Yes the escaping between nix shell, anysnake and python in series is a bit of a mess.)
 
-
 Instead of the default command (which is defined by cmd.default in the config toml) you can also run a custom command with an arbitrary
 name (minus some build-in-exclusions), like the `shell` command defined above.
 `nix shell "github:TyberiusPrime/anysnake2" -c anysnake2 shell`, will execute a fish shell inside your container.
@@ -134,74 +183,103 @@ name (minus some build-in-exclusions), like the `shell` command defined above.
 # Using R
 
 Including R and R packages using
-[r_ecosystem_track](https://github.com/TyberiusPrime/r_ecosystem_track) is even
+[nixR](https://github.com/TyberiusPrime/nixR) is even
 simpler than python packages, since you will get whatever R, bioconductor and
 package version was current at a particular ecosystem date.
 
 Just include this:
 
 ```toml
-[R]
-# you get whatever packages were current that day.
-ecosystem_tag="2021-10-28_v1"  # a tag or revision from the r_ecosystem_track repo
-packages = [
-	"ggplot2",
-]
+[R] # R section is optional
+	date = "2024-05-10"
+# the date definies the R version, bioconductor version and R packages you get.
+	packages = [ "ACA", "Rcpp" ]
+
 ```
 
-(Visit r_ecosystem_track and look at it's tags for available versions)
+(Visit [nixR date overview](https://github.com/TyberiusPrime/nixR/blob/main/generated/readme.md) too see available dates.)
 
 
-# Using rust
+# Using Rust
 ```toml
-[rust]
-version = "1.55.0" # =stable.
-# to use nightly, add for example this:
-# [nixpkgs]
-# packages = ['rust-bin.nightly."2020-01-01".default']
+[rust] # rust section is optional
+version = "1.55.0" # leave off for 'newest', see tofu 
 ```
 
 # Other flakes
 Include other flakes like this.
-Note that we do not rely on flake.lock, so you have to define a revision/tag. 
-I've found nix flakes to have a tendency to update locked dependencies when
-you were not expecting it to do so.
 
 ```toml
 [flakes.hello]
 	url = "github:/TyberiusPrime/hello_flake" #https://nixos.wiki/wiki/Flakes#Input_schema - relative paths are tricky
 	rev = "f32e7e451e9463667f6a1ddb7a662ec70d35144b" # flakes.lock tends to update unexpectedly, so we tie it down here
 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-	packages = ["defaultPackage.x86_64-linux"]
+	packages = ["defaultPackage.x86_64-linux"] # it defaults to defualtPackage.x86_64-linux if you leave off packages. Use packages = [] to not include any packages
 ```
 
+# The Tofu (trust-on-first-use) mechanism and anysnake2.toml rewriting
 
-# Clones and editable python installs
+You can essentially start with an *empty* anysnake2.toml, and 
+everything missing will be filled in by the anysnake2 itself.
 
-Anysnake2 can be used to clone repositories you want to work on into this project folder,
-and, optionally, include them in your python search path inside the container.
+That means defaulting to the newest versions and dates for ecosystem.
+
+E.g. adding just `[rust]` will lead to the newest stable rust version, 
+and adding `scanpy = "pypi"` to python.packages will lead to the newest scapny version (independend of ecosystem date!.
+The newest-within-ecosystem date version from pypi would just be `scanpy = ""`).
+
+Similar for all the places you can use 'urls' like 'github:/TyberiusPrime/dppd/master/<hash>', if you leave of the hash,
+the newest commit in that branch will be used. And if you leave of the branch, master/main will be autodetected.
+
+Everything that's tofued in this way is written down in anysnake2.toml, locking it in place.
+
+There's also auto-formatting and pretty printing in place (down to the *order* of entries in anysnake2.toml), 
+so anysnake2.tomls always look uniform.
 
 
-For example to clone into the 'code' directory, use this
+# Clones 
+
+Anysnake2 can be used to clone repositories you want to work on into this project folder.
 
 ```toml
 [clones.code] # target directory
 # separate from python packages so you can clone other stuff as well
-dppd="git+https://github.com/TyberiusPrime/dppd
+ancient_poetry="git+https://codeberg.com/TyberiusPrime/ancient_poetry"
 ```
 
-You can use `[clone_regexps]` to save on typing here - see [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml). Also the cloning happens only if the target folder does not exist yet (no automatic pull). Mercurial cloning is available by using hg+https instead of git+https.
+# Editable python installs
 
-You can then include this package in your python packages list like this
-`dppd=editable/code`. Anysnake2 will then (once) run a container running 
-`pip install -e .` on the given (possibly cloned) folder, and include it
-in the containers python path. It will also, on every run, parse the
-requirements.txt/setup.cfg of the package and add it's requirements to
-the python packages to resolve & install.
+To work on python packages, you can use editable installs.
+
+These always start with a repo url to clone, and are then installed twice.
+Once in nix, producing all the necessary inputs for your package,
+and then in editable mode from a local clone.
+
+This looks like this:
+
+```toml
+[python.packages]
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", poetry2nix.nativeBuildInputs=['setuptools']}
+    ```
+
+
+# Poetry2nix escape hatches.
+
+While we have the poetry2nix override collection active, you'll need to help it out with build-systems
+and possibly build tweaks on occasion.
+
+```
+[pytohn.packages]
+    session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
+```
+
+Refer to the 
+[full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml)).
+for more such tweaks.
+
+
 
 # Jupyter
-
-Just add `jupyter=""` to your python packages (optionally specifying a version).
 
 
 If you want jupyterlab, add `jupyterlab=""`.
@@ -220,6 +298,7 @@ copy the kernelspec to 'the right place'.
 For other kernels, you'll need to figure out how to dump the kernel spec into
 rootfs/usr/share/jupyter/kernels, patch flake_writer.rs and submit a PR.
 
+## jupyterWith
 Why are we not using [jupyterWith][https://github.com/tweag/jupyterWith]? Well, three reasons: 
  
 * it's currently [not wrapping jupyter-notebook](https://github.com/tweag/jupyterWith/pull/142),
@@ -234,8 +313,22 @@ Why are we not using [jupyterWith][https://github.com/tweag/jupyterWith]? Well, 
 Rebuilding happens automatically whenever 
 
 * the flake.nix changes
-* flake/result/rootfs does not exist
-* a previous build did not finish
+* or flake/result/rootfs does not exist
+* or a previous build did not finish
+
+# The auto-use-the-specified-version-mechanism
+
+If anysnake2 find's it's own version to differ from the one defined in the config file,
+it will restart itself using `nix shell github:.../`.
+
+By default it will use the [TyberiusPrime/anysnake2_release_flakes](https://github.com/TyberiusPrime/anysnake2_release_flakes) repository, which 
+provides download flakes for the releases from [TyberiusPrime/anysnake2](https://github.com/TyberiusPrime/anysnake2),
+but if you specify 'use_binary=false' in the anysnake2 section, it will rebuild instead. 
+
+Either way you can replace the repository the anysnake2 pulls itself from,
+see the [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml)).
+
+
 
 
 # Container runtime
@@ -259,7 +352,7 @@ Build in commands (which you can not replace by config) are
 
  * `attach` attach to still running container (interactive if more than 1 present)
  * `build rootfs` - just build the (unpacked) container as a symlink tree
- * `build sif` - build the container image in .anysnake2_flake/result/anysnake2_container.sif
+ * `build oci` - build a container image. See the section on OCI images
  * `build flake` - just write the flake to .anysnake2_flake/flake.nix
  * `config` - list the available example configurations (use config <name> to print one)
  * `develop` - run 'nix develop' on the flake and come back to flake/../ (shell can be configured via `[devShell]/shell`)
@@ -267,14 +360,23 @@ Build in commands (which you can not replace by config) are
  * `version` - output anysnake2 version
  * `run --` - run arbitrary commands (without pre/post wrappers). Everything after -- is passed on to the container
 
-# Why containers?
+# OCI images
+Anysnake2 can build standards compliant OCI images using "build oci".
+
+You can run it e.g. with podman: `podman run -it oci-archive:.anysnake2_flake/result bash`
+
+
+
+# FAQ
+
+## Why containers?
 
 Because our use case profits from the mount namespace isolation, and we want
 to create images to run on HPC (high performance computing) clusters.
 
 You can always use `anysnake2 develop` to run outside of a container.
 
-# Singularity won't run
+## Singularity won't run
 
 Singularity needs some folders that can not be created by Nix.
 
@@ -284,36 +386,22 @@ If you're using NixOS, setting 'programs.singularity.enable = true' should insta
 (and a singularity installation we won't necessarily be using, we use the version in the outside_nixpkgs defined by anysnake2.toml instead)).
 
 
+## Version policy
 
-# Version policy
+Anysnake2 follows semver. Versions are major.minor.patch ,
+with patch only fixing bugs, minor introducing features, and major being breaking changes
+that you need to rewrite your anysnake2.toml for.
 
-Anysnake2 will follow semver once 1.0 is reached.
-But with the auto-use-the-specified-version-mechanism, it's a bit of a moot point.
-
-
-# Installation
+## Installation
 
 Either add this repository as a flake to your nix configuration,
 or download one of the prebuild binaries (which are statically linked against musl) and place it somewhere in your $PATH.
 
-# The auto-use-the-specified-version-mechanism
-
-If anysnake2 find's it's own version to differ from the one definined in the config file,
-it will restart itself using `nix shell github:.../`.
-
-By default it will use the [TyberiusPrime/anysnake2_release_flakes](https://github.com/TyberiusPrime/anysnake2_release_flakes) repository, which 
-provides download flakes for the releases from [TyberiusPrime/anysnake2](https://github.com/TyberiusPrime/anysnake2),
-but if you specify 'use_binary=false' in the anysnake2 section, it will rebuild instead. 
-
-Either way you can replace the repository the anysnake2 pulls itself from,
-see the [full example](https://github.com/TyberiusPrime/anysnake2/blob/main/examples/full/anysnake2.toml)).
-
-
-# Proxy support
+## Proxy support
 anysnake2 respects HTTPS_PROXY and HTTP_PROXY environment variables.
 
 
-# Dtach
+## Dtach
 
 Singularity containers, unlike the daemon spawend docker containers of yore,
 die if you were using them via ssh and disconnect.
@@ -327,14 +415,14 @@ To reattach after a disconnect, use `anysnake2 attach` from your project folder.
 If there are multiple running containers, you will be asked which one you want to reattach. 
 
 You can disable dtach by setting `container.detach = false` in your projects anysnake2.toml.
-dtach is also disable if you're runnin in screen or tmux (if $STY or $TMUX are set).
+dtach is also disable if you're running in screen or tmux (if $STY or $TMUX are set).
 
 
-# Why are path:/ urls on flakes not allowed?
+## Why are path:/ urls on flakes not allowed?
 
 I've found nix flakes to mishandle 'path:/<absolute_path>?rev=xyz' style input urls.
 
-As in it wouldn't actually checkout xyz, but push the whole repo including .git into the 
+As in it would not actually checkout xyz, but push the whole repo including .git into the 
 store. Then if you changed the repo in any way, it would fail with a narHash mismatch.
 
 The workaround is to use just an /absolute_path instead, for "/absolut_path?rev=xyz" 
@@ -343,14 +431,14 @@ is being handled correctly.
 To avoid you falling into this trap, anysnake2 rejects path:// flake definitions.
 
 
-# Exit Codes
+## Exit Codes
 
 Anysnake2 strives to follow the ['sysexit' codes](https://www.freebsd.org/cgi/man.cgi?query=sysexits), 
 that means that the default 'an error occured' exit code is 70.
 65 means the configuration toml couldn't be understood, 66 it's missing.
 
 
-# Why singularity?
+## Why singularity?
 
 We want a container engine that
   
@@ -360,8 +448,10 @@ We want a container engine that
 
 Singularity fits the bill.
 
+I suppose we could also have gone with runc and a lot of manual handholding.
 
-# GitHub API limits 
+
+## GitHub API limits 
 
 Anysnake2 uses the github api, for example to  translate python-ecosystem-dates into the correct
 python-deps-db commit. Though these are cached, you may run into Github's ratelimit 
