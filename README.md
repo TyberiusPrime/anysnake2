@@ -260,7 +260,7 @@ This looks like this:
 ```toml
 [python.packages]
 	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", poetry2nix.nativeBuildInputs=['setuptools']}
-    ```
+```
 
 
 # Poetry2nix escape hatches.
@@ -269,7 +269,7 @@ While we have the poetry2nix override collection active, you'll need to help it 
 and possibly build tweaks on occasion.
 
 ```
-[pytohn.packages]
+[python.packages]
     session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
 ```
 
