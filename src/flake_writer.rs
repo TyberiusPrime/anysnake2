@@ -206,7 +206,11 @@ pub fn write_flake(
     flake_contents = flake_contents
         .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
         .replace("#%INPUTS%", &format_inputs_for_output_arguments(&inputs))
-        .replace("#%DEFINITIONS%#", &format_definitions(&definitions));
+        .replace("#%DEFINITIONS%#", &format_definitions(&definitions))
+        .replace(
+            "#%DEVSHELL_INPUTS%#",
+            &format_devshell(&parsed_config.dev_shell),
+        );
 
     // pretty print the generated flake
     flake_contents = nix_format(&flake_contents, flake_dir)?;
@@ -293,6 +297,10 @@ fn format_definitions(definitions: &BTreeMap<String, String>) -> String {
         res.push_str(&format!("     {k} = {v};\n"));
     }
     res.trim().to_string()
+}
+
+fn format_devshell(dev_shell: &config::TofuDevShell) -> String {
+    dev_shell.inputs.join(" ")
 }
 
 fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &BTreeSet<String>) -> String {
@@ -826,9 +834,8 @@ fn run_git_commit(flake_dir: &Path) -> Result<()> {
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stdout.contains("no changes added") && !stdout.contains("nothing added to commit"){
-            let msg =
-                format!("Failed git commit\n Stdout: \n{stdout}\n\nStderr: {stderr}",);
+        if !stdout.contains("no changes added") && !stdout.contains("nothing added to commit") {
+            let msg = format!("Failed git commit\n Stdout: \n{stdout}\n\nStderr: {stderr}",);
             bail!(msg);
         }
     }
@@ -843,30 +850,30 @@ fn add_rust(
     rust_extensions: Vec<String>,
 ) {
     if let Some(rust) = &parsed_config.rust {
-            nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
-            let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
-            out_rust_extensions.extend(rust_extensions);
+        nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
+        let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
+        out_rust_extensions.extend(rust_extensions);
 
-            inputs.push(InputFlake::new(
-                "rust-overlay",
-                &rust.url,
-                None,
-                &["nixpkgs", "flake-utils"],
-            ));
-            overlays.push("import rust-overlay".to_string());
-            let str_rust_extensions: Vec<String> = out_rust_extensions
-                .into_iter()
-                .map(|x| format!("\"{x}\""))
-                .collect();
-            let str_rust_extensions: String = str_rust_extensions.join(" ");
+        inputs.push(InputFlake::new(
+            "rust-overlay",
+            &rust.url,
+            None,
+            &["nixpkgs", "flake-utils"],
+        ));
+        overlays.push("import rust-overlay".to_string());
+        let str_rust_extensions: Vec<String> = out_rust_extensions
+            .into_iter()
+            .map(|x| format!("\"{x}\""))
+            .collect();
+        let str_rust_extensions: String = str_rust_extensions.join(" ");
 
-            definitions.insert(
+        definitions.insert(
                 "rust".to_string(),
                 format!(
             "pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {str_rust_extensions}]; }}", rust.version,
         ),
             );
-            nixpkgs_pkgs.insert("rust".to_string());
+        nixpkgs_pkgs.insert("rust".to_string());
     }
 }
 
@@ -1417,5 +1424,3 @@ fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
 
     Ok(())
 }
-
-

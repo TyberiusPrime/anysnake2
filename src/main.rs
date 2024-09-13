@@ -416,10 +416,8 @@ fn inner_main() -> Result<()> {
             save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
         }
         if cmd == "develop" {
-            if let Some(_python) = &tofued_config.python {
-                todo!();
-                //todo
-                //write_develop_python_path(&flake_dir, &python_packages, &python.version)?;
+            if let Some(python) = &tofued_config.python {
+                write_develop_python_path(&flake_dir, &python.packages, &python.version)?;
             }
             run_without_ctrl_c(|| {
                 let s = format!("../{}", &run_sh_str);
@@ -1429,7 +1427,7 @@ fn run_dtach(p: impl AsRef<Path>) -> Result<()> {
 #[allow(unused)] //todo, there's a missing code path in 'develop'
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
-    python_packages: &[(String, PythonPackageDefinition)],
+    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
     python_version: &str,
 ) -> Result<()> {
     let mut develop_python_paths = Vec::new();

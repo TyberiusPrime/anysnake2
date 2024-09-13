@@ -20,14 +20,34 @@
         name = "anysnake2_container";
         #later entries beat earlier entries in terms of /bin symlinks
         script = ''
-${coreutils}
-${bashInteractive_5}
-#%NIXPKGS_PACKAGES%#
-'';
+          ${coreutils}
+          ${bashInteractive_5}
+          #%NIXPKGS_PACKAGES%#
+        '';
       };
       helpers = import ./functions.nix {inherit pkgs;};
-    in {
+    in rec {
       defaultPackage = (helpers.buildSymlinkImage _args).derivation;
       sif_image = helpers.buildSingularityImage _args;
+      devShell = pkgs.stdenv.mkDerivation {
+        name = "anysnake2-devshell";
+        shellHook =
+          ''
+            export PATH=${defaultPackage}/rootfs/bin:$PATH;
+            if test -f "develop_python_path.bash"; then
+              source "develop_python_path.bash"
+            fi
+          ''
+          + (
+            if R_tracked != null
+            then ''
+              export R_LIBS_SITE=${R_tracked}/lib/R/library/
+            ''
+            else ""
+          );
+        nativeBuildInputs = with pkgs; [
+          #%DEVSHELL_INPUTS%
+        ];
+      };
     });
 }

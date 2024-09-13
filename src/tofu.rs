@@ -6,7 +6,7 @@ use toml_edit::value;
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{self, TofuAnysnake2, TofuConfigToml},
+    config::{self, TofuAnysnake2, TofuConfigToml, TofuDevShell},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
@@ -115,7 +115,7 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             python: python.tofu(updates)?,
             container: self.container,
             flakes: self.flakes.tofu(updates)?,
-            dev_shell: self.dev_shell,
+            dev_shell: self.dev_shell.tofu(updates)?,
             r: self
                 .r
                 .tofu_to_newest(&["R"], updates, "github:TyberiusPrime/nixR")?,
@@ -319,13 +319,9 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
                         let actual_version = rust.split("-").last().context("rust version naming scheme changed, expected something like 'rust-default-1.81.0?'")?;
                         debug!("Found version: {actual_version}");
                         actual_version.to_string()
-
                     }
                 };
-                Some(config::TofuRust {
-                    version,
-                    url,
-                })
+                Some(config::TofuRust { version, url })
             }
         })
     }
@@ -1241,4 +1237,45 @@ fn tofu_python_package_definition(
             }
         },
     })
+}
+
+impl Tofu<TofuDevShell> for Option<config::DevShell> {
+    fn tofu(self, updates: &mut TomlUpdates) -> Result<TofuDevShell> {
+        let (inputs, shell) = match self {
+            None => {
+                updates.push((
+                    vec!["devshell".to_string(), "inputs".to_string()],
+                    value(toml_edit::Array::default()),
+                ));
+
+                updates.push((
+                    vec!["devshell".to_string(), "shell".to_string()],
+                    value("bash"),
+                ));
+                (Vec::new(), "bash".to_string())
+            }
+            Some(inner_self) => {
+                let shell = inner_self.shell.unwrap_or_else(|| {
+                    updates.push((
+                        vec!["devshell".to_string(), "shell".to_string()],
+                        value("bash"),
+                    ));
+                    "bash".to_string()
+                });
+                let inputs = inner_self.inputs.unwrap_or_else(|| {
+                    updates.push((
+                        vec!["devshell".to_string(), "inputs".to_string()],
+                        value(toml_edit::Array::default()),
+                    ));
+                    Vec::new()
+                });
+
+                (inputs, shell)
+            }
+        };
+
+        let res = TofuDevShell { inputs, shell };
+
+        Ok(res)
+    }
 }

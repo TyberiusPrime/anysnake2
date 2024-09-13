@@ -86,7 +86,7 @@ pub struct ConfigToml {
     pub container: Container,
     pub flakes: Option<HashMap<String, Flake>>,
     #[serde(default)]
-    pub dev_shell: DevShell,
+    pub dev_shell: Option<DevShell>,
     #[serde(rename = "R")]
     pub r: Option<R>,
 }
@@ -107,7 +107,7 @@ pub struct TofuConfigToml {
     pub python: Option<TofuPython>,
     pub container: Container,
     pub flakes: HashMap<String, TofuFlake>,
-    pub dev_shell: DevShell,
+    pub dev_shell: TofuDevShell,
     pub r: Option<TofuR>,
 }
 
@@ -254,24 +254,24 @@ impl Anysnake2 {
 #[derive(Deserialize, Debug)]
 pub struct DevShell {
     pub inputs: Option<Vec<String>>,
-    #[serde(default = "DevShell::default_shell")]
-    pub shell: String,
-}
-
-impl DevShell {
-    fn default_shell() -> String {
-        "bash".to_string()
-    }
+    pub shell: Option<String>,
 }
 
 impl Default for DevShell {
     fn default() -> Self {
         DevShell {
             inputs: None,
-            shell: Self::default_shell(),
+            shell: None,
         }
     }
 }
+
+#[derive(Deserialize, Debug)]
+pub struct TofuDevShell {
+    pub inputs: Vec<String>,
+    pub shell: String,
+}
+
 
 #[derive(Deserialize, Debug)]
 pub struct NixPkgs {

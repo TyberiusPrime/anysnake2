@@ -8,7 +8,6 @@
 [nixpkgs]
 # the nixpkgs used inside the container
 	packages = [ # use https://search.nixos.org/packages to search
-	"fish",
 ]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
@@ -27,6 +26,7 @@
 [rust]
 	url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
 	version="1.55.0"
+	url = "github:oxalica/rust-overlay/master/a71b1240e29f1ec68612ed5306c328086bed91f9"
 
 
 [container.env]
@@ -85,3 +85,8 @@ done
 
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[devshell]
+	inputs = []
+	shell = "bash"
