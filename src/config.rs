@@ -323,7 +323,7 @@ pub struct Rust {
 
 #[derive(Debug)]
 pub struct TofuRust {
-    pub version: Option<String>,
+    pub version: String,
     pub url: TofuVCS,
 }
 

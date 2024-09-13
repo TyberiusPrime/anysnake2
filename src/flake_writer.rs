@@ -843,7 +843,6 @@ fn add_rust(
     rust_extensions: Vec<String>,
 ) {
     if let Some(rust) = &parsed_config.rust {
-        if let Some(rust_ver) = &rust.version {
             nixpkgs_pkgs.insert("stdenv.cc".to_string()); // needed to actually build something with rust
             let mut out_rust_extensions = vec!["rustfmt".to_string(), "clippy".to_string()];
             out_rust_extensions.extend(rust_extensions);
@@ -864,11 +863,10 @@ fn add_rust(
             definitions.insert(
                 "rust".to_string(),
                 format!(
-            "pkgs.rust-bin.stable.\"{rust_ver}\".minimal.override {{ extensions = [ {str_rust_extensions}]; }}",
+            "pkgs.rust-bin.stable.\"{}\".minimal.override {{ extensions = [ {str_rust_extensions}]; }}", rust.version,
         ),
             );
             nixpkgs_pkgs.insert("rust".to_string());
-        };
     }
 }
 

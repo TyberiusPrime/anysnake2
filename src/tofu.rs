@@ -132,7 +132,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
         if !python.packages.contains_key(&"rpy2".to_string()) {
             let source = config::PythonPackageSource::VersionConstraint("*".to_string());
             let poetry2nix = toml::toml! {
-                [env] 
+                [env]
                     R_HOME = "${R_tracked}"
                     NIX_LDFLAGS = "-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib"
                     postPatch = "
@@ -149,17 +149,17 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
             };
             python.packages.insert("rpy2".to_string(), def);
             /* let tbl = "[rpy2]
-    version = '*'
-"
-            .parse::<toml_edit::DocumentMut>()
-            .unwrap();
-            updates.push((
-                ["python", "packages", "rpy2"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                tbl["rpy2"].clone(),
-            )); */
+                version = '*'
+            "
+                        .parse::<toml_edit::DocumentMut>()
+                        .unwrap();
+                        updates.push((
+                            ["python", "packages", "rpy2"]
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect(),
+                            tbl["rpy2"].clone(),
+                        )); */
         }
     }
 }
@@ -301,12 +301,30 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
         Ok(match self {
             None => None,
             Some(rust) => {
-                if rust.version.is_none() {
-                    bail!("When using rust, you must specify a version");
-                }
+                let url = tofu_repo_to_newest(&url_toml_name, updates, rust.url, default_url)?;
+                let version = match rust.version {
+                    Some(v) => v,
+                    None => {
+                        debug!("Tofu for rust");
+                        let rust_flake_contents = std::process::Command::new("nix")
+                            .args(["flake", "show", "--json", &url.to_nix_string()])
+                            .output()
+                            .with_context(|| format!("nix flake show --json {url} failed"))?;
+                        let rust_flake_contents = std::str::from_utf8(&rust_flake_contents.stdout);
+                        let json: serde_json::Value = serde_json::from_str(rust_flake_contents?)
+                            .context("nix flake show --json wasn't json")?;
+                        let rust = json["packages"]["x86_64-linux"]["default"]["name"]
+                            .as_str()
+                            .context("Could not find default version in flake show")?;
+                        let actual_version = rust.split("-").last().context("rust version naming scheme changed, expected something like 'rust-default-1.81.0?'")?;
+                        debug!("Found version: {actual_version}");
+                        actual_version.to_string()
+
+                    }
+                };
                 Some(config::TofuRust {
-                    version: rust.version,
-                    url: tofu_repo_to_newest(&url_toml_name, updates, rust.url, default_url)?,
+                    version,
+                    url,
                 })
             }
         })
