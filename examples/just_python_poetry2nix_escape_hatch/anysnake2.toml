@@ -1,7 +1,8 @@
 # basic anysnake2.toml example using python
 [anysnake2]
-	rev = "dev"
-	url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2 = "dev"
 
 
 [nixpkgs]

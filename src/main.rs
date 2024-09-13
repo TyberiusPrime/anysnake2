@@ -4,7 +4,10 @@
 extern crate clap;
 use anyhow::{anyhow, bail, Context, Result};
 use anysnake2::util::{add_line_numbers, dir_empty, CloneStringLossy};
-use anysnake2::{install_ctrl_c_handler, run_without_ctrl_c, ErrorWithExitCode, safe_python_package_name};
+use anysnake2::{
+    install_ctrl_c_handler, run_without_ctrl_c, safe_python_package_name, ErrorWithExitCode,
+};
+use clap::parser::ValueSource;
 use clap::{Arg, ArgMatches};
 use ex::fs;
 use indoc::indoc;
@@ -151,11 +154,19 @@ fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
                 std::include_str!("../examples/minimal/anysnake2.toml")
             ),
             Some(("full", _)) => {
-                println!("{}", std::include_str!("../examples/full/anysnake2.toml").replace("url = \"dev\"\n", ""));
+                println!(
+                    "{}",
+                    std::include_str!("../examples/full/anysnake2.toml")
+                        .replace("url = \"dev\"\n", "")
+                );
             }
             Some(("basic", _)) => {
                 // includes basic
-                println!("{}", std::include_str!("../examples/basic/anysnake2.toml").replace("url = \"dev\"\n", ""));
+                println!(
+                    "{}",
+                    std::include_str!("../examples/basic/anysnake2.toml")
+                        .replace("url = \"dev\"\n", "")
+                );
             }
             _ => {
                 bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
@@ -196,12 +207,12 @@ fn switch_to_configured_version(
     parsed_config: &config::TofuMinimalConfigToml,
     matches: &ArgMatches,
 ) -> Result<()> {
-    match &parsed_config.anysnake2.url {
+    match &parsed_config.anysnake2.url2 {
         config::TofuVCSorDev::Dev => {
             info!("Using development version of anysnake");
         }
         config::TofuVCSorDev::Vcs(url) => {
-            if matches.contains_id("no-version-switch") {
+            if matches.value_source("no-version-switch") == Some(ValueSource::CommandLine) {
                 info!("--no-version-switch was passed, not switching versions");
             } else {
                 let rev = match url {
@@ -226,8 +237,8 @@ fn switch_to_configured_version(
                         .cloned()
                         .unwrap_or_else(|| "noversionspecified".to_string())
                 {
-                    info!("restarting with version from {}", url.to_string());
-                    let repo = url.to_string();
+                    info!("restarting with version from {}", url.to_nix_string());
+                    let repo = url.to_nix_string();
 
                     let mut args =
                         vec!["shell", &repo, "-c", "anysnake2", "--_running_version", rev];
@@ -652,7 +663,10 @@ fn run_singularity(
     dtach_socket: &Option<String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
-    let singularity_url = format!("{}#singularity", anysnake2::get_outside_nixpkgs_url().unwrap());
+    let singularity_url = format!(
+        "{}#singularity",
+        anysnake2::get_outside_nixpkgs_url().unwrap()
+    );
     register_nix_gc_root(&singularity_url, flake_dir)?;
     run_without_ctrl_c(|| {
         let mut nix_full_args: Vec<String> = Vec::new();
@@ -780,7 +794,10 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
     {
         let tf = ex::fs::File::create(&download_filename)?;
         let mut btf = std::io::BufWriter::new(tf);
-        let mut req = anysnake2::util::get_proxy_req()?.get(url).call()?.into_reader();
+        let mut req = anysnake2::util::get_proxy_req()?
+            .get(url)
+            .call()?
+            .into_reader();
         std::io::copy(&mut req, &mut btf)?;
     }
     //call tar to unpack
@@ -1176,7 +1193,7 @@ fn add_r_library_path(
 ) -> Result<()> {
     use std::collections::hash_map::Entry;
     let key = format!("r_ld_path~{}~{}", sha256::digest(r.url.to_string()), r.date);
-    #[allow(clippy::single_match_else)] 
+    #[allow(clippy::single_match_else)]
     let ld_library_path = match in_non_spec_but_cached_values.get(&key) {
         Some(ld_library_path) => ld_library_path.clone(),
         None => {

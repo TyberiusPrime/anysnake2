@@ -2,7 +2,7 @@
 # torpedos all 'don't run as root' protection though.
 # (remember, being allowed to run docker containers == root access)
 [anysnake2]
-url = "dev" # replace with fixed version outside of tests/examples
+url2 = "dev" # replace with fixed version outside of tests/examples
 
 
 [nixpkgs]

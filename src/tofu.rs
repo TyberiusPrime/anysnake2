@@ -6,7 +6,7 @@ use toml_edit::value;
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{self, TofuAnysnake2, TofuConfigToml, TofuDevShell},
+    config::{self,  TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
@@ -61,20 +61,35 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             }
         };
 
+        let parsed_url: config::TofuVCSorDev = {
+            self.anysnake2
+                .url2
+                .and_then(|x| {
+                    <config::ParsedVCSorDev as TryInto<config::TofuVCSorDev>>::try_into(x).ok()
+                })
+                .expect("Expected to have a completely resolved anysnake2 at this point. Does your anysnake2.toml have a anysnake2.url2 field?")
+        };
+
+        let (pre_2_0_url, pre_2_0_rev) = add_pre_2_0_url_and_rev(
+            &self.anysnake2.url,
+            &self.anysnake2.rev,
+            &parsed_url,
+            self.anysnake2.use_binary,
+            updates,
+        );
+
         Ok(config::TofuConfigToml {
             anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: {
                 config::TofuAnysnake2 {
-                    url: {
-                        self.anysnake2.url.and_then(|x| x.try_into().ok()).expect(
-                            "Expected to have a completely resolved anysnake2 at this point",
-                        )
-                    },
-                    use_binary: self.anysnake2.use_binary,
+                    url: pre_2_0_url,
+                    rev: pre_2_0_rev,
+                    url2: parsed_url,
                     do_not_modify_flake: self.anysnake2.do_not_modify_flake.unwrap_or(false),
                     dtach: self.anysnake2.dtach,
                 }
             },
+
             nixpkgs: self.nixpkgs.tofu_to_tag(
                 &["nixpkgs", "url"],
                 updates,
@@ -162,6 +177,77 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
                         )); */
         }
     }
+}
+
+fn add_pre_2_0_url_and_rev(
+    incoming_pre_2_0_url: &Option<String>,
+    incoming_rev: &Option<String>,
+    parsed_url: &TofuVCSorDev,
+    use_binary: Option<bool>,
+    updates: &mut TomlUpdates,
+) -> (String, String) {
+    let use_binary: bool = use_binary.unwrap_or(match parsed_url {
+        TofuVCSorDev::Vcs(x) => x.to_string().contains("anysnake2_release_flakes"),
+        TofuVCSorDev::Dev => config::Anysnake2::default_use_binary(),
+    });
+
+    let pre_2_0_url = incoming_pre_2_0_url.clone().unwrap_or_else(|| {
+        (if use_binary {
+            "github:TyberiusPrime/anysnake2_release_flakes"
+        } else {
+            "github:TyberiusPrime/anysnake2"
+        })
+        .try_into()
+        .expect("invalid default url")
+    });
+    let pre_2_0_rev = match &parsed_url {
+        config::TofuVCSorDev::Dev => "dev".to_string(),
+        config::TofuVCSorDev::Vcs(vcs) => vcs.get_url_rev_branch().1.to_string(),
+    };
+    let mut pre_2_0_url_toml = value(pre_2_0_url.to_string());
+    pre_2_0_url_toml
+        .as_value_mut()
+        .unwrap()
+        .decor_mut()
+        .set_suffix(" # pre 2.0 - 2.0+ uses url2");
+
+    let mut pre_2_0_rev_toml = value(pre_2_0_rev.to_string());
+    pre_2_0_rev_toml
+        .as_value_mut()
+        .unwrap()
+        .decor_mut()
+        .set_suffix(" # pre 2.0 - 2.0+ uses url2");
+
+    let update_url = match &incoming_pre_2_0_url {
+        None => true,
+        Some(s) => s != pre_2_0_url.as_str(),
+    };
+    if update_url {
+        updates.push((
+            ["anysnake2", "url"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            value(pre_2_0_url_toml.as_value().unwrap()),
+        ));
+    }
+
+    let update_rev = {
+        match &incoming_rev {
+            None => true,
+            Some(s) => s != pre_2_0_rev.as_str(),
+        }
+    };
+    if update_rev {
+        updates.push((
+            ["anysnake2", "rev"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            value(pre_2_0_rev_toml.as_value().unwrap()),
+        ));
+    }
+    (pre_2_0_url, pre_2_0_rev)
 }
 
 fn clone_regex_strings_to_regex(
@@ -436,33 +522,44 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
         let anysnake = match self.anysnake2 {
             Some(value) => value,
             None => config::Anysnake2 {
-                url: None,
-                use_binary: config::Anysnake2::default_use_binary(),
+                //my own cargo version
+                rev: Some(env!("CARGO_PKG_VERSION").to_string()),
+                url: Some("github:TyberiusPrime/anysnake2_release_flakes".to_string()),
+                url2: None,
+                use_binary: Some(config::Anysnake2::default_use_binary()),
                 do_not_modify_flake: None,
                 dtach: config::Anysnake2::default_dtach(),
             },
         };
-        let new_url = match anysnake.url {
+        let new_url = match anysnake.url2 {
             Some(config::ParsedVCSorDev::Dev) => config::TofuVCSorDev::Dev,
             other => {
+                let base = if let Some(true) = anysnake.use_binary {
+                    "github:TyberiusPrime/anysnake2_release_flakes"
+                } else {
+                    "github:TyberiusPrime/anysnake2"
+                };
+
                 let url = match other {
                     Some(config::ParsedVCSorDev::Vcs(vcs)) => vcs,
                     Some(_) => unreachable!(),
-                    None => "github:TyberiusPrime/anysnake2"
-                        .try_into()
-                        .expect("invalid default url"),
+                    None => base.clone().try_into().expect("invalid default url"),
                 };
                 let new_url = tofu_repo_to_tag(
-                    &["anysnake2", "url"],
+                    &["anysnake2", "url2"],
                     updates,
                     Some(url),
-                    if anysnake.use_binary {
-                        "github:TyberiusPrime/anysnake2_release_flakes"
-                    } else {
-                        "github:TyberiusPrime/anysnake2"
-                    },
+                    base,
                     r"(\d\.){1,3}",
                 )?;
+                add_pre_2_0_url_and_rev(
+                    &None,
+                    &None,
+                    &TofuVCSorDev::Vcs(new_url.clone()),
+                    anysnake.use_binary,
+                    updates,
+                );
+
                 config::TofuVCSorDev::Vcs(new_url)
             }
         };
@@ -470,8 +567,15 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
         Ok(config::TofuMinimalConfigToml {
             anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: TofuAnysnake2 {
-                url: new_url,
-                use_binary: anysnake.use_binary,
+                url: match &new_url {
+                    config::TofuVCSorDev::Vcs(x) => x.get_url_rev_branch().0,
+                    config::TofuVCSorDev::Dev => "dev".to_string(),
+                },
+                rev: match &new_url {
+                    config::TofuVCSorDev::Vcs(x) => x.get_url_rev_branch().1.to_string(),
+                    config::TofuVCSorDev::Dev => "github:TyberiusPrime/anysnake2".to_string(),
+                },
+                url2: new_url,
                 do_not_modify_flake: anysnake.do_not_modify_flake.unwrap_or(false),
                 dtach: anysnake.dtach,
             },

@@ -1,9 +1,11 @@
 # fully featured anysnake2.toml example
 # this is fully tofu resolved as well.
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
 # We leverage nix flakes to run exactly that version.
 # rev = "dev" = do not switch to fixed version, used in development.
-	url = "dev" # replace with fixed version outside of tests/examples.
+	url2 = "dev" # replace with fixed version outside of tests/examples.
 # leave off to auto detect the newest version
 # looks like this TOFU
 # url = "github:TyberiusPrime/anysnake2/main/1.15.5"

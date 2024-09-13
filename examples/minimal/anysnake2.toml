@@ -1,5 +1,7 @@
 [anysnake2]
-	url = "github:TyberiusPrime/anysnake2_release_flakes/main/1.15.4"
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2 = "dev"
 
 
 [nixpkgs]

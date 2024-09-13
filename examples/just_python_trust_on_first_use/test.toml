@@ -1,7 +1,7 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-rev = "dev"
+url2 = "dev"
 
 [outside_nixpkgs]
 rev = "21.05" # the nixpgks version or github hash

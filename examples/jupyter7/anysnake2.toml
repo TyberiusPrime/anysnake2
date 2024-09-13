@@ -1,7 +1,7 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-	url = "dev"
+	url2 = "dev"
 	use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
 
 

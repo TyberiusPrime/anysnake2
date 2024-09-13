@@ -1,7 +1,6 @@
 # the absolute minimal anysnake2.toml example
 [anysnake2]
-rev = "dev" # replace with fixed version outside of tests/examples
-url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+url2 = "dev"
 
 
 [nixpkgs]

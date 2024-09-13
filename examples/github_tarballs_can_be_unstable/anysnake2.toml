@@ -1,5 +1,5 @@
 [anysnake2]
-	url = "dev" # replace with fixed version outside of tests/examples
+	url2 = "dev" # replace with fixed version outside of tests/examples
 
 
 [nixpkgs]

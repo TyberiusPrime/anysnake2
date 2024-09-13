@@ -2,8 +2,7 @@
 # only supporting the current release at any one point in time.
 [anysnake2]
 # We leverage nix flakes to run exactly that version.
-rev = "dev" # replace with fixed version outside of tests/examples
-url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+url2 = "dev"
 
 [nixpkgs]
 packages = ['strace', 'python38']

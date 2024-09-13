@@ -1,8 +1,9 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
-	url = "dev"
-	use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2 = "dev"
 
 
 [nixpkgs]

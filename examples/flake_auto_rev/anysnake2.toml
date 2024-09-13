@@ -1,5 +1,5 @@
 [anysnake2]
-url = "dev"
+url2 = "dev"
 
 [nixpkgs]
 url = "github:NixOS/nixpkgs/master/24.05"

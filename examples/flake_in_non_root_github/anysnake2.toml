@@ -1,6 +1,8 @@
 # the absolute minimal anysnake2.toml example
 [anysnake2]
-	url = "dev" # replace with fixed version outside of tests/examples
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2 = "dev" # replace with fixed version outside of tests/examples
 
 
 # the nixpkgs used to run singularity and nixfmt

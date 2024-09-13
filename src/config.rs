@@ -137,7 +137,7 @@ impl ConfigToml {
     pub fn from_file(config_file: &str) -> Result<ConfigToml> {
         use ex::fs;
         let abs_config_path =
-            fs::canonicalize(config_file).context("Could not find config file")?;
+            fs::canonicalize(config_file).context("Could not find config file. To start with an empty config, run 'touch anysnake2.toml' an dtry again")?;
         let raw_config =
             fs::read_to_string(&abs_config_path).context("Could not read config file")?;
         let mut parsed_config: ConfigToml = Self::from_str(&raw_config).with_context(|| {
@@ -227,17 +227,22 @@ impl TryFrom<ParsedVCSorDev> for TofuVCSorDev {
 
 #[derive(Deserialize, Debug)]
 pub struct Anysnake2 {
-    pub url: Option<ParsedVCSorDev>,
-    #[serde(default = "Anysnake2::default_use_binary")]
-    pub use_binary: bool,
+    // for pre 2.0 to do the right thing
+    pub url: Option<String>,
+    pub rev: Option<String>,
+    pub use_binary: Option<bool>,
+    //now the real deal.
+    pub url2: Option<ParsedVCSorDev>,
     pub do_not_modify_flake: Option<bool>,
     #[serde(default = "Anysnake2::default_dtach")]
     pub dtach: bool,
 }
 #[derive(Debug)]
 pub struct TofuAnysnake2 {
-    pub url: TofuVCSorDev,
-    pub use_binary: bool,
+    pub url: String,
+    pub rev: String,
+
+    pub url2: TofuVCSorDev,
     pub do_not_modify_flake: bool,
     pub dtach: bool,
 }

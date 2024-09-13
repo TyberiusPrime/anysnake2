@@ -654,3 +654,19 @@ fn test_jupyter_kernels() {
     assert!(stdout.contains("kernels/R"));
     assert!(stdout.contains("kernels/R"));
 }
+
+#[test]
+fn test_empty() {
+    let ((_code, stdout, _stderr), td) =
+        run_test_tempdir("examples/test_empty", &["run", "--", "bash", "--version"]);
+    assert!(stdout.contains("GNU bash"));
+    let generated_anysnake2_toml = td.path().join("anysnake2.toml");
+    let read = ex::fs::read_to_string(&generated_anysnake2_toml).unwrap();
+    let parsed_toml = read.parse::<toml_edit::DocumentMut>().unwrap();
+    assert!(parsed_toml.contains_key("anysnake2"));
+    assert!(parsed_toml["anysnake2"]["rev"].as_str().is_some());
+    assert!(parsed_toml["anysnake2"]["url2"]
+        .as_str()
+        .unwrap()
+        .starts_with("github:TyberiusPrime/anysnake2_release_flakes"));
+}

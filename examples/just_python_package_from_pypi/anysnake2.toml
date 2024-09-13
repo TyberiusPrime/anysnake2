@@ -7,8 +7,7 @@
 # see mbf_bam for an example
 
 [anysnake2]
-	rev = "dev"
-	url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+	url2 = "dev"
 
 
 [nixpkgs]
