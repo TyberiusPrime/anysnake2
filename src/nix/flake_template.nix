@@ -28,7 +28,7 @@
       helpers = import ./functions.nix {inherit pkgs;};
     in rec {
       defaultPackage = (helpers.buildSymlinkImage _args).derivation;
-      sif_image = helpers.buildSingularityImage _args;
+      oci_image = helpers.buildOCIimage _args;
       devShell = pkgs.stdenv.mkDerivation {
         name = "anysnake2-devshell";
         shellHook =

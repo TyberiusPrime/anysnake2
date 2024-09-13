@@ -6,7 +6,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use anysnake2::util::{add_line_numbers, dir_empty, CloneStringLossy};
 use anysnake2::{install_ctrl_c_handler, run_without_ctrl_c, ErrorWithExitCode, safe_python_package_name};
 use clap::{Arg, ArgMatches};
-use config::PythonPackageDefinition;
 use ex::fs;
 use indoc::indoc;
 use log::{debug, error, info, trace, warn};
@@ -110,7 +109,7 @@ fn parse_args() -> ArgMatches {
                 clap::Command::new("rootfs").about("build rootfs container (used for singularity)"),
             )
             .subcommand(
-                clap::Command::new("sif").about("build SIF (singularity) container image (anysnake2_container.sif)"),
+                clap::Command::new("oci").about("build OCI container image (anysnake2_container.sif)"),
             )
 
         )
@@ -152,11 +151,11 @@ fn handle_config_command(matches: &ArgMatches) -> Result<bool> {
                 std::include_str!("../examples/minimal/anysnake2.toml")
             ),
             Some(("full", _)) => {
-                println!("{}", std::include_str!("../examples/full/anysnake2.toml"));
+                println!("{}", std::include_str!("../examples/full/anysnake2.toml").replace("url = \"dev\"\n", ""));
             }
             Some(("basic", _)) => {
                 // includes basic
-                println!("{}", std::include_str!("../examples/basic/anysnake2.toml"));
+                println!("{}", std::include_str!("../examples/basic/anysnake2.toml").replace("url = \"dev\"\n", ""));
             }
             _ => {
                 bail!("Could not find that config. Try to pass minimial/basic/full as in  'anysnake2 config basic'");
@@ -358,11 +357,11 @@ fn inner_main() -> Result<()> {
                     info!("Writing just flake/flake.nix");
                     rebuild_flake(use_generated_file_instead, "flake", &flake_dir)?;
                 }
-                Some(("sif", _)) => {
-                    info!("Building sif in flake/result/...sif");
+                Some(("oci", _)) => {
+                    info!("Building oci-image in flake/result");
                     rebuild_flake(
                         use_generated_file_instead,
-                        "sif_image.x86_64-linux",
+                        "oci_image.x86_64-linux",
                         &flake_dir,
                     )?;
                 }
