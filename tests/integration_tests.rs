@@ -617,3 +617,40 @@ fn test_poetry2nix_escape_hatch() {
     assert!(code == 0);
     assert!(stdout.contains("0.2"));
 }
+
+#[test]
+fn test_oci_image() {
+    let ((_code, _stdout, _stderr), td) = run_test_tempdir("examples/jupyter7", &["build", "oci"]);
+    assert!(td.path().join(".anysnake2_flake/result").exists());
+    //podman run -it oci-archive:.anysnake2_flake/result notebook --version
+    let output = Command::new("nix")
+        .args([
+            "shell",
+            "github:/nixos/nixpkgs/24.05#podman",
+            "-c",
+            "podman",
+            "run",
+            "-it",
+            "--rm",
+            "oci-archive:.anysnake2_flake/result",
+            "jupyter",
+            "--version",
+        ])
+        .current_dir(td.path())
+        .output()
+        .unwrap();
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    dbg!(stdout);
+    dbg!(std::str::from_utf8(&output.stderr).unwrap());
+    assert!(stdout.contains("7.2.1"));
+}
+#[test]
+fn test_jupyter_kernels() {
+    let ((_code, stdout, _stderr), _td) = run_test_tempdir(
+        "examples/jupyter7",
+        &["run", "--", "jupyter", "kernelspec", "list"],
+    );
+    assert!(stdout.contains("kernels/python3"));
+    assert!(stdout.contains("kernels/R"));
+    assert!(stdout.contains("kernels/R"));
+}

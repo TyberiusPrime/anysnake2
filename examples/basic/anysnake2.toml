@@ -85,3 +85,8 @@ done
 
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[devshell]
+	inputs = []
+	shell = "bash"

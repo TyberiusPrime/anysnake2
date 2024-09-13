@@ -82,7 +82,7 @@ pub fn write_flake(
     let mut inputs: Vec<InputFlake> = Vec::new();
     let mut definitions: BTreeMap<String, String> = BTreeMap::new();
     let mut overlays: Vec<String> = Vec::new();
-    let rust_extensions: Vec<String> = Vec::new();
+    let mut rust_extensions: Vec<String> = Vec::new();
     let mut nixpkgs_pkgs = BTreeSet::new();
     let mut git_tracked_files = Vec::new();
     //let mut nix_pkg_overlays = Vec::new();
@@ -107,6 +107,13 @@ pub fn write_flake(
     nixpkgs_pkgs.insert("cacert".to_string()); //so we have SSL certs inside
                                                //
                                                ////todo: does rust even need to be a special case?
+    add_jupyter_kernels(
+        &parsed_config,
+        &mut definitions,
+        &mut nixpkgs_pkgs,
+        &mut rust_extensions,
+    );
+
     add_rust(
         parsed_config,
         &mut inputs,
@@ -148,45 +155,6 @@ pub fn write_flake(
         None => "".to_string(),
     };
     flake_contents = flake_contents.replace("#%DEVSHELL_INPUTS%", &dev_shell_inputs);
-    */
-
-    /*
-    let mut jupyter_kernels = String::new();
-    let jupyter_included = python_packages.iter().any(|(k, _)| k == "jupyter");
-    if let Some(r) = &parsed_config.r {
-        if r.ecosystem_tag.is_some() {
-            bail!("[R]ecosystem_tag is no longer in use. We're using nixR now and you need to specify a 'date' instead");
-        }
-        // install R kernel
-        if r.packages.contains(&"IRkernel".to_string()) && jupyter_included {
-            jupyter_kernels.push_str(
-                "
-            mkdir $out/rootfs/usr/share/jupyter/kernels/R
-            cp $out/rootfs/R_libs/IRkernel/kernelspec/ * $out/rootfs/usr/share/jupyter/kernels/R -r
-            ",
-            );
-        }
-    }
-    if nixpkgs_pkgs.contains(&"evcxr".to_string()) {
-        jupyter_kernels.push_str(
-            "
-            JUPYTER_PATH=$out/rootfs/usr/share/jupyter $out/rootfs/bin/evcxr_jupyter --install
-        ",
-        );
-        rust_extensions.push("rust-src");
-    }
-    if !jupyter_kernels.is_empty() && jupyter_included {
-        jupyter_kernels = "
-            mv $out/rootfs/usr/share/jupyter/kernels $out/rootfs/usr/share/jupyter/kernels_
-            mkdir $out/rootfs/usr/share/jupyter/kernels
-            cp $out/rootfs/usr/share/jupyter/kernels_/ * $out/rootfs/usr/share/jupyter/kernels -r
-            unlink $out/rootfs/usr/share/jupyter/kernels_
-            "
-        .to_string()
-            + &jupyter_kernels;
-    }
-
-    flake_contents = flake_contents.replace("#%INSTALL_JUPYTER_KERNELS%", &jupyter_kernels);
     */
 
     definitions.insert(
@@ -327,6 +295,71 @@ fn insert_allow_unfree(
             .as_ref()
             .map_or_else(|| String::new(), |x| x.join(" "))),
     )
+}
+
+fn add_jupyter_kernels(
+    parsed_config: &config::TofuConfigToml,
+    definitions: &mut BTreeMap<String, String>,
+    nixpkgs_pkgs: &mut BTreeSet<String>,
+    rust_extensions: &mut Vec<String>,
+) {
+    let mut jupyter_kernels = String::new();
+    let jupyter_included = parsed_config
+        .python
+        .as_ref()
+        .map(|p| {
+            p.packages
+                .iter()
+                .any(|(k, _)| k == "jupyter" || k == "notebook" || k == "jupyterlab")
+        })
+        .unwrap_or(false);
+    if let Some(r) = &parsed_config.r {
+        // install R kernel
+        if jupyter_included && r.packages.iter().any(|x| x == "IRkernel") && jupyter_included {
+            jupyter_kernels.push_str(
+                "
+                mkdir $out/share/jupyter/kernels/R
+            cp ${R_tracked}/lib/R/library/IRkernel/kernelspec/* $out/share/jupyter/kernels/R -r
+            ",
+            );
+        }
+    }
+    if parsed_config
+        .nixpkgs
+        .packages
+        .contains(&"evcxr".to_string())
+    {
+        jupyter_kernels.push_str(
+            "
+            JUPYTER_PATH=$out/share/jupyter ${pkgs.evcxr}/bin/evcxr_jupyter --install
+        ",
+        );
+        if !rust_extensions.contains(&"rust-src".to_string()) {
+            rust_extensions.push("rust-src".to_string());
+        }
+    }
+    //The python package replaces .../kernel with a symlink.
+    //we restore it here.
+    if !jupyter_kernels.is_empty() && jupyter_included {
+        jupyter_kernels = "
+        ln -s ${python_package}/share/jupyter/kernels/python3 $out/share/jupyter/kernels/python3
+        "
+        .to_string()
+            + &jupyter_kernels;
+    }
+    if jupyter_included  && !jupyter_kernels.is_empty(){
+        definitions.insert(
+            "zzz_jupyter_kernel_drv".to_string(),
+            "pkgs.runCommand \"anysnake2-jupyter-kernels\" {} ''
+                mkdir -p $out/share/jupyter/kernels
+            ".to_string()
+                + &jupyter_kernels
+                + "''",
+        );
+        //must be in the script so it's done before python.
+        //since we go reverse...
+        nixpkgs_pkgs.insert("zzz_jupyter_kernel_drv".to_string());
+    }
 }
 
 /// prepare what we put into pyproject.toml
@@ -858,7 +891,7 @@ fn add_rust(
             "rust-overlay",
             &rust.url,
             None,
-            &["nixpkgs", "flake-utils"],
+            &["nixpkgs"],
         ));
         overlays.push("import rust-overlay".to_string());
         let str_rust_extensions: Vec<String> = out_rust_extensions
@@ -987,6 +1020,8 @@ fn add_r(
         );
 
         nixpkgs_pkgs.insert("R".to_string()); // that's the overlayed R.
+    } else {
+        definitions.insert("R_tracked".to_string(), "null".to_string());
     }
 }
 

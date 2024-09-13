@@ -370,7 +370,7 @@ fn inner_main() -> Result<()> {
                     rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
                 }
                 _ => {
-                    info!("Please pass a subcommand as to what to build");
+                    info!("Please pass a subcommand as to what to build (use --help to list)");
                     std::process::exit(1);
                 }
             }
@@ -401,7 +401,7 @@ fn inner_main() -> Result<()> {
         if let Some(python) = &tofued_config.python {
             //todo
             fill_venv(&python.version, &python.packages, &flake_dir)?;
-            if let Some(r) = &tofued_config.r {
+            /* if let Some(r) = &tofued_config.r {
                 add_r_library_path(
                     &flake_dir,
                     r,
@@ -409,7 +409,7 @@ fn inner_main() -> Result<()> {
                     &in_non_spec_but_cached_values,
                     &mut out_non_spec_but_cached_values,
                 )?;
-            }
+            } */
         };
         if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
             save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
@@ -1160,10 +1160,13 @@ fn fill_venv(
     Ok(())
 }
 
-/// the R 'binary' itself set's it's `LD_LIBRARY_PATH`,
+/* /// the R 'binary' itself set's it's `LD_LIBRARY_PATH`,
 /// but for e.g. rpy2 to work correctly, we need to set the correct `LD_LIBRARY_PATH`
 /// inside the container
 /// fortunatly, we can ask R about it
+///
+/// 20240913: I am no longer convinced this is necessary and useful
+/// rpy2 seems to be working without and it breaks STAR in the full flake
 fn add_r_library_path(
     flake_dir: &Path,
     r: &config::TofuR,
@@ -1200,8 +1203,9 @@ fn add_r_library_path(
         }
     }
     Ok(())
-}
-fn figure_out_r_library_path(flake_dir: &Path) -> Result<String> {
+} */
+
+/* fn figure_out_r_library_path(flake_dir: &Path) -> Result<String> {
     let singularity_url = format!("{}#singularity", anysnake2::get_outside_nixpkgs_url().unwrap());
     let singularity_args: Vec<String> = vec![
         "shell".into(),
@@ -1236,7 +1240,7 @@ fn figure_out_r_library_path(flake_dir: &Path) -> Result<String> {
     }
     let ld_libarry_path = stdout.trim();
     Ok(ld_libarry_path.to_string())
-}
+} */
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
     let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;

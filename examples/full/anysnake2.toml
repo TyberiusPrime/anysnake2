@@ -4,9 +4,9 @@
 # We leverage nix flakes to run exactly that version.
 # rev = "dev" = do not switch to fixed version, used in development.
 	url = "dev" # replace with fixed version outside of tests/examples.
-	# leave off to auto detect the newest version
-	# looks like this TOFU
-	# url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+# leave off to auto detect the newest version
+# looks like this TOFU
+# url = "github:TyberiusPrime/anysnake2/main/1.15.5"
 
 # You can leave this off initially, it will be filled with the newest version
 

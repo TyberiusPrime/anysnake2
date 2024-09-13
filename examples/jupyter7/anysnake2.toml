@@ -8,6 +8,7 @@
 [nixpkgs]
 # the nixpkgs used inside the container
 	packages = [ # use https://search.nixos.org/packages to search
+		"evcxr",
 ]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
@@ -18,14 +19,20 @@
 
 
 [python.packages]
+#pandas=""
+	jupyter-black=""
+	jupyterlab-code-formatter=""
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	notebook=""
-	#pandas=""
+
+
+[R]
+	date = "2024-05-10"
+	packages = ['IRkernel']
+	url = "github:TyberiusPrime/nixR/main/9c1b6cc8790dccddf583d45ad21ace80df5dbbe8"
 
 
 [rust]
-	url = "github:oxalica/rust-overlay/master/d720bf3cebac38c2426d77ee2e59943012854cb8"
-	version="1.55.0"
 	url = "github:oxalica/rust-overlay/master/a71b1240e29f1ec68612ed5306c328086bed91f9"
 
 
