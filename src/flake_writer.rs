@@ -826,9 +826,9 @@ fn run_git_commit(flake_dir: &Path) -> Result<()> {
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stdout.contains("no changes added") {
+        if !stdout.contains("no changes added") && !stdout.contains("nothing added to commit"){
             let msg =
-                format!("Failed git add flake.nix. \n Stdout {stdout:?}\nStderr: {stderr:?}",);
+                format!("Failed git commit\n Stdout: \n{stdout}\n\nStderr: {stderr}",);
             bail!(msg);
         }
     }
@@ -1419,3 +1419,5 @@ fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
 
     Ok(())
 }
+
+
