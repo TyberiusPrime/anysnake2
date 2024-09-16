@@ -842,7 +842,7 @@ fn clone(
                 tofu_vcs.clone_repo(&final_dir.to_string_lossy())?;
             }
         }
-        known_clones.insert(name.to_string(), format!("{source:?}"));
+        known_clones.insert(name.to_string(), source.to_string());
     }
     Ok(())
 }
@@ -889,7 +889,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
             for (name, source) in name_urls {
                 let known_source = known_clones.get(name).map_or("", String::as_str);
                 let final_dir: PathBuf = [target_dir, name].iter().collect();
-                let new_source_str = format!("{:?}", source.without_username_in_url());
+                let new_source_str = format!("{}", source.without_username_in_url());
                 if final_dir.exists() && !dir_empty(&final_dir)? && known_source != new_source_str
                 //empty dir is ok.
                 {

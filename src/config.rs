@@ -428,45 +428,9 @@ impl TofuPythonPackageSource {
 mod test {
     use serde_json::json;
 
-    use crate::{config::remove_username_from_url, vcs::{ParsedVCS, TofuVCS}};
+    use crate::{config::remove_username_from_url, vcs::{TofuVCS}};
 
-    #[test]
-    fn test_remove_username_from_url() {
-        assert_eq!(
-            remove_username_from_url("https://user@example.com"),
-            "https://example.com/"
-        );
-        assert_eq!(
-            remove_username_from_url("https://example.com"),
-            "https://example.com/"
-        );
-        assert_eq!(
-            remove_username_from_url("hg+https://something:passsword@example.com"),
-            "hg+https://example.com"
-        );
-    }
-
-    #[test]
-    fn test_no_usernames_in_vcs_url_to_string_git() {
-        let git_vcs = TofuVCS::Git {
-            url: "https://user:password@example.com".to_string(),
-            branch: "main".to_string(),
-            rev: "123".to_string(),
-        };
-        let str_vcs = serde_json::to_string_pretty(&json!(git_vcs)).unwrap();
-        assert!(str_vcs.contains("https://example.com"));
-    }
-
-    #[test]
-    fn test_no_usernames_in_vcs_url_to_string_hg() {
-        let git_vcs = TofuVCS::Mercurial {
-            url: "https://user:password@example.com".to_string(),
-            rev: "123".to_string(),
-        };
-        let str_vcs = serde_json::to_string_pretty(&json!(git_vcs)).unwrap();
-        assert!(str_vcs.contains("https://example.com"));
-
-    }
+    
 
 }
 

@@ -6,7 +6,7 @@ use serde::{Serialize, Serializer};
 use version_compare::Version;
 
 use crate::{
-    config::{self, remove_username_from_url},
+    config::{self, remove_username_from_url, TofuPythonPackageSource},
     flake_writer::add_auth,
 };
 use anysnake2::{run_without_ctrl_c, util::get_proxy_req};
@@ -33,7 +33,6 @@ pub enum ParsedVCS {
 #[derive(Serialize, Debug, PartialEq, Eq, Clone)]
 pub enum TofuVCS {
     Git {
-        #[serde(serialize_with = "serializer_remove_username_from_url")]
         url: String,
         branch: String,
         rev: String,
@@ -46,22 +45,14 @@ pub enum TofuVCS {
     },
 
     Mercurial {
-        #[serde(serialize_with = "serializer_remove_username_from_url")]
         url: String,
         rev: String,
     },
 }
 
-fn serializer_remove_username_from_url<S>(url: &str, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let url_without_username = remove_username_from_url(url);
-    serializer.serialize_str(&url_without_username)
-}
-
 impl TofuVCS {
     pub fn to_nix_string(&self) -> String {
+        //this must include username:password
         match self {
             TofuVCS::Git { url, branch, rev } => {
                 format!("git+{url}?ref={branch}&rev={rev}")
@@ -210,6 +201,17 @@ impl std::fmt::Display for TofuVCS {
                 format!("hg+{url}?rev={rev}")
             }
         })
+    }
+}
+impl std::fmt::Display for TofuPythonPackageSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            TofuPythonPackageSource::VersionConstraint(x) => x.to_string(),
+            TofuPythonPackageSource::Url(url) => remove_username_from_url(url),
+            TofuPythonPackageSource::Vcs(vcs) => vcs.to_string(),
+            TofuPythonPackageSource::PyPi { version } => format!("pypi:{version}"),
+        };
+        f.write_str(&out)
     }
 }
 
@@ -873,5 +875,45 @@ mod test {
             "git+https://github.com/TyberiusPrime/anysnake2_release_flakes?ref=main&rev=1.15.4&branch=shu",
         );
         assert!(vcs.is_err());
+    }
+
+    #[test]
+    fn test_remove_username_from_url() {
+        assert_eq!(
+            remove_username_from_url("https://user@example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            remove_username_from_url("https://example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            remove_username_from_url("hg+https://something:passsword@example.com"),
+            "hg+https://example.com"
+        );
+    }
+
+    #[test]
+    fn test_no_usernames_in_vcs_url_to_string_git() {
+        let git_vcs = TofuVCS::Git {
+            url: "https://user:password@example.com".to_string(),
+            branch: "main".to_string(),
+            rev: "123".to_string(),
+        };
+        let str_vcs = format!("{}", git_vcs);
+        assert!(str_vcs.contains("https://example.com"));
+        assert!(!str_vcs.contains("user:password"));
+    }
+
+    #[test]
+    fn test_no_usernames_in_vcs_url_to_string_hg() {
+        let git_vcs = TofuVCS::Mercurial {
+            url: "https://user:password@example.com".to_string(),
+            rev: "123".to_string(),
+        };
+        let str_vcs = format!("{}", git_vcs);
+        dbg!(&str_vcs);
+        assert!(str_vcs.contains("https://example.com"));
+        assert!(!str_vcs.contains("user:password"));
     }
 }
