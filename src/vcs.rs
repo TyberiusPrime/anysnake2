@@ -2,10 +2,13 @@ use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, error};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use version_compare::Version;
 
-use crate::flake_writer::add_auth;
+use crate::{
+    config::{self, remove_username_from_url},
+    flake_writer::add_auth,
+};
 use anysnake2::{run_without_ctrl_c, util::get_proxy_req};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -30,6 +33,7 @@ pub enum ParsedVCS {
 #[derive(Serialize, Debug, PartialEq, Eq, Clone)]
 pub enum TofuVCS {
     Git {
+        #[serde(serialize_with = "serializer_remove_username_from_url")]
         url: String,
         branch: String,
         rev: String,
@@ -42,9 +46,18 @@ pub enum TofuVCS {
     },
 
     Mercurial {
+        #[serde(serialize_with = "serializer_remove_username_from_url")]
         url: String,
         rev: String,
     },
+}
+
+fn serializer_remove_username_from_url<S>(url: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let url_without_username = remove_username_from_url(url);
+    serializer.serialize_str(&url_without_username)
 }
 
 impl TofuVCS {
@@ -182,7 +195,10 @@ impl TofuVCS {
 impl std::fmt::Display for TofuVCS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&match self {
-            TofuVCS::Git { url, branch, rev } => format!("git+{url}?ref={branch}&rev={rev}"),
+            TofuVCS::Git { url, branch, rev } => {
+                let url = config::remove_username_from_url(url);
+                format!("git+{url}?ref={branch}&rev={rev}")
+            }
             TofuVCS::GitHub {
                 owner,
                 repo,
@@ -190,6 +206,7 @@ impl std::fmt::Display for TofuVCS {
                 rev,
             } => format!("github:{owner}/{repo}/{branch}/{rev}"),
             TofuVCS::Mercurial { url, rev } => {
+                let url = config::remove_username_from_url(url);
                 format!("hg+{url}?rev={rev}")
             }
         })

@@ -133,6 +133,17 @@ fn test_just_python() {
     assert!(stdout.contains("Argument strings:"));
     //assert!(stdout.contains("loguru version "));
     assert!(!stderr.contains("ImportError"));
+
+    //now test the 'will not remove clone code' functionality
+    let query = "a981a9ea5468faa66fccc6c69c5d5807ef8115c4";
+    let replacement = "73c059bc0941149f59c56e4410b46be7f809587e";
+    let raw = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
+    let out = raw.replace(query, replacement);
+    ex::fs::write(td.path().join("anysnake2.toml"), out).unwrap();
+
+    let (code, _stdout, stderr) = run_test(&td_path, &["run", "--", "hello"], true);
+    assert!(code == 70);
+    assert!(stderr.contains("Cowardly refusing to throw away old checkout"));
 }
 
 #[test]

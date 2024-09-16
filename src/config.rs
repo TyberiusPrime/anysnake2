@@ -277,7 +277,6 @@ pub struct TofuDevShell {
     pub shell: String,
 }
 
-
 #[derive(Deserialize, Debug)]
 pub struct NixPkgs {
     //tell serde to read it from url/rev instead
@@ -375,6 +374,100 @@ impl PythonPackageSource {
             },
         )
     }
+}
+
+pub fn remove_username_from_url(input: &str) -> String {
+    use url::Url;
+    let mut url = Url::parse(input).unwrap();
+    url.set_username("").unwrap();
+    url.set_password(None).unwrap();
+    url.to_string()
+}
+
+impl TofuPythonPackageSource {
+    pub fn without_username_in_url(&self) -> Self {
+        match self {
+            TofuPythonPackageSource::Vcs(vcs) => match vcs {
+                TofuVCS::GitHub {
+                    owner,
+                    repo,
+                    branch,
+                    rev,
+                } => TofuPythonPackageSource::Vcs(TofuVCS::GitHub {
+                    owner: owner.clone(),
+                    repo: repo.clone(),
+                    branch: branch.clone(),
+                    rev: rev.clone(),
+                }),
+                TofuVCS::Git { url, branch, rev } => TofuPythonPackageSource::Vcs(TofuVCS::Git {
+                    url: remove_username_from_url(url),
+                    branch: branch.clone(),
+                    rev: rev.clone(),
+                }),
+                TofuVCS::Mercurial { url, rev } => {
+                    TofuPythonPackageSource::Vcs(TofuVCS::Mercurial {
+                        url: remove_username_from_url(url),
+                        rev: rev.clone(),
+                    })
+                }
+            },
+            TofuPythonPackageSource::Url(url) => {
+                TofuPythonPackageSource::Url(remove_username_from_url(url))
+            }
+            TofuPythonPackageSource::VersionConstraint(constraint) => {
+                TofuPythonPackageSource::VersionConstraint(constraint.clone())
+            }
+            TofuPythonPackageSource::PyPi { version } => TofuPythonPackageSource::PyPi {
+                version: version.clone(),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    use crate::{config::remove_username_from_url, vcs::{ParsedVCS, TofuVCS}};
+
+    #[test]
+    fn test_remove_username_from_url() {
+        assert_eq!(
+            remove_username_from_url("https://user@example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            remove_username_from_url("https://example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            remove_username_from_url("hg+https://something:passsword@example.com"),
+            "hg+https://example.com"
+        );
+    }
+
+    #[test]
+    fn test_no_usernames_in_vcs_url_to_string_git() {
+        let git_vcs = TofuVCS::Git {
+            url: "https://user:password@example.com".to_string(),
+            branch: "main".to_string(),
+            rev: "123".to_string(),
+        };
+        let str_vcs = serde_json::to_string_pretty(&json!(git_vcs)).unwrap();
+        assert!(str_vcs.contains("https://example.com"));
+    }
+
+    #[test]
+    fn test_no_usernames_in_vcs_url_to_string_hg() {
+        let git_vcs = TofuVCS::Mercurial {
+            url: "https://user:password@example.com".to_string(),
+            rev: "123".to_string(),
+        };
+        let str_vcs = serde_json::to_string_pretty(&json!(git_vcs)).unwrap();
+        assert!(str_vcs.contains("https://example.com"));
+
+    }
+
 }
 
 #[derive(Debug, Clone)]
@@ -478,7 +571,13 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
                     ));
                 }
-                let allowed_keys = &["url", "version", "poetry2nix", "editable", "pre_poetry_patch"];
+                let allowed_keys = &[
+                    "url",
+                    "version",
+                    "poetry2nix",
+                    "editable",
+                    "pre_poetry_patch",
+                ];
                 for key in &parsed {
                     if !allowed_keys.contains(&key.0.as_str()) {
                         return Err(serde::de::Error::custom(format!(

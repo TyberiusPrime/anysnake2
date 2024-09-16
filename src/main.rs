@@ -887,22 +887,23 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
         };
         let do_clones = |known_clones: &mut HashMap<String, String>| {
             for (name, source) in name_urls {
-                let known_url = known_clones.get(name).map_or("", String::as_str);
+                let known_source = known_clones.get(name).map_or("", String::as_str);
                 let final_dir: PathBuf = [target_dir, name].iter().collect();
-                let url = format!("{source:?}");
-                if known_url != url && final_dir.exists() && !dir_empty(&final_dir)?
+                let new_source_str = format!("{:?}", source.without_username_in_url());
+                if final_dir.exists() && !dir_empty(&final_dir)? && known_source != new_source_str
                 //empty dir is ok.
                 {
                     let msg = format!(
-                            "Url changed for clone target: {target_dir}/{name}. Was '{known_url}' is now '{url}'.\n\
+                            "Url changed for clone target: {target_dir}/{name}. Was '{known_source}' is now '{new_source_str}'.\n\
                         Cowardly refusing to throw away old checkout in {final_dir:?}."
                         );
                     bail!(msg);
                 }
             }
             for (name, url) in name_urls {
-                clone(flake_dir, target_dir, name, url, known_clones)
-                    .with_context(||format!("Cloning for {name} into {target_dir} from {url:?}"))?;
+                clone(flake_dir, target_dir, name, url, known_clones).with_context(|| {
+                    format!("Cloning for {name} into {target_dir} from {url:?}")
+                })?;
             }
             Ok(())
         };
