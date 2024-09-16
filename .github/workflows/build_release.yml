@@ -30,6 +30,14 @@ jobs:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
           ARCHIVE_TYPES: "tar.gz"
+      - name: verify tag matches version
+        run: |
+          # run generateb binary --version
+          BINARY_REPORTED_VERSION=`./target/release/anysnake2 --version`
+          if [ "Anysnake2 ${{ github.event.release.tag_name }}" != "$BINARY_REPORTED_VERSION" ]; then
+            echo "Tag does not match version. Aborting"
+            exit 1
+          fi
       - name: tell release flake
         run: |
           curl \
