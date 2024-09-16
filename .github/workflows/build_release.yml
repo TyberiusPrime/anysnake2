@@ -33,7 +33,7 @@ jobs:
       - name: verify tag matches version
         run: |
           # run generateb binary --version
-          BINARY_REPORTED_VERSION=`./target/release/anysnake2 --version`
+          BINARY_REPORTED_VERSION=`./target/x86_64-unknown-linux-musl/release/anysnake2 --version`
           if [ "Anysnake2 ${{ github.event.release.tag_name }}" != "$BINARY_REPORTED_VERSION" ]; then
             echo "Tag does not match version. Aborting"
             exit 1

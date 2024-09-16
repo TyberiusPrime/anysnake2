@@ -543,7 +543,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
                 let url = match other {
                     Some(config::ParsedVCSorDev::Vcs(vcs)) => vcs,
                     Some(_) => unreachable!(),
-                    None => base.clone().try_into().expect("invalid default url"),
+                    None => base.try_into().expect("invalid default url"),
                 };
                 let new_url = tofu_repo_to_tag(
                     &["anysnake2", "url2"],
