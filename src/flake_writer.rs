@@ -108,7 +108,7 @@ pub fn write_flake(
                                                //
                                                ////todo: does rust even need to be a special case?
     add_jupyter_kernels(
-        &parsed_config,
+        parsed_config,
         &mut definitions,
         &mut nixpkgs_pkgs,
         &mut rust_extensions,
@@ -207,7 +207,7 @@ pub fn write_flake(
         &flake_filename,
         flake_dir,
     )?;
-    res = res | python_locks_changed;
+    res |= python_locks_changed;
 
     run_git_add(&git_tracked_files, flake_dir)?;
     run_git_commit(flake_dir)?; //after nix 2.23 we will need to commit the flake, possibly. At
@@ -293,7 +293,7 @@ fn insert_allow_unfree(
         "\"%PERMITTED_INSECURE_PACKAGES%\"",
         &(permitted_insecure_packages
             .as_ref()
-            .map_or_else(|| String::new(), |x| x.join(" "))),
+            .map_or_else(String::new, |x| x.join(" "))),
     )
 }
 
@@ -304,18 +304,14 @@ fn add_jupyter_kernels(
     rust_extensions: &mut Vec<String>,
 ) {
     let mut jupyter_kernels = String::new();
-    let jupyter_included = parsed_config
-        .python
-        .as_ref()
-        .map(|p| {
-            p.packages
-                .iter()
-                .any(|(k, _)| k == "jupyter" || k == "notebook" || k == "jupyterlab")
-        })
-        .unwrap_or(false);
+    let jupyter_included = parsed_config.python.as_ref().is_some_and(|p| {
+        p.packages
+            .iter()
+            .any(|(k, _)| k == "jupyter" || k == "notebook" || k == "jupyterlab")
+    });
     if let Some(r) = &parsed_config.r {
         // install R kernel
-        if jupyter_included && r.packages.iter().any(|x| x == "IRkernel") && jupyter_included {
+        if jupyter_included && r.packages.iter().any(|x| x == "IRkernel") {
             jupyter_kernels.push_str(
                 "
                 mkdir $out/share/jupyter/kernels/R
@@ -347,12 +343,13 @@ fn add_jupyter_kernels(
         .to_string()
             + &jupyter_kernels;
     }
-    if jupyter_included  && !jupyter_kernels.is_empty(){
+    if jupyter_included && !jupyter_kernels.is_empty() {
         definitions.insert(
             "zzz_jupyter_kernel_drv".to_string(),
             "pkgs.runCommand \"anysnake2-jupyter-kernels\" {} ''
                 mkdir -p $out/share/jupyter/kernels
-            ".to_string()
+            "
+            .to_string()
                 + &jupyter_kernels
                 + "''",
         );
@@ -534,8 +531,7 @@ fn copy_for_poetry(
 ) -> Result<String> {
     let pre_poetry_patch_sha = pre_poetry_patch
         .as_ref()
-        .map(|x| sha256::digest(x))
-        .unwrap_or_else(|| "None".to_string());
+        .map_or_else(|| "None".to_string(), sha256::digest);
 
     let target_path = pyproject_toml_path
         .parent()
@@ -1131,6 +1127,7 @@ fn format_poetry_build_input_overrides(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn add_python(
     parsed_config: &mut config::TofuConfigToml,
     inputs: &mut Vec<InputFlake>,
@@ -1148,9 +1145,9 @@ fn add_python(
     match &mut parsed_config.python {
         Some(python) => {
             let original_pyproject_toml =
-                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| "".to_string());
+                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| String::new());
             let original_poetry_lock =
-                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| "".to_string());
+                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| String::new());
 
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
                 bail!(
@@ -1255,9 +1252,9 @@ fn add_python(
             git_tracked_files.push("poetry_rewritten/poetry.lock".to_string());
             git_tracked_files.push("poetry_rewritten/pyproject.toml".to_string());
             let new_pyproject_toml =
-                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| "".to_string());
+                ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| String::new());
             let new_poetry_lock =
-                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| "".to_string());
+                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| String::new());
             if new_pyproject_toml != original_pyproject_toml
                 || new_poetry_lock != original_poetry_lock
             {

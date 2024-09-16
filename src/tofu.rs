@@ -22,6 +22,7 @@ trait Tofu<A> {
 }
 
 impl Tofu<config::TofuConfigToml> for config::ConfigToml {
+    #[allow(clippy::too_many_lines)]
     fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuConfigToml> {
         let converted_clone_regexps = match self.clone_regexps {
             Some(cr) => Some(clone_regex_strings_to_regex(cr)?),
@@ -388,6 +389,7 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
             None => None,
             Some(rust) => {
                 let url = tofu_repo_to_newest(&url_toml_name, updates, rust.url, default_url)?;
+                #[allow(clippy::single_match_else)]
                 let version = match rust.version {
                     Some(v) => v,
                     None => {
@@ -402,7 +404,7 @@ impl TofuToNewest<Option<config::TofuRust>> for Option<config::Rust> {
                         let rust = json["packages"]["x86_64-linux"]["default"]["name"]
                             .as_str()
                             .context("Could not find default version in flake show")?;
-                        let actual_version = rust.split("-").last().context("rust version naming scheme changed, expected something like 'rust-default-1.81.0?'")?;
+                        let actual_version = rust.split('-').last().context("rust version naming scheme changed, expected something like 'rust-default-1.81.0?'")?;
                         debug!("Found version: {actual_version}");
                         actual_version.to_string()
                     }
@@ -431,6 +433,7 @@ impl TofuToNewest<Option<config::TofuR>> for Option<config::R> {
             Some(inner_self) => {
                 let url =
                     tofu_repo_to_newest(&ref_url_toml_name, updates, inner_self.url, default_url)?;
+                #[allow(clippy::single_match_else)]
                 let date = match inner_self.date {
                     Some(date) => date,
                     None => {
@@ -477,11 +480,11 @@ fn find_newest_nixr_date(url: &TofuVCS) -> Result<String> {
                 .find_iter(&text)
                 .map(|x| x.as_str())
                 .collect::<Vec<_>>();
-            all_dates.sort();
+            all_dates.sort_unstable();
             let last_date = all_dates
                 .last()
                 .with_context(|| format!("Could not find dates on {url}"))?;
-            Ok(last_date.to_string())
+            Ok((*last_date).to_string())
         }
         _ => {
             bail!("Only know how to determite newest date for R from nixR github, not from other VCS. Add it manually, please");

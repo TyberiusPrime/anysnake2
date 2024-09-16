@@ -256,19 +256,10 @@ impl Anysnake2 {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct DevShell {
     pub inputs: Option<Vec<String>>,
     pub shell: Option<String>,
-}
-
-impl Default for DevShell {
-    fn default() -> Self {
-        DevShell {
-            inputs: None,
-            shell: None,
-        }
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -426,9 +417,9 @@ impl TofuPythonPackageSource {
 
 #[cfg(test)]
 mod test {
-    use serde_json::json;
+    
 
-    use crate::{config::remove_username_from_url, vcs::{TofuVCS}};
+    
 
     
 
@@ -494,6 +485,7 @@ impl<'de> Deserialize<'de> for StrOrHashMap {
 }
 
 impl<'de> Deserialize<'de> for PythonPackageDefinition {
+    #[allow(clippy::too_many_lines)]
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
     where
         D: Deserializer<'de>,

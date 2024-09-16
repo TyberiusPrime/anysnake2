@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, error};
-use serde::{Serialize, Serializer};
+use serde::{Serialize};
 use version_compare::Version;
 
 use crate::{
@@ -143,7 +143,7 @@ impl TofuVCS {
                 run_without_ctrl_c(|| {
                     let inner = || {
                         let mut proc = std::process::Command::new("hg");
-                        proc.args(["clone", &url, target_dir]);
+                        proc.args(["clone", url, target_dir]);
                         debug!("Running {:?}", proc);
                         let status = proc
                             .status()
@@ -152,7 +152,7 @@ impl TofuVCS {
                             bail!("hg clone failed for {self}");
                         }
                         let mut proc = std::process::Command::new("hg");
-                        proc.args(["checkout", &rev]);
+                        proc.args(["checkout", rev]);
                         proc.current_dir(target_dir);
                         debug!("Running {:?}", proc);
                         let status = proc
@@ -900,7 +900,7 @@ mod test {
             branch: "main".to_string(),
             rev: "123".to_string(),
         };
-        let str_vcs = format!("{}", git_vcs);
+        let str_vcs = git_vcs.to_string();
         assert!(str_vcs.contains("https://example.com"));
         assert!(!str_vcs.contains("user:password"));
     }
@@ -911,7 +911,7 @@ mod test {
             url: "https://user:password@example.com".to_string(),
             rev: "123".to_string(),
         };
-        let str_vcs = format!("{}", git_vcs);
+        let str_vcs = git_vcs.to_string();
         dbg!(&str_vcs);
         assert!(str_vcs.contains("https://example.com"));
         assert!(!str_vcs.contains("user:password"));
