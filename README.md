@@ -200,6 +200,13 @@ Just include this:
 (Visit [nixR date overview](https://github.com/TyberiusPrime/nixR/blob/main/generated/readme.md) too see available dates.)
 
 
+# Using rpy2
+
+If you have R and python as a dependency, rpy2 is automatically added with the necessary overrides for it to use the correct R.
+
+If you add it manually, the overrides are not automatically applied, and you need to add 
+at least `poetry2nix.env = {R_HOME = '${R_tracked}'}` to your rpy2 declaration.
+
 # Using Rust
 ```toml
 [rust] # rust section is optional
