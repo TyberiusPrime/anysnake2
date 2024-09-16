@@ -85,54 +85,95 @@ impl TofuVCS {
     }
 
     pub fn clone_repo(&self, target_dir: &str) -> Result<()> {
-        let (url, rev, branch) = self.get_url_rev_branch();
-        //let clone_args =
-        run_without_ctrl_c(|| {
-            let inner = || {
-                let mut proc = std::process::Command::new("git");
-                proc.args(["clone", &url, target_dir]);
-                debug!("Running {:?}", proc);
-                let status = proc
-                    .status()
-                    .with_context(|| format!("Git clone failed for {self}"))?;
-                if !status.success() {
-                    bail!("Git clone failed for {self}");
-                }
+        match self {
+            TofuVCS::Git { .. } | TofuVCS::GitHub { .. } => {
+                let (url, rev, branch) = self.get_url_rev_branch();
+                run_without_ctrl_c(|| {
+                    let inner = || {
+                        let mut proc = std::process::Command::new("git");
+                        proc.args(["clone", &url, target_dir]);
+                        debug!("Running {:?}", proc);
+                        let status = proc
+                            .status()
+                            .with_context(|| format!("Git clone failed for {self}"))?;
+                        if !status.success() {
+                            bail!("Git clone failed for {self}");
+                        }
 
-                let mut proc = std::process::Command::new("git");
-                proc.args(["checkout", branch]);
-                proc.current_dir(target_dir);
-                debug!("Running {:?}", proc);
-                let status = proc
-                    .status()
-                    .with_context(|| format!("Git checkout failed for {self}"))?;
-                if !status.success() {
-                    bail!("Git checkout failed for {self}");
-                }
-                //git reset
-                let mut proc = std::process::Command::new("git");
-                proc.args(["reset", "--hard", rev]);
-                proc.current_dir(target_dir);
-                debug!("Running {:?}", proc);
-                let status = proc
-                    .status()
-                    .with_context(|| format!("Git reset failed for {self}"))?;
-                if !status.success() {
-                    bail!("Git reset failed for {self}");
-                }
-                Ok(())
-            };
+                        let mut proc = std::process::Command::new("git");
+                        proc.args(["checkout", branch]);
+                        proc.current_dir(target_dir);
+                        debug!("Running {:?}", proc);
+                        let status = proc
+                            .status()
+                            .with_context(|| format!("Git checkout failed for {self}"))?;
+                        if !status.success() {
+                            bail!("Git checkout failed for {self}");
+                        }
+                        //git reset
+                        let mut proc = std::process::Command::new("git");
+                        proc.args(["reset", "--hard", rev]);
+                        proc.current_dir(target_dir);
+                        debug!("Running {:?}", proc);
+                        let status = proc
+                            .status()
+                            .with_context(|| format!("Git reset failed for {self}"))?;
+                        if !status.success() {
+                            bail!("Git reset failed for {self}");
+                        }
+                        Ok(())
+                    };
 
-            if let Err(msg) = inner() {
-                error!("Throwing away cloned repo because of error: {msg:?}");
-                ex::fs::remove_dir_all(target_dir)
-                    .context("Failed to remove target dir of failed clone")?;
+                    if let Err(msg) = inner() {
+                        error!("Throwing away cloned repo because of error: {msg:?}");
+                        ex::fs::remove_dir_all(target_dir)
+                            .context("Failed to remove target dir of failed clone")?;
 
-                return Err(msg);
+                        return Err(msg);
+                    }
+
+                    Ok(())
+                })?;
             }
+            TofuVCS::Mercurial { url, rev } => {
+                run_without_ctrl_c(|| {
+                    let inner = || {
+                        let mut proc = std::process::Command::new("hg");
+                        proc.args(["clone", &url, target_dir]);
+                        debug!("Running {:?}", proc);
+                        let status = proc
+                            .status()
+                            .with_context(|| format!("hg clone failed for {self}"))?;
+                        if !status.success() {
+                            bail!("hg clone failed for {self}");
+                        }
+                        let mut proc = std::process::Command::new("hg");
+                        proc.args(["checkout", &rev]);
+                        proc.current_dir(target_dir);
+                        debug!("Running {:?}", proc);
+                        let status = proc
+                            .status()
+                            .with_context(|| format!("hg checkout failed for {self}"))?;
+                        if !status.success() {
+                            bail!("hg clone failed for {self}");
+                        }
 
-            Ok(())
-        })?;
+                        Ok(())
+                    };
+
+                    if let Err(msg) = inner() {
+                        error!("Throwing away cloned repo because of error: {msg:?}");
+                        ex::fs::remove_dir_all(target_dir)
+                            .context("Failed to remove target dir of failed clone")?;
+
+                        return Err(msg);
+                    }
+
+                    Ok(())
+                })?;
+            }
+        };
+        //let clone_args =
 
         Ok(())
     }
@@ -426,7 +467,10 @@ impl ParsedVCS {
                 let mut proc = std::process::Command::new("nix");
                 proc.args([
                     "shell",
-                    &format!("{}#mercurial", anysnake2::get_outside_nixpkgs_url().unwrap()),
+                    &format!(
+                        "{}#mercurial",
+                        anysnake2::get_outside_nixpkgs_url().unwrap()
+                    ),
                     "-c",
                     "hg",
                     "id",

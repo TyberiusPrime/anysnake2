@@ -902,7 +902,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
             }
             for (name, url) in name_urls {
                 clone(flake_dir, target_dir, name, url, known_clones)
-                    .context("Cloning for {name} into {target_dir} from {url:?}")?;
+                    .with_context(||format!("Cloning for {name} into {target_dir} from {url:?}"))?;
             }
             Ok(())
         };

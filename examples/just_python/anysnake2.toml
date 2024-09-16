@@ -1,4 +1,6 @@
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
 	url2="dev"
 
 
@@ -16,10 +18,10 @@
 	black=""
 	dppd = {poetry2nix.buildInputs = ["setuptools"]}
 	dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
-	# that supplies 'hello'
+# that supplies 'hello'
 	example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
 	hatchling=""
-	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
+	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
 	pandas="1.5.1"
 	polars={version = "pypi:0.20.31"}
 	pyscaffold = "3.1"
@@ -49,5 +51,10 @@
 
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[devshell]
+	inputs = []
+	shell = "bash"
 
 
