@@ -106,17 +106,30 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 updates,
                 "github:NixOS/nixpkgs",
                 NIXPKGS_TAG_REGEX,
-            )?, //todo: only tofu newest nixpkgs release..
+            )?, //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
+            uv_nixpkgs: self.uv_nixpks.tofu_to_newest(
+                // todo: only till 24.11 release, then uv
+                // is new enough.
+                &["uv_nixpkgs", "url"],
+                updates,
+                "github:NixOS/nixpkgs",
+            )?,
             ancient_poetry: self.ancient_poetry.tofu_to_newest(
                 &["ancient_poetry", "url"],
                 updates,
                 "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git",
             )?,
-            poetry2nix: self.poetry2nix.tofu_to_newest(
-                &["poetry2nix", "url"],
+            uv2nix: self.uv2nix.tofu_to_newest(
+                &["uv2nix", "url"],
                 updates,
-                "github:nix-community/poetry2nix",
+                "github:adisbladis/uv2nix",
             )?,
+            uv2nix_override_collection: self.uv2nix_override_collection.tofu_to_newest(
+                &["uv2nix_override_collection", "url"],
+                updates,
+                "github:TyberiusPrime/uv2nix_hammer_overrides",
+            )?,
+
             flake_util: self.flake_util.tofu_to_newest(
                 &["flake-util", "url"],
                 updates,
@@ -150,7 +163,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
         #[allow(clippy::map_entry)]
         if !python.packages.contains_key(&"rpy2".to_string()) {
             let source = config::PythonPackageSource::VersionConstraint("*".to_string());
-            let poetry2nix = toml::toml! {
+            let override_attrs = toml::toml! {
                 [env]
                     R_HOME = "${R_tracked}"
                     NIX_LDFLAGS = "-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib"
@@ -163,7 +176,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
             let def = config::PythonPackageDefinition {
                 source,
                 editable_path: None,
-                poetry2nix: poetry2nix.clone(),
+                override_attrs: override_attrs.clone(),
                 pre_poetry_patch: None,
             };
             python.packages.insert("rpy2".to_string(), def);
@@ -1308,7 +1321,7 @@ fn tofu_python_package_definition(
     use config::TofuPythonPackageSource::*;
     Ok(config::TofuPythonPackageDefinition {
         editable_path: ppd.editable_path.clone(),
-        poetry2nix: ppd.poetry2nix.clone(),
+        override_attrs: ppd.override_attrs.clone(),
         pre_poetry_patch: ppd.pre_poetry_patch.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),

@@ -72,8 +72,10 @@ pub struct ConfigToml {
     pub anysnake2: Anysnake2,
     pub nixpkgs: Option<NixPkgs>,
     pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
+    pub uv_nixpks: Option<ParsedVCSInsideURLTag>,
     pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
-    pub poetry2nix: Option<Poetry2Nix>,
+    pub uv2nix: Option<Poetry2Nix>,
+    pub uv2nix_override_collection: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -97,8 +99,10 @@ pub struct TofuConfigToml {
     pub anysnake2: TofuAnysnake2,
     pub nixpkgs: TofuNixPkgs,
     pub outside_nixpkgs: TofuVCS,
+    pub uv_nixpkgs: TofuVCS,
     pub ancient_poetry: TofuVCS,
-    pub poetry2nix: TofuPoetry2Nix,
+    pub uv2nix: TofuPoetry2Nix,
+    pub uv2nix_override_collection: TofuVCS,
     pub flake_util: TofuVCS,
     pub clone_regexps: Option<Vec<(regex::Regex, String)>>,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
@@ -432,7 +436,7 @@ mod test {
 pub struct PythonPackageDefinition {
     pub source: PythonPackageSource,
     pub editable_path: Option<String>,
-    pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub override_attrs: toml::map::Map<String, toml::Value>,
     pub pre_poetry_patch: Option<String>,
 }
 
@@ -440,7 +444,7 @@ pub struct PythonPackageDefinition {
 pub struct TofuPythonPackageDefinition {
     pub source: TofuPythonPackageSource,
     pub editable_path: Option<String>,
-    pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub override_attrs: toml::map::Map<String, toml::Value>,
     pub pre_poetry_patch: Option<String>,
 }
 
@@ -515,25 +519,25 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: None,
-                    poetry2nix: toml::map::Map::new(),
+                    override_attrs: toml::map::Map::new(),
                     pre_poetry_patch: None,
                 })
             }
             StrOrHashMap::HashMap(parsed) => {
                 if parsed.contains_key("preferWheel") {
                     return Err(serde::de::Error::custom(
-                        "preferWheel is not a valid key, did you mean poetry2nix.preferWheel?",
+                        "preferWheel is not a valid key, did you mean override_attrs.preferWheel?",
                     ));
                 }
                 if parsed.contains_key("buildInputs") {
                     return Err(serde::de::Error::custom(
-                        "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
+                        "bulidInputs is not a valid key, did you mean override_attrs.buildInputs?",
                     ));
                 }
                 let allowed_keys = &[
                     "url",
                     "version",
-                    "poetry2nix",
+                    "override_attrs",
                     "editable",
                     "pre_poetry_patch",
                 ];
@@ -593,7 +597,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         }
                     }
                 };
-                let poetry2nix = match parsed.get("poetry2nix") {
+                let override_attrs = match parsed.get("override_attrs") {
                     Some(entry) => Ok(entry
                         .as_table()
                         .cloned()
@@ -614,7 +618,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
-                    poetry2nix,
+                    override_attrs,
                     pre_poetry_patch,
                 })
             }

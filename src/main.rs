@@ -786,9 +786,10 @@ fn extract_python_package_version_from_poetry_lock(
     flake_dir: &Path,
     safe_name: &str,
 ) -> Result<String> {
-    let poetry_lock: PathBuf = flake_dir.join("poetry/poetry.lock");
+    let poetry_lock: PathBuf = flake_dir.join("poetry/uv.lock");
     let poetry_lock = fs::read_to_string(&poetry_lock)?;
     let poetry_lock: toml::Value = toml::from_str(&poetry_lock)?;
+    todo!();
     for package in poetry_lock["package"]
         .as_array()
         .expect("poetry.toml parsing error")
