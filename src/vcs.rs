@@ -181,6 +181,26 @@ impl TofuVCS {
 
         Ok(())
     }
+
+    pub fn to_string_including_username(&self) -> String {
+        match self {
+            TofuVCS::Git { url, branch, rev } => {
+                format!("git+{url}?ref={branch}&rev={rev}")
+            }
+            TofuVCS::GitHub {
+                owner,
+                repo,
+                branch,
+                rev,
+            } => {
+                format!("github:{owner}/{repo}/{branch}/{rev}")
+            }
+            TofuVCS::Mercurial { url, rev } => {
+                format!("hg+{url}?rev={rev}")
+            }
+        }
+    
+    }
 }
 
 impl std::fmt::Display for TofuVCS {
@@ -203,6 +223,7 @@ impl std::fmt::Display for TofuVCS {
         })
     }
 }
+
 impl std::fmt::Display for TofuPythonPackageSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let out = match self {

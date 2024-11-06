@@ -916,7 +916,7 @@ fn _tofu_repo_to_newest(
         //table["url"] = value(out.to_string());
         updates.push((
             toml_name.iter().map(ToString::to_string).collect(),
-            value(out.to_string()),
+            value(out.to_string_including_username()),
         ));
     }
     Ok((changed, out))
