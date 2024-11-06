@@ -50,6 +50,11 @@
 	version="1.70.0" # this is the default, but you can override it here
 
 
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
 [outside_nixpkgs]
 	url = "github:NixOS/nixpkgs/master/24.05"
 

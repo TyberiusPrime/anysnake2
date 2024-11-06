@@ -1351,12 +1351,12 @@ impl Tofu<TofuDevShell> for Option<config::DevShell> {
         let (inputs, shell) = match self {
             None => {
                 updates.push((
-                    vec!["devshell".to_string(), "inputs".to_string()],
+                    vec!["dev_shell".to_string(), "inputs".to_string()],
                     value(toml_edit::Array::default()),
                 ));
 
                 updates.push((
-                    vec!["devshell".to_string(), "shell".to_string()],
+                    vec!["dev_shell".to_string(), "shell".to_string()],
                     value("bash"),
                 ));
                 (Vec::new(), "bash".to_string())
@@ -1364,14 +1364,14 @@ impl Tofu<TofuDevShell> for Option<config::DevShell> {
             Some(inner_self) => {
                 let shell = inner_self.shell.unwrap_or_else(|| {
                     updates.push((
-                        vec!["devshell".to_string(), "shell".to_string()],
+                        vec!["dev_shell".to_string(), "shell".to_string()],
                         value("bash"),
                     ));
                     "bash".to_string()
                 });
                 let inputs = inner_self.inputs.unwrap_or_else(|| {
                     updates.push((
-                        vec!["devshell".to_string(), "inputs".to_string()],
+                        vec!["dev_shell".to_string(), "inputs".to_string()],
                         value(toml_edit::Array::default()),
                     ));
                     Vec::new()

@@ -179,9 +179,19 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
         }
     }
 
+    let old_toml = std::fs::read(toml_path).ok().and_then(|x| std::string::String::from_utf8(x).ok()).unwrap_or_default();
+    /* if !old_toml.is_empty() {
+        //copy to backup
+        let backup_path = toml_path.with_extension("toml.bak");
+        std::fs::write(&backup_path, old_toml.clone()).context("failed to write backup")?;
+    } */
     let out_toml = doc.to_string();
-    std::fs::write(toml_path, out_toml.trim_start()).context("failed to rewrite config file")?;
-    info!("Wrote updated {:?}", toml_path);
+    if old_toml.trim() != out_toml.trim() {
+        std::fs::write(toml_path, out_toml.trim_start()).context("failed to rewrite config file")?;
+        info!("Wrote updated {:?}", toml_path);
+    } else {
+        debug!("Toml contents unchanged");
+    }
 
     Ok(())
 }

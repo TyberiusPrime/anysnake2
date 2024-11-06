@@ -1269,7 +1269,7 @@ fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
         Some(x) => std::str::from_utf8(&x[1])?.to_string(),
         None => {
             let text = std::str::from_utf8(&text).with_context(|| {
-                format!("failed utf-8 converting {path:?}, but also had no NIX_PYTHONEXECUTABLE")
+                format!("failed utf-8 converting {path:?}, but also had no NIX_PYTHONEXECUTABLE. Did you leak a python binary with one of your input flakes into the container?")
             })?;
             let re = Regex::new("exec \"([^\"]+)\"").unwrap();
             let out: String = re

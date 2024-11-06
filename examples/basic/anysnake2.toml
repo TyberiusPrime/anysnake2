@@ -71,6 +71,11 @@ done
 """
 
 
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
 	url = "github:NixOS/nixpkgs/master/24.05"

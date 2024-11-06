@@ -29,6 +29,11 @@
 	testrepo2 = { url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", poetry2nix.buildInputs = ["setuptools"]}
 
 
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
 [outside_nixpkgs]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
