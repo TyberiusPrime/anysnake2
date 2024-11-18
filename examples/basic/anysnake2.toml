@@ -8,9 +8,9 @@
 
 [nixpkgs]
 # the nixpkgs used inside the container
-	packages = [ # use https://search.nixos.org/packages to search
-	"fish",
-]
+	packages = [
+		"bash",
+		"fish"]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 

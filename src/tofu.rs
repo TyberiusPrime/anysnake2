@@ -6,7 +6,7 @@ use toml_edit::value;
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{self,  TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
+    config::{self, TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
@@ -91,13 +91,16 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 }
             },
 
-            nixpkgs: self.nixpkgs.tofu_to_tag(
-                &["nixpkgs", "url"],
-                updates,
-                "github:NixOS/nixpkgs", // prefer github:/ for then nix doesn't clone the whole
-                // repo..
-                NIXPKGS_TAG_REGEX,
-            )?,
+            nixpkgs: self
+                .nixpkgs
+                .tofu_to_tag(
+                    &["nixpkgs", "url"],
+                    updates,
+                    "github:NixOS/nixpkgs", // prefer github:/ for then nix doesn't clone the whole
+                    // repo..
+                    NIXPKGS_TAG_REGEX,
+                )?
+                .sort_packages(&["nixpkgs", "packages"], updates),
             outside_nixpkgs: self.outside_nixpkgs.tofu_to_tag(
                 &["outside_nixpkgs", "url"],
                 updates,
@@ -297,14 +300,14 @@ trait TofuToTag<A> {
     ) -> Result<A>;
 }
 
-impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
+impl TofuToTag<config::TofuNixPkgs> for Option<config::NixPkgs> {
     fn tofu_to_tag(
         self,
         toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
         tag_regex: &str,
-    ) -> Result<config::TofuNixpkgs> {
+    ) -> Result<config::TofuNixPkgs> {
         let inner_self = self.unwrap_or_else(config::NixPkgs::new);
 
         let url_and_rev: vcs::ParsedVCS = inner_self
@@ -318,7 +321,7 @@ impl TofuToTag<config::TofuNixpkgs> for Option<config::NixPkgs> {
             tag_regex,
         )?;
 
-        let out = config::TofuNixpkgs {
+        let out = config::TofuNixPkgs {
             url: url_and_rev,
             packages: inner_self.packages.unwrap_or_default(),
             allow_unfree: inner_self.allow_unfree,
@@ -606,7 +609,7 @@ fn _tofu_repo_to_tag(
     tag_regex: &str,
 ) -> Result<vcs::TofuVCS> {
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
-    debug!("tofu_repo_to_tag: {toml_name:?} from {input:?} with /{tag_regex}/");
+    //debug!("tofu_repo_to_tag: {toml_name:?} from {input:?} with /{tag_regex}/");
     let (changed, out) = match &input {
         vcs::ParsedVCS::Git {
             url,
@@ -1384,5 +1387,24 @@ impl Tofu<TofuDevShell> for Option<config::DevShell> {
         let res = TofuDevShell { inputs, shell };
 
         Ok(res)
+    }
+}
+
+trait SortPackages {
+    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self; 
+}
+
+impl SortPackages for config::TofuNixPkgs {
+    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self {
+        let mut out = self.clone();
+        out.packages.sort();
+        if out.packages != self.packages {
+            let op: toml_edit::Array = out.packages.iter().map(ToString::to_string).collect();
+            updates.push((
+                toml_name.iter().map(ToString::to_string).collect(),
+                value(op),
+            ));
+        }
+        out
     }
 }

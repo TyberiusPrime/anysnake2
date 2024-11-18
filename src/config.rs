@@ -95,7 +95,7 @@ pub struct ConfigToml {
 pub struct TofuConfigToml {
     pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: TofuAnysnake2,
-    pub nixpkgs: TofuNixpkgs,
+    pub nixpkgs: TofuNixPkgs,
     pub outside_nixpkgs: TofuVCS,
     pub ancient_poetry: TofuVCS,
     pub poetry2nix: TofuPoetry2Nix,
@@ -291,10 +291,13 @@ impl NixPkgs {
     pub fn default_allow_unfree() -> bool {
         false
     }
+
+    
+
 }
 
-#[derive(Debug)]
-pub struct TofuNixpkgs {
+#[derive(Debug, Clone)]
+pub struct TofuNixPkgs {
     pub url: TofuVCS,
     pub packages: Vec<String>,
     pub allow_unfree: bool,

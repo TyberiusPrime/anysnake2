@@ -652,7 +652,7 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
 #[allow(clippy::too_many_arguments)]
 fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
-    nixpkgs: &config::TofuNixpkgs,
+    nixpkgs: &config::TofuNixPkgs,
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
