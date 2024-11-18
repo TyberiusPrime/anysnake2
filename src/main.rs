@@ -366,7 +366,12 @@ fn inner_main() -> Result<()> {
             match sc.subcommand() {
                 Some(("flake", _)) => {
                     info!("Writing just flake/flake.nix");
-                    rebuild_flake(use_generated_file_instead, "flake", &flake_dir)?;
+                    rebuild_flake(
+                        use_generated_file_instead,
+                        "flake",
+                        &flake_dir,
+                        flake_changed.flake_nix_changed,
+                    )?;
                 }
                 Some(("oci", _)) => {
                     info!("Building oci-image in flake/result");
@@ -374,11 +379,17 @@ fn inner_main() -> Result<()> {
                         use_generated_file_instead,
                         "oci_image.x86_64-linux",
                         &flake_dir,
+                        flake_changed.flake_nix_changed,
                     )?;
                 }
                 Some(("rootfs", _)) => {
                     info!("Building rootfs in flake/result");
-                    rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
+                    rebuild_flake(
+                        use_generated_file_instead,
+                        "",
+                        &flake_dir,
+                        flake_changed.flake_nix_changed,
+                    )?;
                 }
                 _ => {
                     info!("Please pass a subcommand as to what to build (use --help to list)");
@@ -404,9 +415,18 @@ fn inner_main() -> Result<()> {
         let build_unfinished_file = flake_dir.join(".build_unfinished"); // ie. the flake build failed
                                                                          //
                                                                          //early error exit if you try to run an non-existant command
-        if flake_changed || !build_output.exists() || build_unfinished_file.exists() {
+        if flake_changed.flake_nix_changed
+            || flake_changed.python_lock_changed
+            || !build_output.exists()
+            || build_unfinished_file.exists()
+        {
             info!("Rebuilding flake");
-            rebuild_flake(use_generated_file_instead, "", &flake_dir)?;
+            rebuild_flake(
+                use_generated_file_instead,
+                "",
+                &flake_dir,
+                flake_changed.flake_nix_changed,
+            )?;
         }
 
         if let Some(python) = &tofued_config.python {
@@ -923,10 +943,22 @@ fn rebuild_flake(
     use_generated_file_instead: bool,
     target: &str,
     flake_dir: impl AsRef<Path>,
+    flake_content_changed: bool,
 ) -> Result<()> {
     debug!("writing flake");
 
     if !use_generated_file_instead {
+        if flake_content_changed {
+            let flake_lock_path = flake_dir.as_ref().join("flake.lock");
+            if flake_lock_path.exists() {
+                fs::remove_file(&flake_lock_path)?;
+            }
+            Command::new("nix")
+                .args(["flake", "lock"])
+                .current_dir(&flake_dir)
+                .status()
+                .context("(Re)-locking flake failed")?;
+        }
         run_without_ctrl_c(|| {
             Command::new("git")
                 .args(["commit", "-m", "autocommit"])

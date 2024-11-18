@@ -31,14 +31,12 @@
 
 [nixpkgs]
 	allow_unfree = true # set to true to allow unfree packages from nixpkgs
-	packages = [ # use https://search.nixos.org/packages to search
+	packages = [
 		"fish",
-		"netcat",
-		"varscan", # unfree example
 		"gnumake",
 		"gnused",
-	#"docker-client"
-	] # optional
+		"netcat",
+		"varscan"]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 

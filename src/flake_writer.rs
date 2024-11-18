@@ -60,13 +60,18 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
     }
 }
 
+pub struct WriteFlakeResult {
+    pub flake_nix_changed: bool,
+    pub python_lock_changed: bool
+}
+
 pub fn write_flake(
     flake_dir: impl AsRef<Path>,
     parsed_config: &mut config::TofuConfigToml,
     use_generated_file_instead: bool, // which is set if do_not_modify_flake is in effect.
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
-) -> Result<bool> {
+) -> Result<WriteFlakeResult> {
     let template = std::include_str!("nix/flake_template.nix");
     let flake_dir: &Path = flake_dir.as_ref();
 
@@ -200,20 +205,24 @@ pub fn write_flake(
         gitargs.push("poetry/poetry.lock");
     } */
 
-    let mut res = write_flake_contents(
+    let flake_nix_changed = write_flake_contents(
         &old_flake_contents,
         &flake_contents,
         use_generated_file_instead,
         &flake_filename,
         flake_dir,
     )?;
-    res |= python_locks_changed;
 
     run_git_add(&git_tracked_files, flake_dir)?;
     run_git_commit(flake_dir)?; //after nix 2.23 we will need to commit the flake, possibly. At
                                 //least if we wanted to reference it from another flake
 
-    Ok(res)
+    Ok({
+        WriteFlakeResult {
+            flake_nix_changed,
+            python_lock_changed: python_locks_changed,
+        }
+    })
 }
 
 /// format the list of input flakes for the inputs = {} section of a flake.nix
@@ -927,13 +936,13 @@ fn add_flakes(
                 flake.dir.clone(),
                 &rev_follows[..],
             ));
-            if flake.packages.is_empty() {
+            if flake.packages.is_none() {
                 nixpkgs_pkgs.insert(format!(
                     "({}.defaultPackage.x86_64-linux or {}.packages.x86_64-linux.defaults)",
                     name, name
                 ));
-            } else {
-                for pkg in &flake.packages {
+            } else if let Some(pkgs) = &flake.packages{
+                for pkg in pkgs {
                     nixpkgs_pkgs.insert(format!("{name}.{pkg}"));
                 }
             }

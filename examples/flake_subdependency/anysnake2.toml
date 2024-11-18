@@ -1,0 +1,60 @@
+# test case for test_flake_change_updates_dependant_flakes
+# package settings
+[anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2 = "dev"
+
+
+[nixpkgs]
+# the nixpkgs used inside the container
+	packages = [
+		"bash",
+		"fish"]
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[rust]
+	url = "github:oxalica/rust-overlay/master/0be641045af6d8666c11c2c40e45ffc9667839b5"
+	version="1.55.0"
+
+
+[flakes.test]
+	packages = []
+	url = "github:nix-community/poetry2nix/master/8810f7d31d4d8372f764d567ea140270745fe173"
+
+
+[container.env]
+	ANYSNAKE2="1"
+
+
+# container settings
+[container.volumes_rw]
+	"." = "/project" # map the current folder to /project
+
+
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
+[outside_nixpkgs]
+# the nixpkgs used to run singularity and nixfmt
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+
+
+[poetry2nix]
+	url = "github:nix-community/poetry2nix/master/8810f7d31d4d8372f764d567ea140270745fe174"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[devshell]
+	inputs = []
+	shell = "bash"

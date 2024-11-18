@@ -664,7 +664,7 @@ pub struct TofuFlake {
     pub url: TofuVCS,
     pub dir: Option<String>,
     pub follows: Option<Vec<String>>,
-    pub packages: Vec<String>,
+    pub packages: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Default)]

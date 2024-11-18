@@ -1,5 +1,5 @@
 use named_lock::NamedLock;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -166,11 +166,7 @@ fn test_basic() {
 
 #[test]
 fn test_basic_pre_post_single_line() {
-    let (_code, stdout, _stderr) = run_test(
-        "examples/basic",
-        &["test_pre_post_single_line"],
-        true,
-    );
+    let (_code, stdout, _stderr) = run_test("examples/basic", &["test_pre_post_single_line"], true);
     dbg!(&stdout);
     assert!(stdout.contains("posthello from inside"));
     assert!(stdout.contains("posthello from outside"));
@@ -694,4 +690,40 @@ fn test_empty() {
         .as_str()
         .unwrap()
         .starts_with("github:TyberiusPrime/anysnake2_release_flakes"));
+}
+
+fn replace_in_file(path: impl AsRef<Path>, query: &str, replacement: &str) {
+    let raw = ex::fs::read_to_string(&path).unwrap();
+    assert!(raw.contains(query));
+    let out = raw.replace(query, replacement);
+    ex::fs::write(path, out).unwrap();
+}
+
+#[test]
+fn test_flake_change_updates_dependant_flakes() {
+    let ((_code, _stdout, _stderr), td) =
+        run_test_tempdir("examples/flake_subdependency", &["run", "--", "bash" ,"--version"]);
+    let before = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
+    assert!(before.contains("8810f7d31d4d8372f764d567ea140270745fe173"));
+    replace_in_file(
+        &td.path().join("anysnake2.toml"),
+        "8810f7d31d4d8372f764d567ea140270745fe173",
+        "f554d27c1544d9c56e5f1f8e2b8aff399803674e",
+    );
+    let updated_anysnake2_toml = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
+    assert!(updated_anysnake2_toml.contains("f554d27c1544d9c56e5f1f8e2b8aff399803674e"));
+    run_test(
+        &td.path().to_string_lossy(),
+        &["run", "--", "bash" ,"--version"],
+        false,
+    );
+    let updated = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
+    assert!(updated != before);
+    run_test(
+        &td.path().to_string_lossy(),
+        &["run", "--", "bash" ,"--version"],
+        true,
+    );
+    let after = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
+    assert_eq!(after, updated);
 }
