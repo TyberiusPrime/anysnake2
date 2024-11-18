@@ -4,7 +4,7 @@
     #%INPUT_DEFS%
   };
 
-  outputs = {
+  outputs = flake_inputs @ {
     self,
     #%INPUTS%
   }:
@@ -27,13 +27,30 @@
       };
       helpers = import ./functions.nix {inherit pkgs;};
     in rec {
-      defaultPackage = (helpers.buildSymlinkImage _args).derivation;
-      oci_image = helpers.buildOCIimage _args;
+      packages = {
+        default = (helpers.buildSymlinkImage _args).derivation;
+        oci_image = helpers.buildOCIimage _args;
+        flake_inputs_for_gc_root = pkgs.stdenv.mkDerivation {
+          pname = "anysnake2-flake-inputs";
+          version = "0.1";
+          unpackPhase = ":";
+          buildPhase = let
+            str_inputs =
+              builtins.concatStringsSep "\n"
+              (map (key: "ln -s ${flake_inputs.${key}} ${key}") (builtins.attrNames flake_inputs));
+          in
+            ''
+              mkdir $out -p
+              cd $out/
+            ''
+            + str_inputs;
+        };
+      };
       devShell = pkgs.stdenv.mkDerivation {
         name = "anysnake2-devshell";
         shellHook =
           ''
-            export PATH=${defaultPackage}/rootfs/bin:$PATH;
+            export PATH=${packages.default}/rootfs/bin:$PATH;
             if test -f "develop_python_path.bash"; then
               source "develop_python_path.bash"
             fi

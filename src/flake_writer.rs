@@ -577,6 +577,8 @@ fn copy_for_poetry(
             }
         }
     }
+    //I'd love to return these relative, but since we run ancient-poetry in a tmp dir, 
+    //this will fail.
     Ok(target_path.canonicalize()?.to_string_lossy().to_string())
 }
 

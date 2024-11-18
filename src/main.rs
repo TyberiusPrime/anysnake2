@@ -352,6 +352,10 @@ fn inner_main() -> Result<()> {
         &mut out_non_spec_but_cached_values,
     )?;
 
+    if flake_changed.flake_nix_changed && !use_generated_file_instead {
+        register_flake_inputs_as_gc_root(&flake_dir)?;
+    }
+
     if out_non_spec_but_cached_values != in_non_spec_but_cached_values {
         save_cached_values(&flake_dir, &out_non_spec_but_cached_values)?;
     }
@@ -1407,6 +1411,9 @@ fn nix_build_flake(url: &str) -> Result<String> {
     })
 }
 
+////register the used tools and the flake itself as gcroots
+///our own flake is automatically gc rooted.
+///and teh flake-inputs are handled when/if the flake changed
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
     debug!("registering gc root for {}", url);
     //where we store this stuff
@@ -1416,18 +1423,34 @@ pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()
     let (without_hash, _) = url
         .rsplit_once('#')
         .context("GC_root url should contain #")?;
-    //first we store and hash the flake itself and record tha.
+    //first we store and hash the flake itself and record that.
     let flake_symlink_here = gc_roots.join(without_hash.replace('/', "_"));
     if !flake_symlink_here.exists() {
         let store_path = prefetch_flake(without_hash)?;
         register_gc_root(&store_path, &flake_symlink_here)?;
     }
 
+    //then we record it's output
     let build_symlink_here = gc_roots.join(url.replace('/', "_"));
     if !build_symlink_here.exists() {
         let store_path = nix_build_flake(url)?;
         register_gc_root(&store_path, &build_symlink_here)?;
     }
+    Ok(())
+}
+
+fn register_flake_inputs_as_gc_root(flake_dir: impl AsRef<Path>) -> Result<()> {
+    //run nix build .#flake_inputs_for_gc_root wit han output dir
+    Command::new("nix")
+        .args([
+            "build",
+            ".#flake_inputs_for_gc_root",
+            "-o",
+            ".gcroot_for_flake_inputs",
+        ])
+        .current_dir(flake_dir)
+        .status()
+        .context("retrieving content for flake input gc root from nix failed")?;
     Ok(())
 }
 
