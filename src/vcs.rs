@@ -305,6 +305,9 @@ impl TryFrom<&str> for ParsedVCS {
                 branch = None;
             }
             let mut rev = parts.next().map(ToString::to_string);
+            if rev.as_deref() == Some("") {
+                rev = None;
+            }
             if let Some(inner_branch) = &branch {
                 if could_be_a_sha1(inner_branch) && rev.is_none() {
                     rev = branch;
