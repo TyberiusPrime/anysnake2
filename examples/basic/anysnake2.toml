@@ -71,6 +71,13 @@ done
 """
 
 
+[cmd.test_pre_post_single_line]
+	post_run_inside = "echo 'posthello from inside'"
+	post_run_outside = "echo 'posthello from outside'"
+	pre_run_outside = "echo 'prehello from outside'"
+	run = "echo 'hello from command'"
+
+
 [dev_shell]
 	inputs = []
 	shell = "bash"

@@ -165,6 +165,20 @@ fn test_basic() {
 }
 
 #[test]
+fn test_basic_pre_post_single_line() {
+    let (_code, stdout, _stderr) = run_test(
+        "examples/basic",
+        &["test_pre_post_single_line"],
+        true,
+    );
+    dbg!(&stdout);
+    assert!(stdout.contains("posthello from inside"));
+    assert!(stdout.contains("posthello from outside"));
+    assert!(stdout.contains("prehello from outside"));
+    assert!(stdout.contains("hello from command"));
+}
+
+#[test]
 fn test_basic_fish() {
     let (_code, stdout, _stderr) =
         run_test("examples/basic", &["run", "--", "fish", "--version"], true);
