@@ -928,7 +928,10 @@ fn add_flakes(
                 &rev_follows[..],
             ));
             if flake.packages.is_empty() {
-                nixpkgs_pkgs.insert(format!("{}.{}", name, "defaultPackage.x86_64-linux"));
+                nixpkgs_pkgs.insert(format!(
+                    "({}.defaultPackage.x86_64-linux or {}.packages.x86_64-linux.defaults)",
+                    name, name
+                ));
             } else {
                 for pkg in &flake.packages {
                     nixpkgs_pkgs.insert(format!("{name}.{pkg}"));
