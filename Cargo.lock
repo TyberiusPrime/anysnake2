@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "anysnake2"
-version = "2.1.4"
+version = "2.1.5"
 dependencies = [
  "anyhow",
  "base64",
