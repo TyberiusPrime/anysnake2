@@ -19,9 +19,16 @@
       _args = with pkgs; {
         name = "anysnake2_container";
         #later entries beat earlier entries in terms of /bin symlinks
-        script = ''
+        script = let
+          bash = let
+            s = builtins.tryEval bashInteractive_5;
+          in
+            if s.success
+            then s.value
+            else bashInteractive;
+        in ''
           ${coreutils}
-          ${bashInteractive_5}
+          ${bash}
           #%NIXPKGS_PACKAGES%#
         '';
       };

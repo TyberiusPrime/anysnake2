@@ -54,15 +54,18 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
     } else {
         Filenames {
             flake_filename: flake_dir.as_ref().join("flake.nix"),
-            uv_lock: flake_dir.as_ref().join("poetry").join("uv.lock"),
-            pyproject_toml: flake_dir.as_ref().join("poetry").join("pyproject.toml"),
+            uv_lock: flake_dir.as_ref().join("poetry_rewritten").join("uv.lock"),
+            pyproject_toml: flake_dir
+                .as_ref()
+                .join("poetry_rewritten")
+                .join("pyproject.toml"),
         }
     }
 }
 
 pub struct WriteFlakeResult {
     pub flake_nix_changed: bool,
-    pub python_lock_changed: bool
+    pub python_lock_changed: bool,
 }
 
 pub fn write_flake(
@@ -577,7 +580,7 @@ fn copy_for_poetry(
             }
         }
     }
-    //I'd love to return these relative, but since we run ancient-poetry in a tmp dir, 
+    //I'd love to return these relative, but since we run ancient-poetry in a tmp dir,
     //this will fail.
     Ok(target_path.canonicalize()?.to_string_lossy().to_string())
 }
@@ -665,6 +668,8 @@ fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
     nixpkgs: &config::TofuNixPkgs,
     nixpkgs_for_uv: &vcs::TofuVCS,
+    nixpkgs: &config::TofuNixPkgs,
+    uv_flake: &vcs::TofuVCS,
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
@@ -732,7 +737,7 @@ requires-python = "=={python_version}.*"
 
         let mut full_args = vec![
             "shell".into(),
-            format!("{}#uv", nixpkgs_for_uv.to_nix_string()),
+            format!("{}#uv-bin", uv_flake.to_nix_string()),
             format!("{}#{}", nixpkgs.url.to_nix_string(), python_major_minor),
             full_url,
             "-c".into(),
@@ -946,7 +951,7 @@ fn add_flakes(
                     "({}.defaultPackage.x86_64-linux or {}.packages.x86_64-linux.defaults)",
                     name, name
                 ));
-            } else if let Some(pkgs) = &flake.packages{
+            } else if let Some(pkgs) = &flake.packages {
                 for pkg in pkgs {
                     nixpkgs_pkgs.insert(format!("{name}.{pkg}"));
                 }
@@ -1190,7 +1195,7 @@ fn add_python(
             ancient_poetry(
                 &parsed_config.ancient_poetry,
                 &parsed_config.nixpkgs,
-                &parsed_config.uv_nixpkgs,
+                &parsed_config.uv2nix.source,
                 &python.packages,
                 &out_python_packages,
                 pyproject_toml_path,
@@ -1212,6 +1217,13 @@ fn add_python(
                 &[],
             ));
             inputs.push(InputFlake::new(
+                "
+            pyproject-build-systems",
+                &parsed_config.python_build_systems.source,
+                None,
+                &["uv2nix", "nixpkgs"],
+            ));
+            inputs.push(InputFlake::new(
                 "uv2nix_override_collection",
                 &parsed_config.uv2nix_override_collection,
                 None,
@@ -1224,9 +1236,19 @@ fn add_python(
                 "pyproject-nix".to_string(),
                 "uv2nix.inputs.pyproject-nix".to_string(),
             );
+            let workspace = pyproject_toml_path
+                .parent()
+                .context("coulld not determine path parent")?;
+            //I need to remove the first part of that path
+            let workspace = workspace
+                .strip_prefix(flake_dir)
+                .context("could not strip prefix")?;
             definitions.insert(
                 "workspace".to_string(),
-                "uv2nix.lib.workspace.loadWorkspace {workspaceRoot = ./.;}".to_string(),
+                format!(
+                    "uv2nix.lib.workspace.loadWorkspace {{workspaceRoot = ./{};}}",
+                    workspace.to_string_lossy()
+                ),
             );
 
             definitions.insert(
@@ -1235,32 +1257,37 @@ fn add_python(
             );
             definitions.insert(
                 "pyprojectOverrides ".to_string(),
-                "pkgs.lib.composeExtensions (final: prev: { })
-                (uv2nix_override_collection.overrides pkgs)"
+                "[(final: prev: { })
+                (uv2nix_override_collection.overrides pkgs)]"
                     .to_string(),
             ); //todo: insert override_attrs here.
             definitions.insert(
                 "interpreter".to_string(),
-                format!("pkgs.python{}", python_major_minor),
+                format!("pkgs.{}", python_major_minor),
             );
             definitions.insert(
                 "spec".to_string(),
-                "{uv2nix-anysnake2-app = []; }".to_string(),
+                "{anysnake2-to-ancient-poetry-uv = []; }".to_string(),
             );
             // Use base package set from pyproject.nix builders
             definitions.insert(
-                "pythonSet'".to_string(),
+                "pythonSet".to_string(),
                 "(pkgs.callPackage pyproject-nix.build.packages {
-                      python = interpreter;
-                    }).overrideScope
-                      (lib.composeExtensions overlay pyprojectOverrides)"
-                    .to_string(),
+                    python = interpreter;
+        }).overrideScope
+          (
+            pkgs.lib.composeManyExtensions [
+              pyproject-build-systems.overlays.default
+              overlay ] ++ pyprojectOverrides
+            ]
+          )"
+                .to_string(),
             );
             //Override host packages with build fixups
-            definitions.insert(
+            /* definitions.insert(
                 "pythonSet".to_string(),
                 "pythonSet'.pythonPkgsHostHost.overrideScope pyprojectOverrides".to_string(),
-            );
+            ); */
 
             definitions.insert(
                 "python_package".to_string(),

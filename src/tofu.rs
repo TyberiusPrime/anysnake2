@@ -107,13 +107,6 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 "github:NixOS/nixpkgs",
                 NIXPKGS_TAG_REGEX,
             )?, //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
-            uv_nixpkgs: self.uv_nixpks.tofu_to_newest(
-                // todo: only till 24.11 release, then uv
-                // is new enough.
-                &["uv_nixpkgs", "url"],
-                updates,
-                "github:NixOS/nixpkgs",
-            )?,
             ancient_poetry: self.ancient_poetry.tofu_to_newest(
                 &["ancient_poetry", "url"],
                 updates,

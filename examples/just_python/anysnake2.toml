@@ -16,9 +16,10 @@
 
 [python.packages]
 	black=""
+	dppd = {}
 
 
-# 	dppd = {poetry2nix.buildInputs = ["setuptools"]}
+#dppd = {poetry2nix.buildInputs = ["setuptools"]}
 # 	dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
 # # that supplies 'hello'
 # 	example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
@@ -46,29 +47,15 @@
 	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-#url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
-
-[poetry2nix]
-	preferWheels=true
-	url = "github:nix-community/poetry2nix/master/5392004e2b350afda0dd5e92ccd53ab9b1261947"
-
-
-#pytest=""
-
-
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 
 
-[uv_nixpkgs]
-	url = "github:NixOS/nixpkgs/master/6efe194fbec6d156eedff4210476eb06bb844bc7"
-
-
 [uv2nix]
-	url = "github:adisbladis/uv2nix/master/ead0f8e1a166b3a22295424da8b0652aafe55624"
+	url = "github:adisbladis/uv2nix/master/cb4b2ba5c1cd24668c7c6d819f1c30b0a6960560"
 
 
 [uv2nix_override_collection]
-	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/9bc9d711a26aaa0e0ad350c0fc2cc51daaece03c"
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/6123143b7421406b90d6a945f88e36fc0c0228bc"
 
 
