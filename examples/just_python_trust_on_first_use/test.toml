@@ -16,7 +16,7 @@ version="3.8" # does not go down to 3.8.x. That's implicit in the nixpkgs (for n
 ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
 
 [clones.code]
-example-cli-python="git+https://github.com/ojixzzz/example-cli-python"
+example-cli-python="git+https://github.com/TyberiusPrime/example-cli-python"
 
 [python.packages]
 # you can use standard python requirements.txt version specification syntax

@@ -1454,6 +1454,35 @@ fn register_flake_inputs_as_gc_root(flake_dir: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+fn register_all_inputs_as_gcroot(flake_dir: impl AsRef<Path>) -> Result<()> {
+    let drv = get_result_derivation(flake_dir)?;
+
+    let output = Command::new("nix-store").args(["--query","-R',
+
+    Ok(())
+}
+
+fn get_result_derivation(flake_dir: impl AsRef<Path>) -> Result<String> {
+    let output = Command::new("nix")
+        .args([
+            "derivation",
+            "show",
+            &flake_dir.as_ref().join("result").to_string_lossy(),
+        ])
+        .output()?;
+    let str_json = std::str::from_utf8(&output.stdout)?;
+    let decoded = serde_json::from_str::<serde_json::Value>(str_json)?;
+    //we need to get the first and only key
+    let key = decoded
+        .as_object()
+        .context("derivation show did not return a json object")?
+        .keys()
+        .next()
+        .context("derivation show did not return a json object with keys")?;
+
+    Ok(key.to_string())
+}
+
 fn attach_to_previous_container(flake_dir: impl AsRef<Path>) -> Result<()> {
     let mut available: Vec<_> = fs::read_dir(flake_dir.as_ref().join("dtach"))
         .context("Could not find dtach socket directory")?

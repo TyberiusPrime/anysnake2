@@ -3,6 +3,8 @@
 # (example used for testing)
 # package settings
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
 	url2 = "dev"
 
 
@@ -18,11 +20,16 @@
 
 
 [python.packages]
-	dppd = { url = "git+https://github.com/tyberiusprime/dppd", poetry2nix.buildInputs = ["setuptools"] }
-	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr" , poetry2nix.buildInputs = ["setuptools"] }
-	mizani = { version = "pypi" }
+	dppd = { url = "git+https://github.com/tyberiusprime/dppd?ref=master&rev=e5fc8853289efa79ff278effd14f89e1c652b6b6", poetry2nix.buildInputs = ["setuptools"] }
 # example for github and hg. See just_python_discover_newest_revision for git
-	i3-instant-layout = { url = "github:TyberiusPrime/i3-instant-layout", poetry2nix.buildInputs = ["setuptools"] }
+	i3-instant-layout = { url = "github:TyberiusPrime/i3-instant-layout/master/bd5e592579c2d9a27cbe120bbf473f5d092a74d5", poetry2nix.buildInputs = ["setuptools"] }
+	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", poetry2nix.buildInputs = ["setuptools"] }
+	mizani = { version = "pypi:0.13.0" }
+
+
+[dev_shell]
+	inputs = []
+	shell = "bash"
 
 
 [outside_nixpkgs]

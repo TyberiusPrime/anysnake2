@@ -19,7 +19,7 @@
 	dppd = {poetry2nix.buildInputs = ["setuptools"]}
 	dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
 # that supplies 'hello'
-	example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
+	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d", poetry2nix.buildInputs = ["setuptools"]}
 	hatchling=""
 	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
 	pandas="1.5.1"
