@@ -214,6 +214,9 @@ const ORDER_SCORES: &[(&str, usize)] = &[
     ("outside_nixpkgs", 96000),
     ("ancient_poetry", 97000),
     ("poetry2nix", 98000),
+    ("uv2nix", 98000),
+    ("uv2nix_override_collection", 98000),
+    ("pyproject_builds_systems", 98000),
     ("flake-util", 99000),
 ];
 

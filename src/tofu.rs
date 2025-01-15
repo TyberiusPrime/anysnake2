@@ -122,6 +122,11 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 updates,
                 "github:TyberiusPrime/uv2nix_hammer_overrides",
             )?,
+            pyproject_build_systems: self.pyproject_build_systems.tofu_to_newest(
+                &["pyproject_build_systems", "url"],
+                updates,
+                "github:pyproject-nix/build-system-pkgs",
+            )?,
 
             flake_util: self.flake_util.tofu_to_newest(
                 &["flake-util", "url"],

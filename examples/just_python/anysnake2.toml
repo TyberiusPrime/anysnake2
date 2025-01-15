@@ -5,6 +5,7 @@
 
 
 [nixpkgs]
+	packages =["which"]
 	url = "github:nixos/nixpkgs/master/6efe194fbec6d156eedff4210476eb06bb844bc7"
 
 
@@ -47,15 +48,18 @@
 	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-[flake-util]
-	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
-
-
 [uv2nix]
 	url = "github:adisbladis/uv2nix/master/cb4b2ba5c1cd24668c7c6d819f1c30b0a6960560"
 
 
 [uv2nix_override_collection]
-	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/6123143b7421406b90d6a945f88e36fc0c0228bc"
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
 
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/3c3fb7fd58b1587d3736c91fd68bb678a14ea33e"
 

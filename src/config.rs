@@ -75,6 +75,7 @@ pub struct ConfigToml {
     pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
     pub uv2nix: Option<Poetry2Nix>,
     pub uv2nix_override_collection: Option<ParsedVCSInsideURLTag>,
+    pub pyproject_build_systems: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -101,6 +102,7 @@ pub struct TofuConfigToml {
     pub ancient_poetry: TofuVCS,
     pub uv2nix: TofuPoetry2Nix,
     pub uv2nix_override_collection: TofuVCS,
+    pub pyproject_build_systems: TofuVCS,
     pub flake_util: TofuVCS,
     pub clone_regexps: Option<Vec<(regex::Regex, String)>>,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,

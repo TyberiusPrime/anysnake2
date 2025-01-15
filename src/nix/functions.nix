@@ -31,8 +31,13 @@
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/etc $out/rootfs/etc || true
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/usr/lib/ || true
          ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/share $out/rootfs/usr/share/ || true
-         if [ -d $path/lib/R/library/ ]; then
-           ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib/R/library $out/rootfs/R_libs/ || true
+         if [ -d "$path/lib/R/library/" ]; then
+           ${pkgs.xorg.lndir}/bin/lndir -ignorelinks "$path/lib/R/library" "$out/rootfs/R_libs/" || true
+         fi
+         if [ -f "$path/pyvenv.cfg" ]; then # uv2nix special
+             ln -s "$path/pyvenv.cfg" "$out/rootfs/pyvenv.cfg" # collision -> erorrx
+             mkdir $out/rootfs/lib
+             ${pkgs.xorg.lndir}/bin/lndir -ignorelinks $path/lib $out/rootfs/lib
          fi
       done
 

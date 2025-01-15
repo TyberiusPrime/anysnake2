@@ -45,20 +45,17 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
     if use_generated_file_instead {
         Filenames {
             flake_filename: flake_dir.as_ref().join("flake.temp.nix"),
-            uv_lock: flake_dir.as_ref().join("poetry_temp").join("uv.lock"),
+            uv_lock: flake_dir.as_ref().join("uv_temp").join("uv.lock"),
             pyproject_toml: flake_dir
                 .as_ref()
-                .join("poetry_temp")
+                .join("uv_temp")
                 .join("pyproject.toml"),
         }
     } else {
         Filenames {
             flake_filename: flake_dir.as_ref().join("flake.nix"),
-            uv_lock: flake_dir.as_ref().join("poetry_rewritten").join("uv.lock"),
-            pyproject_toml: flake_dir
-                .as_ref()
-                .join("poetry_rewritten")
-                .join("pyproject.toml"),
+            uv_lock: flake_dir.as_ref().join("uv").join("uv.lock"),
+            pyproject_toml: flake_dir.as_ref().join("uv").join("pyproject.toml"),
         }
     }
 }
@@ -82,7 +79,6 @@ pub fn write_flake(
     let flake_filename = filenames.flake_filename;
     let old_flake_contents =
         fs::read_to_string(&flake_filename).unwrap_or_else(|_| String::default());
-    //let old_poetry_lock = fs::read_to_string(&poetry_lock).unwrap_or_else(|_| "".to_string());
 
     let mut flake_contents: String = template.to_string();
 
@@ -202,11 +198,6 @@ pub fn write_flake(
 
     //print!("{}", flake_contents);
     create_flake_git(flake_dir, &mut git_tracked_files)?;
-    /*
-    if parsed_config.python.is_some() {
-        gitargs.push("poetry/pyproject.toml");
-        gitargs.push("poetry/poetry.lock");
-    } */
 
     let flake_nix_changed = write_flake_contents(
         &old_flake_contents,
@@ -634,7 +625,7 @@ pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
 fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     let full_url = format!("{}#nixfmt", anysnake2::get_outside_nixpkgs_url().unwrap());
     // debug!("registering nixfmt with {}", &full_url);
-    super::register_nix_gc_root(&full_url, flake_dir)?;
+    super::register_nix_gc_root(&full_url, &flake_dir)?;
     let full_args = vec!["shell".to_string(), full_url, "-c".into(), "nixfmt".into()];
     let mut child = Command::new("nix")
         .args(full_args)
@@ -655,8 +646,9 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
             .map(|(i, x)| format!("{i:4}\t{x}"))
             .collect::<Vec<String>>()
             .join("\n");
+        ex::fs::write(flake_dir.as_ref().join("broken.nix"), input).ok();
         Err(anyhow!(
-            "nix fmt error return{}\n{}",
+            "nix fmt error. Broken code in flake_dir/broken. nix return code was {}\n.{}",
             out.status.code().unwrap(),
             input_with_line_nos
         ))
@@ -666,8 +658,6 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
 #[allow(clippy::too_many_arguments)]
 fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
-    nixpkgs: &config::TofuNixPkgs,
-    nixpkgs_for_uv: &vcs::TofuVCS,
     nixpkgs: &config::TofuNixPkgs,
     uv_flake: &vcs::TofuVCS,
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
@@ -710,7 +700,9 @@ requires-python = "=={python_version}.*"
         .insert("dependencies".into(), toml::Value::Array(dependencies));
     ex::fs::create_dir_all(pyproject_toml_path.parent().unwrap())?;
     let pyproject_contents = pyproject_toml_contents.to_string();
-    ex::fs::write(pyproject_toml_path, &pyproject_contents)?;
+    ex::fs::write(pyproject_toml_path, &pyproject_contents)
+        .context("Failed to generate pyproject.toml")?;
+    debug!("Writing {pyproject_toml_path:?}");
     let pyproject_toml_hash = sha256::digest(pyproject_contents);
 
     let last_hash = ex::fs::read_to_string(pyproject_toml_path.with_extension("sha256"))
@@ -767,7 +759,6 @@ requires-python = "=={python_version}.*"
             .status()?;
         if out.success() {
             //write it to poetry.lock
-            //ex::fs::write(poetry_lock_path, stdout)?;
             ex::fs::write(
                 pyproject_toml_path.with_extension("sha256"),
                 pyproject_toml_hash,
@@ -1157,7 +1148,7 @@ fn add_python(
     nixpkgs_pkgs: &mut BTreeSet<String>,
     git_tracked_files: &mut Vec<String>,
     pyproject_toml_path: &Path,
-    poetry_lock_path: &Path,
+    uv_lock_path: &Path,
     flake_dir: &Path,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
@@ -1169,7 +1160,7 @@ fn add_python(
             let original_pyproject_toml =
                 ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| String::new());
             let original_poetry_lock =
-                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| String::new());
+                ex::fs::read_to_string(uv_lock_path).unwrap_or_else(|_| String::new());
 
             if !Regex::new(r"^\d+\.\d+$").unwrap().is_match(&python.version) {
                 bail!(
@@ -1199,7 +1190,7 @@ fn add_python(
                 &python.packages,
                 &out_python_packages,
                 pyproject_toml_path,
-                poetry_lock_path,
+                uv_lock_path,
                 &python_version,
                 &python_major_minor,
                 ecosystem_date,
@@ -1219,7 +1210,7 @@ fn add_python(
             inputs.push(InputFlake::new(
                 "
             pyproject-build-systems",
-                &parsed_config.python_build_systems.source,
+                &parsed_config.pyproject_build_systems,
                 None,
                 &["uv2nix", "nixpkgs"],
             ));
@@ -1236,18 +1227,12 @@ fn add_python(
                 "pyproject-nix".to_string(),
                 "uv2nix.inputs.pyproject-nix".to_string(),
             );
-            let workspace = pyproject_toml_path
-                .parent()
-                .context("coulld not determine path parent")?;
-            //I need to remove the first part of that path
-            let workspace = workspace
-                .strip_prefix(flake_dir)
-                .context("could not strip prefix")?;
+            let workspace = "uv_rewritten";
             definitions.insert(
                 "workspace".to_string(),
                 format!(
                     "uv2nix.lib.workspace.loadWorkspace {{workspaceRoot = ./{};}}",
-                    workspace.to_string_lossy()
+                    workspace
                 ),
             );
 
@@ -1276,10 +1261,10 @@ fn add_python(
                     python = interpreter;
         }).overrideScope
           (
-            pkgs.lib.composeManyExtensions [
+            pkgs.lib.composeManyExtensions ([
               pyproject-build-systems.overlays.default
-              overlay ] ++ pyprojectOverrides
-            ]
+              overlay ] ++ 
+              pyprojectOverrides)
           )"
                 .to_string(),
             );
@@ -1295,12 +1280,12 @@ fn add_python(
             );
             nixpkgs_pkgs.insert("python_package".to_string());
 
-            git_tracked_files.push("poetry_rewritten/uv.lock".to_string());
-            git_tracked_files.push("poetry_rewritten/pyproject.toml".to_string());
+            git_tracked_files.push("uv_rewritten/uv.lock".to_string());
+            git_tracked_files.push("uv_rewritten/pyproject.toml".to_string());
             let new_pyproject_toml =
                 ex::fs::read_to_string(pyproject_toml_path).unwrap_or_else(|_| String::new());
             let new_poetry_lock =
-                ex::fs::read_to_string(poetry_lock_path).unwrap_or_else(|_| String::new());
+                ex::fs::read_to_string(uv_lock_path).unwrap_or_else(|_| String::new());
             if new_pyproject_toml != original_pyproject_toml
                 || new_poetry_lock != original_poetry_lock
             {
@@ -1308,8 +1293,8 @@ fn add_python(
             }
         }
         None => {
-            if poetry_lock_path.exists() {
-                ex::fs::remove_file(poetry_lock_path)?;
+            if uv_lock_path.exists() {
+                ex::fs::remove_file(uv_lock_path)?;
                 changed = true;
             }
         }
@@ -1483,19 +1468,19 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
 
 /// rewrite all /nix/store references in poetry.toml and lock into ../, and place in new folder
 fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
-    ex::fs::create_dir_all(flake_dir.join("poetry_rewritten"))?;
+    ex::fs::create_dir_all(flake_dir.join("uv_rewritten"))?;
 
     let filename = "pyproject.toml";
-    let input_filename = flake_dir.join("poetry").join(filename);
-    let output_filename = flake_dir.join("poetry_rewritten").join(filename);
-    let raw = ex::fs::read_to_string(input_filename)?;
+    let input_filename = flake_dir.join("uv").join(filename);
+    let output_filename = flake_dir.join("uv_rewritten").join(filename);
+    let raw = ex::fs::read_to_string(input_filename).context("rewrite_poetry")?;
     let out = raw.replace("/nix/store/", "../");
     ex::fs::write(output_filename, out)?;
 
     let filename = "uv.lock";
-    let input_filename = flake_dir.join("poetry").join(filename);
-    let output_filename = flake_dir.join("poetry_rewritten").join(filename);
-    let raw = ex::fs::read_to_string(input_filename)?;
+    let input_filename = flake_dir.join("uv").join(filename);
+    let output_filename = flake_dir.join("uv_rewritten").join(filename);
+    let raw = ex::fs::read_to_string(input_filename).context("Rewrite_poetry")?;
     let search_re = regex::Regex::new(r"(\.\./)+nix/store/").unwrap();
     let out = search_re.replace(&raw, "../../").to_string(); //todo: do it without the alloc
     ex::fs::write(output_filename, out)?;

@@ -782,17 +782,16 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-fn extract_python_package_version_from_poetry_lock(
+fn extract_python_package_version_from_uv_lock(
     flake_dir: &Path,
     safe_name: &str,
 ) -> Result<String> {
-    let poetry_lock: PathBuf = flake_dir.join("poetry/uv.lock");
-    let poetry_lock = fs::read_to_string(&poetry_lock)?;
-    let poetry_lock: toml::Value = toml::from_str(&poetry_lock)?;
-    todo!();
-    for package in poetry_lock["package"]
+    let uv_lock_path: PathBuf = flake_dir.join("poetry/uv.lock");
+    let uv_lock_raw = fs::read_to_string(&uv_lock_path)?;
+    let uv_lock: toml::Value = toml::from_str(&uv_lock_raw)?;
+    for package in uv_lock["package"]
         .as_array()
-        .expect("poetry.toml parsing error")
+        .expect("uv.lock parsing error")
     {
         if package["name"]
             .as_str()
@@ -852,8 +851,7 @@ fn clone(
             config::TofuPythonPackageSource::PyPi { .. }
             | config::TofuPythonPackageSource::VersionConstraint(_) => {
                 let safe_name = safe_python_package_name(name);
-                let actual_version =
-                    extract_python_package_version_from_poetry_lock(flake_dir, &safe_name)?;
+                let actual_version = extract_python_package_version_from_uv_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
                 let url = anysnake2::util::get_pypi_package_source_url(&safe_name, &actual_version)
