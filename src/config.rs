@@ -73,7 +73,7 @@ pub struct ConfigToml {
     pub nixpkgs: Option<NixPkgs>,
     pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
     pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
-    pub uv2nix: Option<Poetry2Nix>,
+    pub uv2nix: Option<Uv2Nix>,
     pub uv2nix_override_collection: Option<ParsedVCSInsideURLTag>,
     pub pyproject_build_systems: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
@@ -100,7 +100,7 @@ pub struct TofuConfigToml {
     pub nixpkgs: TofuNixPkgs,
     pub outside_nixpkgs: TofuVCS,
     pub ancient_poetry: TofuVCS,
-    pub uv2nix: TofuPoetry2Nix,
+    pub uv2nix: TofuUv2Nix,
     pub uv2nix_override_collection: TofuVCS,
     pub pyproject_build_systems: TofuVCS,
     pub flake_util: TofuVCS,
@@ -122,13 +122,13 @@ pub struct ParsedVCSInsideURLTag {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Poetry2Nix {
+pub struct Uv2Nix {
     pub url: Option<ParsedVCS>,
     pub prefer_wheels: Option<bool>,
 }
 
 #[derive(Debug)]
-pub struct TofuPoetry2Nix {
+pub struct TofuUv2Nix{
     pub source: TofuVCS,
     pub prefer_wheels: bool,
 }
@@ -438,6 +438,7 @@ pub struct PythonPackageDefinition {
     pub editable_path: Option<String>,
     pub override_attrs: toml::map::Map<String, toml::Value>,
     pub pre_poetry_patch: Option<String>,
+    pub build_systems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -446,6 +447,7 @@ pub struct TofuPythonPackageDefinition {
     pub editable_path: Option<String>,
     pub override_attrs: toml::map::Map<String, toml::Value>,
     pub pre_poetry_patch: Option<String>,
+    pub build_systems: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -521,6 +523,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     editable_path: None,
                     override_attrs: toml::map::Map::new(),
                     pre_poetry_patch: None,
+                    build_systems: None,
                 })
             }
             StrOrHashMap::HashMap(parsed) => {
@@ -531,7 +534,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 }
                 if parsed.contains_key("buildInputs") {
                     return Err(serde::de::Error::custom(
-                        "bulidInputs is not a valid key, did you mean override_attrs.buildInputs?",
+                        "buildInputs is not a valid key, did you mean override_attrs.buildInputs?",
                     ));
                 }
                 let allowed_keys = &[
@@ -540,6 +543,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     "override_attrs",
                     "editable",
                     "pre_poetry_patch",
+                    "build_systems",
                 ];
                 for key in &parsed {
                     if !allowed_keys.contains(&key.0.as_str()) {
@@ -601,7 +605,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     Some(entry) => Ok(entry
                         .as_table()
                         .cloned()
-                        .context("poetry2nix was not a table")
+                        .context("override_attrs was not a table")
                         .map_err(serde::de::Error::custom)?),
                     None => Ok(toml::map::Map::new()),
                 }?;
@@ -615,11 +619,29 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     ),
                     None => None,
                 };
+                let build_systems = match parsed.get("build_systems") {
+                    Some(entry) => Some(
+                        entry
+                            .as_array()
+                            .context("build_systems was not an array")
+                            .map_err(serde::de::Error::custom)?
+                            .iter()
+                            .map(|x| {
+                                x.as_str()
+                                    .context("build_systems entry was not a string")
+                                    .map_err(serde::de::Error::custom)
+                                    .map(|x| x.to_string())
+                            })
+                            .collect::<Result<Vec<String>, _>>()?,
+                    ),
+                    None => None,
+                };
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
                     override_attrs,
                     pre_poetry_patch,
+                    build_systems
                 })
             }
         }

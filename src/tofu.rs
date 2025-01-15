@@ -176,6 +176,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
                 editable_path: None,
                 override_attrs: override_attrs.clone(),
                 pre_poetry_patch: None,
+                build_systems: None,
             };
             python.packages.insert("rpy2".to_string(), def);
             /* let tbl = "[rpy2]
@@ -374,16 +375,16 @@ impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
     }
 }
 
-impl TofuToNewest<config::TofuPoetry2Nix> for Option<config::Poetry2Nix> {
+impl TofuToNewest<config::TofuUv2Nix> for Option<config::Uv2Nix> {
     fn tofu_to_newest(
         self,
         toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
-    ) -> Result<config::TofuPoetry2Nix> {
+    ) -> Result<config::TofuUv2Nix> {
         let prefer_wheels = self.as_ref().and_then(|x| x.prefer_wheels).unwrap_or(true);
         let input = self.and_then(|x| x.url);
-        Ok(config::TofuPoetry2Nix {
+        Ok(config::TofuUv2Nix {
             source: tofu_repo_to_newest(toml_name, updates, input, default_url)?,
             prefer_wheels,
         })
@@ -1321,6 +1322,7 @@ fn tofu_python_package_definition(
         editable_path: ppd.editable_path.clone(),
         override_attrs: ppd.override_attrs.clone(),
         pre_poetry_patch: ppd.pre_poetry_patch.clone(),
+        build_systems: ppd.build_systems.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),

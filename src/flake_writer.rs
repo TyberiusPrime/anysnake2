@@ -46,10 +46,7 @@ fn get_filenames(flake_dir: impl AsRef<Path>, use_generated_file_instead: bool) 
         Filenames {
             flake_filename: flake_dir.as_ref().join("flake.temp.nix"),
             uv_lock: flake_dir.as_ref().join("uv_temp").join("uv.lock"),
-            pyproject_toml: flake_dir
-                .as_ref()
-                .join("uv_temp")
-                .join("pyproject.toml"),
+            pyproject_toml: flake_dir.as_ref().join("uv_temp").join("pyproject.toml"),
         }
     } else {
         Filenames {
@@ -393,7 +390,7 @@ fn prep_packages_for_pyproject_toml(
                 } else {
                     result.insert(
                         name.to_string(),
-                        toml::Value::String(version_constraint.to_string()),
+                        toml::Value::String(format!("=={}", version_constraint)),
                     );
                 }
             }
@@ -684,15 +681,7 @@ requires-python = "=={python_version}.*"
     let mut dependencies: Vec<toml::Value> = Vec::new();
     //[tool.poetry.dependencies]
     for (name, version_constraint) in python_package_definitions {
-        if version_constraint
-            .as_str()
-            .expect("Version constraint was not a string")
-            == "*"
-        {
-            dependencies.push(format!("{name}").into());
-        } else {
-            dependencies.push(format!("{name}=={version_constraint}").into());
-        }
+        dependencies.push(format!("{name}{}", version_constraint.as_str().unwrap_or("")).into());
     }
     pyproject_toml_contents["project"]
         .as_table_mut()
@@ -1034,109 +1023,31 @@ fn add_r(
     }
 }
 
-fn format_poetry_build_input_overrides(
+fn format_overrides(
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
 ) -> Result<Vec<String>> {
-    let mut poetry_overide_entries = Vec::new();
+    let mut overrides: HashMap<String, HashMap<String, String>> = HashMap::new();
     for (name, spec) in python_packages {
-        let mut override_python_attrs = HashMap::new();
-        let mut overrides = HashMap::new();
-        for kk in &["buildInputs", "propagatedBuildInputs", "nativeBuildInputs"] {
-            if let Some(build_inputs) = spec.override_attrs.get(*kk) {
-                let str_build_inputs = build_inputs
-                    .as_array()
-                    .with_context(|| {
-                        format!("{kk} was not a list of strings package definition for {name}",)
-                    })?
-                    .iter()
-                    .map(|v| {
-                        Ok({
-                            let v = v.as_str().with_context(|| {
-                                format!(
-                                    "{kk} was not a list of strings package definition for {name}",
-                                )
-                            })?;
-                            if v.starts_with('(') {
-                                v.to_string()
-                            } else {
-                                format!("prev.{v}")
-                            }
-                        })
-                    })
-                    .collect::<Result<Vec<String>>>()?
-                    .join(" ");
-                override_python_attrs
-                    .insert(*kk, format!("(old.{kk} or []) ++ [{str_build_inputs}]"));
-            }
-        }
-
-        if let Some(src) = spec.override_attrs.get("src") {
-            let src = src
-                .as_str()
-                .with_context(|| format!("src was not a string with nix code for {name}",))?;
-            override_python_attrs.insert("src", src.to_string());
-        }
-
-        /* if let Some(post_patch) = spec.override_attrs.get("postPatch") {
-            let post_patch = post_patch
-                .as_str()
-                .with_context(|| format!("postPatch was not a string with bash code for {name}",))?;
-            override_python_attrs.insert("postPatch", format!("''{post_patch}''"));
-        } */
-
-        if let Some(envs) = spec.override_attrs.get("env") {
-            let envs = envs
-                .as_table()
-                .with_context(|| format!("envs was not a table {name}",))?;
-            for (k, v) in envs {
-                let v = v
-                    .as_str()
-                    .with_context(|| format!("envs entry was not a string for {name}"))?;
-                override_python_attrs.insert(k, format!("''{v}''"));
-            }
-        }
-        if let Some(further) = spec.override_attrs.get("overridePythonAttrs") {
-            let further = further
-                .as_table()
-                .with_context(|| format!("envs was not a table {name}",))?;
-            for (k, v) in further {
-                let v = v.as_str().with_context(|| {
-                    format!("envs entry was not a string (with nix code!) for {name}")
-                })?;
-                override_python_attrs.insert(k, v.to_string());
-            }
-        }
-
-        if let Some(prefer_wheel) = spec.override_attrs.get("preferWheel") {
-            let prefer_wheel = prefer_wheel
-                .as_bool()
-                .with_context(|| format!("preferWheel was not a boolean for {name}",))?;
-            overrides.insert("preferWheel", format!("{prefer_wheel}"));
-        }
-        if !override_python_attrs.is_empty() || !overrides.is_empty() {
-            let str_overrides = override_python_attrs
-                .iter()
-                .map(|(k, v)| format!("{k} = {v};"))
-                .collect::<Vec<String>>()
-                .join(" ");
-            let safe_name = safe_python_package_name(name);
-            let first_part = if overrides.is_empty() {
-                format!("prev.{safe_name}")
-            } else {
-                let override_str = overrides
-                    .iter()
-                    .map(|(k, v)| format!("{k} = {v};"))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                format!("(prev.{safe_name}.override {{{override_str}}})",)
-            };
-            poetry_overide_entries.push(format!(
-                "{safe_name} = {first_part}.overridePythonAttrs (old: rec {{{str_overrides}}});"
-            ));
+        if let Some(build_systems) = &spec.build_systems {
+            let target = overrides
+                .entry(safe_python_package_name(name))
+                .or_insert_with(HashMap::new);
+            target.insert(
+                "nativeBuildInputs".to_string(),
+                format!("old.nativeBuildInputs ++ ( {} ),", build_systems.join(" ")),
+            );
         }
     }
-    poetry_overide_entries.sort();
-    Ok(poetry_overide_entries)
+    let mut out = Vec::new();
+    for (name, key_value) in overrides.into_iter() {
+        let mut here = format!("{name} = (old: {{");
+        for (key, value) in key_value {
+            here.push_str(&format!("{key} = {value};"));
+        }
+        here.push_str("})");
+    }
+    out.sort();
+    Ok(out)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1198,8 +1109,8 @@ fn add_python(
 
             rewrite_poetry(flake_dir)?;
 
-            let poetry_build_input_overrides = //todo: override_attrs...
-                format_poetry_build_input_overrides(&python.packages)?;
+            let local_overrides = //todo: override_attrs...
+                format_overrides(&python.packages)?;
 
             inputs.push(InputFlake::new(
                 "uv2nix",
@@ -1241,10 +1152,13 @@ fn add_python(
                 format!("workspace.mkPyprojectOverlay {{ sourcePreference = \"{source_preference}\"; }}")
             );
             definitions.insert(
+                "local_overrides".to_string(),
+                format!("(final: prev: {{ {} }})", local_overrides.join("\n")),
+            );
+
+            definitions.insert(
                 "pyprojectOverrides ".to_string(),
-                "[(final: prev: { })
-                (uv2nix_override_collection.overrides pkgs)]"
-                    .to_string(),
+                "[local_overrides (uv2nix_override_collection.overrides pkgs)]".to_string(),
             ); //todo: insert override_attrs here.
             definitions.insert(
                 "interpreter".to_string(),
