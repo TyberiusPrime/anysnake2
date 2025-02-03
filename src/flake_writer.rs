@@ -668,12 +668,15 @@ fn ancient_poetry(
 ) -> Result<()> {
     //let mut pyproject_toml_contents = toml::Table::new();
     //pyproject_toml_contents["tool.poetry"] = toml::Value::Table(toml::Table::new());
+    let str_date = date.format("%Y-%m-%d").to_string();
     let mut pyproject_toml_contents: toml::Table = format!(
         r#"
 [project]
 name = "anysnake2-to-ancient-poetry-uv"
 version = "0.1.0"
 requires-python = "=={python_version}.*"
+[tool.ancient-poetry]
+ancient-date = "{str_date}"
 "#
     )
     .parse()
@@ -711,7 +714,6 @@ requires-python = "=={python_version}.*"
     {
         //todo make configurable
         let full_url = ancient_poetry.to_nix_string();
-        let str_date = date.format("%Y-%m-%d").to_string();
 
         let exclusion_list = python_packages
             .iter()
@@ -742,6 +744,11 @@ requires-python = "=={python_version}.*"
         if !exclusion_list.is_empty() {
             full_args.push("--exclusion-list".into());
             full_args.push(exclusion_list);
+        }
+        if uv_lock_path.exists() {
+            // important, or you'll be dragging in the 'path dependency' of
+            // what came before.
+            std::fs::remove_file(uv_lock_path)?;
         }
         debug!(
             "running ancient-poetry: nix {}",
@@ -1125,6 +1132,7 @@ fn add_python(
             )?;
 
             rewrite_poetry(flake_dir)?;
+            write_setup_cfg(flake_dir, ecosystem_date, git_tracked_files)?;
 
             let local_overrides = //todo: override_attrs...
                 format_overrides(&python.packages)?;
@@ -1423,5 +1431,24 @@ fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
     let out = search_re.replace(&raw, "../../").to_string(); //todo: do it without the alloc
     ex::fs::write(output_filename, out)?;
 
+    Ok(())
+}
+
+/// old setuptools can't read pyprojec.toml, leading to build errors
+/// for 'unknown metadata Name.
+/// this places a dummy setup.cfg
+fn write_setup_cfg(
+    flake_dir: &Path,
+    ecosystem_date: chrono::naive::NaiveDate,
+    git_tracked_files: &mut Vec<String>,
+) -> Result<()> {
+    if ecosystem_date <= chrono::naive::NaiveDate::from_ymd_opt(2022, 3, 24).unwrap() {
+        let setup_cfg = flake_dir.join("uv_rewritten/setup.cfg");
+        ex::fs::write(
+            setup_cfg,
+            "[metadata]\nname = anysnake2-to-ancient-poetry-uv\nversion = 0.1.0\n",
+        )?;
+        git_tracked_files.push("uv_rewritten/setup.cfg".to_string());
+    }
     Ok(())
 }

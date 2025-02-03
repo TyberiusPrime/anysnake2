@@ -14,8 +14,9 @@
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 
-[python] # python section is optional
-	ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
+[python] # python section is optionaldd
+	ecosystem_date="2022-03-24" # you get whatever packages the solver would have produced on that day
+# we need setuptools 61.1.0, released mar 24 2022
 	version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
