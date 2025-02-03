@@ -20,9 +20,15 @@
 
 
 [python.packages]
+#cython = {build_systems = ["wheel"]}
+#markupsafe = {build_systems = ["wheel"]}
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	notebook=""
 	pandas="1.2.0"
+	pandocfilters = {build_systems = ["wheel"]}
+
+
+#	psutil = {build_systems = ["wheel"]}
 
 
 [rust]
@@ -89,11 +95,19 @@ done
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
 [poetry2nix]
 	url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/fd41fdec2fed599ba884bc2706c2263f01e2183c"
 
 
 [flake-util]
@@ -103,3 +117,7 @@ done
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"

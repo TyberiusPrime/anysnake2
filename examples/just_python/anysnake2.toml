@@ -17,9 +17,10 @@
 
 [python.packages]
 	black=""
-	dppd_plotnine = {version = "", editable=true}
+	dppd = {build_systems = ["wheel"]}
+	dppd_plotnine = {version = "", editable=true, build_systems = ["setuptools", "wheel"]}
 # that supplies 'hello'
-	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d" }
+	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d", build_systems = ["setuptools", "wheel"]}
 	hatchling=""
 	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  build_systems = ["setuptools"]}
 	pandas="1.5.1"
@@ -29,6 +30,7 @@
 #requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
 	requests = { version = "pypi:2.32.2" }
 	tomli=">1.2"
+	wrapt = {build_systems = ["wheel"]}
 
 
 [dev_shell]
@@ -45,7 +47,7 @@
 
 
 [uv2nix]
-	url = "github:adisbladis/uv2nix/master/cb4b2ba5c1cd24668c7c6d819f1c30b0a6960560"
+	url = "github:adisbladis/uv2nix/master/fd41fdec2fed599ba884bc2706c2263f01e2183c"
 
 
 [uv2nix_override_collection]
@@ -57,5 +59,5 @@
 
 
 [pyproject_build_systems]
-	url = "github:pyproject-nix/build-system-pkgs/master/3c3fb7fd58b1587d3736c91fd68bb678a14ea33e"
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 
