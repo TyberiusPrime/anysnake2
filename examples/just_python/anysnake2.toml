@@ -20,7 +20,7 @@
 	dppd = {build_systems = ["wheel"]}
 	dppd_plotnine = {version = "", editable=true, build_systems = ["setuptools", "wheel"]}
 # that supplies 'hello'
-	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d", build_systems = ["setuptools", "wheel"]}
+	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/6df1084dbd3dd2fc122068377ed041ea7d17adf5", build_systems = ["setuptools", "wheel"]}
 	hatchling=""
 	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  build_systems = ["setuptools"]}
 	pandas="1.5.1"

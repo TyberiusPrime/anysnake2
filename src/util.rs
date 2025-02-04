@@ -179,7 +179,10 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
         }
     }
 
-    let old_toml = std::fs::read(toml_path).ok().and_then(|x| std::string::String::from_utf8(x).ok()).unwrap_or_default();
+    let old_toml = std::fs::read(toml_path)
+        .ok()
+        .and_then(|x| std::string::String::from_utf8(x).ok())
+        .unwrap_or_default();
     /* if !old_toml.is_empty() {
         //copy to backup
         let backup_path = toml_path.with_extension("toml.bak");
@@ -187,7 +190,8 @@ pub fn change_toml_file(toml_path: &PathBuf, updates: TomlUpdates) -> Result<()>
     } */
     let out_toml = doc.to_string();
     if old_toml.trim() != out_toml.trim() {
-        std::fs::write(toml_path, out_toml.trim_start()).context("failed to rewrite config file")?;
+        std::fs::write(toml_path, out_toml.trim_start())
+            .context("failed to rewrite config file")?;
         info!("Wrote updated {:?}", toml_path);
     } else {
         debug!("Toml contents unchanged");
@@ -253,15 +257,36 @@ pub fn get_proxy_req() -> Result<ureq::Agent> {
     Ok(agent.build())
 }
 
-pub fn get_pypi_package_source_url(package_name: &str, pypi_version: &str) -> Result<String> {
+pub fn get_pypi_package_source_url(
+    package_name: &str,
+    pypi_version: Option<&str>,
+) -> Result<String> {
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
         .into_string()?;
     let json: serde_json::Value = serde_json::from_str(&json)?;
-    let files = json["releases"][&pypi_version]
-        .as_array()
-        .context("No releases found")?;
+    let files = if let Some(pypi_version) = pypi_version {
+        json["releases"][&pypi_version]
+            .as_array()
+            .context("No releases found")?
+    } else {
+        // get the last version
+        json["releases"]
+            .as_object()
+            .context("unexpected json format in pypi response")?
+            .iter()
+            .filter_map(|(_k, v)| {
+                let y = v.as_array()?[0]
+                    .as_object()
+                    ?;
+                if y["yanked"].as_bool().unwrap_or(false) {
+                    return None;
+                }
+                Some(v.as_array()?)
+            })
+            .last().context("No non yanked release found?")?
+    };
     for file in files {
         if file["packagetype"] == "sdist" {
             return Ok(file["url"].as_str().context("no url in json")?.to_string());

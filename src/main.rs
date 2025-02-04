@@ -786,7 +786,7 @@ fn extract_python_package_version_from_uv_lock(
     flake_dir: &Path,
     safe_name: &str,
 ) -> Result<String> {
-    let uv_lock_path: PathBuf = flake_dir.join("poetry/uv.lock");
+    let uv_lock_path: PathBuf = flake_dir.join("uv/uv.lock");
     let uv_lock_raw = fs::read_to_string(&uv_lock_path)?;
     let uv_lock: toml::Value = toml::from_str(&uv_lock_raw)?;
     for package in uv_lock["package"]
@@ -854,7 +854,7 @@ fn clone(
                 let actual_version = extract_python_package_version_from_uv_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
-                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, &actual_version)
+                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, Some(&actual_version))
                     .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
@@ -1296,7 +1296,8 @@ fn add_r_library_path(
 } */
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
-    let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
+    let out = path.to_string_lossy().to_string();
+    /* let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
     let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
     let hits = binary_re.captures(&text);
     #[allow(clippy::single_match_else)]
@@ -1314,7 +1315,7 @@ fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
                 .to_string();
             out
         }
-    };
+    }; */
 
     Ok(out)
 }
