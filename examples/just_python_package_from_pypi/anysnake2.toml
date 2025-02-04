@@ -21,9 +21,9 @@
 
 
 [python.packages]
-	dppd={version="pypi:0.26", poetry2nix.buildInputs = ["setuptools"] }
-	scanpy={version="pypi:1.9.3", poetry2nix.buildInputs = ["flit-core", "setuptools-scm"]}
-	session-info={version="pypi:1.0.0", poetry2nix.buildInputs = ["setuptools"]}
+	dppd={version="pypi:0.26", build_systems = ["setuptools"] }
+	scanpy={version="pypi:1.9.3", build_systems = ["flit-core", "setuptools-scm"]}
+	session-info={version="pypi:1.0.0", build_systems = ["setuptools"]}
 
 
 [cmd.python]

@@ -13,7 +13,6 @@ use ex::fs;
 use indoc::indoc;
 use log::{debug, error, info, trace, warn};
 use python_parsing::parse_egg;
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;

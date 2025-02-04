@@ -160,7 +160,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
     if let Some(python) = python {
         #[allow(clippy::map_entry)]
         if !python.packages.contains_key(&"rpy2".to_string()) {
-            let source = config::PythonPackageSource::VersionConstraint("*".to_string());
+            let source = config::PythonPackageSource::VersionConstraint("".to_string());
             let override_attrs = toml::toml! {
                 [env]
                     R_HOME = "${R_tracked}"

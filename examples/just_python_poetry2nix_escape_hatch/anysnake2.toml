@@ -23,14 +23,14 @@
 #setuptools="" # needed by dppd-plotnine
 
 [python.packages.dppd]
-	poetry2nix.buildInputs = ["setuptools"]
+	build_systems = ["setuptools"]
 # could also be version="pypi:0.24"
 	url = "https://files.pythonhosted.org/packages/4b/43/0d1b0135841e4f2b9a3208df24abef52dd368be166bb150369d2cd6c9bed/dppd-0.24.tar.gz"
 
 
 [python.packages.dppd-plotnine]
-	poetry2nix.buildInputs = ["setuptools"]
-	poetry2nix.env.postPatch = """
+	build_systems = ["setuptools"]
+	overrideAttributes.postPatch = """
 	substituteInPlace setup.cfg \
 		--replace-fail "pyscaffold>=3.1a0,<3.2a0" ""
 
@@ -38,7 +38,6 @@
 	# dppd_plotnine version resolution in 0.2 is borked
 	substituteInPlace src/dppd_plotnine/__init__.py --replace-fail "__version__ = get_distribution(dist_name).version" "__version__ = '0.2'"
 """
-	poetry2nix.propagatedBuildInputs = ["setuptools"]
 	version="0.2"
 
 

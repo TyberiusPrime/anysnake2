@@ -1,4 +1,5 @@
 use named_lock::NamedLock;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
@@ -474,11 +475,11 @@ fn test_fetch_from_github_to_fetchgit_transition() {
             "--",
             "python",
             "-c",
-            "'import plotnine; print(plotnine.__version__)'",
+            "'import plotnine; print(\"p9_ver=\", plotnine.__version__)'",
         ],
     );
     dbg!(&stdout);
-    assert!(stdout.contains("999")); // plotnine fallback for 'could not detect from git
+    assert!(Regex::new(r"p9_ver= [\d.]+").unwrap().is_match(&stdout));
     let toml_path = td.path().join("anysnake2.toml");
     let toml = ex::fs::read_to_string(toml_path).unwrap();
     assert!(!toml.contains("github:has2k1/plotnine/main"));
@@ -701,8 +702,10 @@ fn replace_in_file(path: impl AsRef<Path>, query: &str, replacement: &str) {
 
 #[test]
 fn test_flake_change_updates_dependant_flakes() {
-    let ((_code, _stdout, _stderr), td) =
-        run_test_tempdir("examples/flake_subdependency", &["run", "--", "bash" ,"--version"]);
+    let ((_code, _stdout, _stderr), td) = run_test_tempdir(
+        "examples/flake_subdependency",
+        &["run", "--", "bash", "--version"],
+    );
     let before = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert!(before.contains("8810f7d31d4d8372f764d567ea140270745fe173"));
     replace_in_file(
@@ -714,14 +717,14 @@ fn test_flake_change_updates_dependant_flakes() {
     assert!(updated_anysnake2_toml.contains("f554d27c1544d9c56e5f1f8e2b8aff399803674e"));
     run_test(
         &td.path().to_string_lossy(),
-        &["run", "--", "bash" ,"--version"],
+        &["run", "--", "bash", "--version"],
         false,
     );
     let updated = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert!(updated != before);
     run_test(
         &td.path().to_string_lossy(),
-        &["run", "--", "bash" ,"--version"],
+        &["run", "--", "bash", "--version"],
         true,
     );
     let after = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();

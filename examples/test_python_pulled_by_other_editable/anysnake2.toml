@@ -24,20 +24,21 @@
 
 
 [python.packages]
-	mdataframe={ editable=true, url = "github:MarcoMernberger/mdataframe/master/93fd47ffba5f4a0aa59fd02a105ace33a705da71", poetry2nix.buildInputs = ["setuptools"]}
+	mdataframe={ editable=true, url = "github:MarcoMernberger/mdataframe/master/93fd47ffba5f4a0aa59fd02a105ace33a705da71", build_systems = ["setuptools"]}
 # this is how we now specify cloned python packages
 
-	pypipegraph={ editable=true, url = "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", poetry2nix.buildInputs = ["setuptools"]}
+	pypipegraph={ editable=true, url = "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", build_systems = ["setuptools"]}
 	setuptools=""
-	sklearn = {poetry2nix.buildInputs = ["setuptools"], poetry2nix.env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}}
+	sklearn = {build_systems = ["setuptools"], poetry2nix.env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}}
 
 
 [python.packages.pypipegraph2]
 	editable=true
-	poetry2nix.nativeBuildInputs = [
-		"pkgs.rustPlatform.maturinBuildHook",
-		"pkgs.rustPlatform.cargoSetupHook"]
-	poetry2nix.overridePythonAttrs = {cargoDeps = """
+	poetry2nix.overrideAttrs.nativeBuildInputs = '''old.nativeBuildInputs ++ [
+		pkgs.rustPlatform.maturinBuildHook
+		pkgs.rustPlatform.cargoSetupHook]'''
+	# yes, this is import from derivation.
+	poetry2nix.overridePythonAttrs.cargoDeps = """
 	pkgs.rustPlatform.importCargoLock {
           lockFile = "${src}/Cargo.lock";
         }

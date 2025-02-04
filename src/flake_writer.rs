@@ -503,7 +503,15 @@ fn prep_packages_for_pyproject_toml(
                         out_non_spec_but_cached_values,
                     )?;
                     let mut out_map = toml::Table::new();
-                    out_map.insert("path".to_string(), path.into());
+                    let writeable_path = copy_for_poetry(
+                        &path,
+                        name,
+                        &sha256,
+                        pyproject_toml_path,
+                        &spec.pre_poetry_patch,
+                    )?;
+
+                    out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
                         "(
                             pkgs.fetchhg {{
@@ -677,15 +685,29 @@ version = "0.1.0"
 requires-python = "=={python_version}.*"
 [tool.ancient-poetry]
 ancient-date = "{str_date}"
+[tool.uv.sources]
 "#
     )
     .parse()
     .unwrap();
     let mut dependencies: Vec<toml::Value> = Vec::new();
     //[tool.poetry.dependencies]
+    let uv_sources = pyproject_toml_contents["tool"]["uv"]["sources"]
+        .as_table_mut()
+        .unwrap();
     for (name, version_constraint) in python_package_definitions {
-        dependencies.push(format!("{name}{}", version_constraint.as_str().unwrap_or("")).into());
+        match version_constraint {
+            toml::Value::String(constraint) => {
+                dependencies.push(format!("{name}{}", constraint).into())
+            }
+            toml::Value::Table(tbl) => {
+                dependencies.push(name.to_string().into());
+                uv_sources.insert(name.into(), (*tbl).clone().into());
+            }
+            _ => panic!("unexpected kind of version constraint: {version_constraint:?}"),
+        }
     }
+
     pyproject_toml_contents["project"]
         .as_table_mut()
         .unwrap()
@@ -699,9 +721,9 @@ ancient-date = "{str_date}"
         .insert("dependencies".into(), toml::Value::Array(dependencies));
     ex::fs::create_dir_all(pyproject_toml_path.parent().unwrap())?;
     let pyproject_contents = pyproject_toml_contents.to_string();
+    debug!("Writing {pyproject_toml_path:?}");
     ex::fs::write(pyproject_toml_path, &pyproject_contents)
         .context("Failed to generate pyproject.toml")?;
-    debug!("Writing {pyproject_toml_path:?}");
     let pyproject_toml_hash = sha256::digest(pyproject_contents);
 
     let last_hash = ex::fs::read_to_string(pyproject_toml_path.with_extension("sha256"))
