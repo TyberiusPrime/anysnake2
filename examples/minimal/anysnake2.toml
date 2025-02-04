@@ -26,6 +26,14 @@
 	url = "github:nix-community/poetry2nix/master/a5be1bbbe0af0266147a88e0ec43b18c722f2bb9"
 
 
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/05b0c148bc53aebc6a906b6d0ac41dde5954cd47"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
+
+
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 
@@ -33,3 +41,7 @@
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"

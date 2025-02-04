@@ -15,16 +15,14 @@
 
 
 [python] # python section is optionaldd
-	ecosystem_date="2022-03-24" # you get whatever packages the solver would have produced on that day
+	ecosystem_date="2021-08-16" # you get whatever packages the solver would have produced on that day
 # we need setuptools 61.1.0, released mar 24 2022
 	version="3.9" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
 [python.packages]
-#cython = {build_systems = ["wheel"]}
-#markupsafe = {build_systems = ["wheel"]}
-# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	notebook=""
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	pandas="1.2.0"
 	pandocfilters = {build_systems = ["wheel"]}
 
