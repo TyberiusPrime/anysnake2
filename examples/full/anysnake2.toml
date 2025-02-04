@@ -79,7 +79,7 @@
 # or for C dependencies
 # packages that depend on otehr packages from this list should 'just work'.
 
-	testrepo={editable = true, url = "github:TyberiusPrime/_anysnake2_test_repo/main/80416bf3f06c6bd2d37d105e31eef7313c1ea5f8", build_systems = ['setuptools']}
+	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", build_systems = ['setuptools']}
 	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", build_systems = ['setuptools']}
 
 

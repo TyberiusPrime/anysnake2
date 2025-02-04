@@ -359,7 +359,11 @@ fn add_jupyter_kernels(
         nixpkgs_pkgs.insert("zzz_jupyter_kernel_drv".to_string());
     }
 }
-
+struct PrepResult {
+    pyproject_fragment: toml::Table,
+    writeable_to_nix_store_paths: HashMap<String, String>,
+    name_to_nix_src_code: HashMap<String, String>,
+}
 /// prepare what we put into pyproject.toml
 #[allow(clippy::too_many_lines)]
 fn prep_packages_for_pyproject_toml(
@@ -367,8 +371,10 @@ fn prep_packages_for_pyproject_toml(
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
     pyproject_toml_path: &Path,
-) -> Result<toml::Table> {
+) -> Result<PrepResult> {
     let mut result = toml::Table::new();
+    let mut writeable_to_nix_store_paths = HashMap::new();
+    let mut name_to_nix_src_code = HashMap::new();
     for (name, spec) in input {
         match &spec.source {
             config::TofuPythonPackageSource::VersionConstraint(version_constraint) => {
@@ -419,7 +425,7 @@ fn prep_packages_for_pyproject_toml(
                         // https://github.com/python-poetry/poetry/issues/9470
                         // so we do the same thing as for mercurial, clone into the nix store,
                         // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
-                        let (path, sha256) = clone_to_nix_store(
+                        let (path, sha256, nix_code) = clone_to_nix_store(
                             &format!("github:{owner}/{repo}"),
                             rev,
                             "git",
@@ -434,6 +440,8 @@ fn prep_packages_for_pyproject_toml(
                             pyproject_toml_path,
                             &spec.pre_poetry_patch,
                         )?;
+                        writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
+                        name_to_nix_src_code.insert(name.to_string(), nix_code);
                         let mut out_map = toml::Table::new();
                         out_map.insert("path".to_string(), writeable_path.into());
                         let src = format!(
@@ -459,7 +467,7 @@ fn prep_packages_for_pyproject_toml(
                     // https://github.com/python-poetry/poetry/issues/9470
                     // so we do the same thing as for mercurial, clone into the nix store,
                     // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
-                    let (path, sha256) = clone_to_nix_store(
+                    let (path, sha256, nix_code) = clone_to_nix_store(
                         url,
                         rev,
                         "git",
@@ -474,6 +482,8 @@ fn prep_packages_for_pyproject_toml(
                         pyproject_toml_path,
                         &spec.pre_poetry_patch,
                     )?;
+                    writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
+                    name_to_nix_src_code.insert(name.to_string(), nix_code);
                     let mut out_map = toml::Table::new();
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
@@ -494,7 +504,7 @@ fn prep_packages_for_pyproject_toml(
                     // so we can put the nix store path into poetry.toml
                     // later rewrite it to work inside poetry2nix (which assumes relativ paths)
                     // and add the nix fetchhg to the python packages src.
-                    let (path, sha256) = clone_to_nix_store(
+                    let (path, sha256, nix_code) = clone_to_nix_store(
                         url,
                         rev,
                         "mercurial",
@@ -510,11 +520,12 @@ fn prep_packages_for_pyproject_toml(
                         pyproject_toml_path,
                         &spec.pre_poetry_patch,
                     )?;
-
+                    writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
+                    name_to_nix_src_code.insert(name.to_string(), nix_code);
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
                         "(
-                            pkgs.fetchhg {{
+                            pkgs.fetchgit {{
                                     url = \"{url}\";
                                     rev = \"{rev}\";
                                     hash = \"{sha256}\";
@@ -526,10 +537,14 @@ fn prep_packages_for_pyproject_toml(
             },
         }
     }
-    Ok(result)
+    Ok(PrepResult {
+        pyproject_fragment: result,
+        writeable_to_nix_store_paths,
+        name_to_nix_src_code,
+    })
 }
 
-/// poetry needs *writable* clones of the repos,
+/// poetry needs *writeable* clones of the repos,
 /// because it needs to build egg-infos that write into the checkout
 fn copy_for_poetry(
     path: &str,
@@ -555,7 +570,7 @@ fn copy_for_poetry(
         cmd.args(["-r", path, &target_path.to_string_lossy()]);
         debug!("cmd: {:?}", cmd);
         cmd.status()?;
-        // now chmod it to be writable
+        // now chmod it to be writeable
         Command::new("chmod")
             .args(["-R", "ug+w", &target_path.to_string_lossy()])
             .status()?;
@@ -591,22 +606,24 @@ fn clone_to_nix_store(
     prefetch_func: impl Fn(&str, &str) -> Result<PrefetchResult>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
-) -> Result<(String, String)> {
+) -> Result<(String, String, String)> {
     let path_key = format!("{prefix}/{url}/{rev}/path");
     let hash_key = format!("{prefix}/{url}/{rev}/sha256");
+    let nix_code_key = format!("{prefix}/{url}/{rev}/nix_code");
     let path = in_non_spec_but_cached_values.get(&path_key);
     let sha256 = in_non_spec_but_cached_values.get(&hash_key);
+    let nix_code = in_non_spec_but_cached_values.get(&nix_code_key);
     #[allow(clippy::pedantic)]
-    let (path, sha256) = match (path, sha256) {
-        (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
+    let (path, sha256, nix_code) = match (path, sha256, nix_code) {
+        (Some(path), Some(sha256), Some(nix_code)) => (path.to_string(), sha256.to_string(), nix_code.to_string()),
         _ => {
             let path_and_hash = prefetch_func(url, rev)?;
-            (path_and_hash.path, path_and_hash.sha256)
+            (path_and_hash.path, path_and_hash.sha256, path_and_hash.nix_code)
         }
     };
     out_non_spec_but_cached_values.insert(path_key, path.clone());
     out_non_spec_but_cached_values.insert(hash_key, sha256.clone());
-    Ok((path, sha256))
+    Ok((path, sha256, nix_code))
 }
 
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
@@ -691,6 +708,8 @@ ancient-date = "{str_date}"
     .parse()
     .unwrap();
     let mut dependencies: Vec<toml::Value> = Vec::new();
+    //these we have during locking, but we remove them
+    //since they get in via our  venv
     //[tool.poetry.dependencies]
     let uv_sources = pyproject_toml_contents["tool"]["uv"]["sources"]
         .as_table_mut()
@@ -1061,6 +1080,7 @@ fn add_r(
 
 fn format_overrides(
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
+    name_to_nix_src_code: &HashMap<String, String>,
 ) -> Result<Vec<String>> {
     let mut overrides: HashMap<String, HashMap<String, String>> = HashMap::new();
     for (name, spec) in python_packages {
@@ -1080,6 +1100,22 @@ fn format_overrides(
                     str_build_systems
                 ),
             );
+        }
+
+        if let Some(src_code_fragment) = name_to_nix_src_code.get(name) {
+            let target = overrides
+                .entry(safe_python_package_name(name))
+                .or_insert_with(HashMap::new);
+            target.insert("src".to_string(), src_code_fragment.to_string()); //format!("\"{store_path}\""));
+            target.insert("unpackPhase".to_string(), "''
+                cp $src/* . -r
+                chmod +w . -R
+                ls -la
+            ''".to_string());
+            // we need to patch again, this time in nix
+            if let Some(pre_poetry_patch) = spec.pre_poetry_patch.as_ref() {
+                target.insert("patchPhase".to_string(), format!("''{pre_poetry_patch}''"));
+            }
         }
     }
     let mut out = Vec::new();
@@ -1125,12 +1161,13 @@ fn add_python(
             }
             let python_major_minor = format!("python{}", python.version.replace('.', ""));
 
-            let mut out_python_packages = prep_packages_for_pyproject_toml(
+            let prep_result = prep_packages_for_pyproject_toml(
                 &mut python.packages,
                 in_non_spec_but_cached_values,
                 out_non_spec_but_cached_values,
                 pyproject_toml_path,
             )?;
+            let mut out_python_packages = prep_result.pyproject_fragment;
             if python.has_editable_packages() && !out_python_packages.contains_key("pip") {
                 out_python_packages
                     .insert("pip".to_string(), toml::Value::String(">0".to_string()));
@@ -1153,11 +1190,11 @@ fn add_python(
                 ecosystem_date,
             )?;
 
-            rewrite_poetry(flake_dir)?;
+            rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;
             write_setup_cfg(flake_dir, ecosystem_date, git_tracked_files)?;
 
             let local_overrides = //todo: override_attrs...
-                format_overrides(&python.packages)?;
+                format_overrides(&python.packages, &prep_result.name_to_nix_src_code)?;
 
             inputs.push(InputFlake::new(
                 "uv2nix",
@@ -1274,6 +1311,7 @@ fn add_python(
 struct PrefetchResult {
     path: String,
     sha256: String,
+    nix_code: String,
 }
 
 fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
@@ -1311,7 +1349,20 @@ fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let hash = stdout.trim();
     let sha256 = crate::tofu::convert_hash_to_subresource_format(hash)?;
 
-    Ok(PrefetchResult { path, sha256 })
+    let nix_code = format!(
+        "
+        pkgs.fetchhg {{
+            url = \"{url}\";
+            rev = \"{rev}\";  
+            sha256 = \"{sha256}\";
+        }}"
+    );
+
+    Ok(PrefetchResult {
+        path,
+        sha256,
+        nix_code,
+    })
 }
 
 fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
@@ -1352,8 +1403,31 @@ fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         .as_str()
         .context("path in nix-prefetch-git json output was not a string")?
         .to_string();
+    let nix_code = format!(
+        "pkgs.fetchgit {{
+        url = \"{}\";
+        sha256 = \"{}\";
+        rev =  \"{}\";
+    }}
+    ",
+        structured
+            .get("url")
+            .context("No url in nix-prefetch-git-json-output")?
+            .as_str()
+            .context("url in nix-prefetch-git-json-output was not a string")?,
+        sha256,
+        structured
+            .get("rev")
+            .context("No rev in nix-prefetch-git-json-output")?
+            .as_str()
+            .context("rev in nix-prefetch-git-json-output was not a string")?,
+    );
 
-    Ok(PrefetchResult { path, sha256 })
+    Ok(PrefetchResult {
+        path,
+        sha256,
+        nix_code,
+    })
 }
 fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //every single one of the nix-prefetch-* fails me here
@@ -1396,18 +1470,23 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
             format!("nix-build failed with stdout: {stdout} stderr: {stderr}. Expected got: <sha256> line",
         ))?;
         let new_sha = hit.get(1).unwrap().as_str();
+        let nix_code = format!(
+            "pkgs.fetchFromGitHub {{
+                    owner = \"{owner}\";
+                    repo = \"{repo}\";
+                    rev = \"{rev}\";
+                    sha256 = \"{new_sha}\";
+                  }}
+            "
+        );
+
         std::fs::write(
             &default_nix,
             format!(
                 "
                 {{ pkgs ? import <nixpkgs> {{}} }}:
 
-                  pkgs.fetchFromGitHub {{
-                    owner = \"{owner}\";
-                    repo = \"{repo}\";
-                    rev = \"{rev}\";
-                    sha256 = \"{new_sha}\";
-                  }}
+                {nix_code}
                 "
             ),
         )
@@ -1430,27 +1509,47 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         Ok(PrefetchResult {
             path,
             sha256: new_sha.to_string(),
+            nix_code,
         })
     }
 }
 
 /// rewrite all /nix/store references in poetry.toml and lock into ../, and place in new folder
-fn rewrite_poetry(flake_dir: &Path) -> Result<()> {
+/// we need it to find them in the nix store, but for the locking we needed them outside.
+fn rewrite_poetry(
+    flake_dir: &Path,
+    writeable_to_nix_store_paths: &HashMap<String, String>,
+) -> Result<()> {
+    dbg!(writeable_to_nix_store_paths);
     ex::fs::create_dir_all(flake_dir.join("uv_rewritten"))?;
 
     let filename = "pyproject.toml";
     let input_filename = flake_dir.join("uv").join(filename);
     let output_filename = flake_dir.join("uv_rewritten").join(filename);
     let raw = ex::fs::read_to_string(input_filename).context("rewrite_poetry")?;
-    let out = raw.replace("/nix/store/", "../");
+    let mut out = raw;
+    for (search, replace) in writeable_to_nix_store_paths {
+        out = out.replace(search, replace);
+    }
     ex::fs::write(output_filename, out)?;
+
+    let str_flake_dir = flake_dir.canonicalize()?.to_string_lossy().to_string();
+    dbg!(&str_flake_dir);
 
     let filename = "uv.lock";
     let input_filename = flake_dir.join("uv").join(filename);
     let output_filename = flake_dir.join("uv_rewritten").join(filename);
     let raw = ex::fs::read_to_string(input_filename).context("Rewrite_poetry")?;
-    let search_re = regex::Regex::new(r"(\.\./)+nix/store/").unwrap();
-    let out = search_re.replace(&raw, "../../").to_string(); //todo: do it without the alloc
+    let mut out = raw;
+    for (search, replace) in writeable_to_nix_store_paths {
+        let search_minus_slash = search
+            .strip_prefix("/")
+            .unwrap_or(search)
+            .replace('+', "[+]");
+        let re = regex::Regex::new(&format!(r"([.][.]/)+{}", search_minus_slash)).unwrap();
+        let replace_with = format!("../../../..{replace}"); //must be relative to the nix store.
+        out = re.replace_all(&out, replace_with).to_string();
+    }
     ex::fs::write(output_filename, out)?;
 
     Ok(())

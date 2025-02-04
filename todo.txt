@@ -24,3 +24,6 @@
 -- garbage collection for poetry clones?
 -- rpy2 site path hacks?
 -- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?
+
+
+-- ensure we have safe_python_names right after parsing
