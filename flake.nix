@@ -65,7 +65,6 @@
           pkgs.cargo-audit
           ancient-poetry.defaultPackage.x86_64-linux
           bacon
-          pkgs.jujutsu
         ];
       };
     });
