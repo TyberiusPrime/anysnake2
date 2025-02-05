@@ -1,0 +1,53 @@
+[anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2="dev"
+
+
+[nixpkgs]
+	packages =["which"]
+	url = "github:nixos/nixpkgs/master/24.05"
+
+
+[python]
+	ecosystem_date="2024-09-16"
+	version="3.12"
+
+
+[python.packages]
+	diopy={build_systems = ["setuptools"], url= "github:TyberiusPrime/diopy/fix_scipy/c60992749d4a620e90fcf016a9636a65e97e17db",editable=true}
+
+
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
+[outside_nixpkgs]
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/2fcb9ceb35a9d1b0ebce02d028f17754d0927682"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/85d4ac52d5e78963a4803be8e26eeb41d5882868"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
+
+
+[devshell]
+	inputs = []
+	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e4ec65fabc1ff5abf61825f3ac07d0e1d157f1c1"
+

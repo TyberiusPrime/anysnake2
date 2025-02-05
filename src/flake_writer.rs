@@ -1056,6 +1056,7 @@ fn add_r(
             .to_string(),
         );
 
+        nixpkgs_pkgs.insert("(builtins.elemAt R.buildInputs 0)".to_string()); // that's the overlayed R.
         nixpkgs_pkgs.insert("R".to_string()); // that's the overlayed R.
     } else {
         definitions.insert("R_tracked".to_string(), "null".to_string());

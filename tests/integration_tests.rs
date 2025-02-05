@@ -298,8 +298,14 @@ fn test_full_full() {
     assert!(rpy2_embedded_text.contains("os.environ['R_LIBS_SITE']"));
 
     assert!(test_dir.join("code/fpick").exists(), "Clone didn't exist");
-    assert!(test_dir.join("code/fpick/.git").exists(), "Clone wasn't a .git repo?");
-    assert!(test_dir.join("code/fpick/.jj").exists(), "Clone wasn't a .jj repo?");
+    assert!(
+        test_dir.join("code/fpick/.git").exists(),
+        "Clone wasn't a .git repo?"
+    );
+    assert!(
+        test_dir.join("code/fpick/.jj").exists(),
+        "Clone wasn't a .jj repo?"
+    );
 }
 
 #[test]
@@ -455,7 +461,10 @@ fn test_python_pip_reinstall_if_venv_changes() {
     // we test that the shebang has changed, for only then the venv has the right python.
     println!("lines_first: {:?}", lines_first[0]);
     println!("lines_second: {:?}", lines_second[0]);
-    assert!(lines_first[0] != lines_second[0], "python was unchanged but should have changed");
+    assert!(
+        lines_first[0] != lines_second[0],
+        "python was unchanged but should have changed"
+    );
     assert!(lines_first[1..] == lines_second[1..]);
 }
 
@@ -533,7 +542,7 @@ fn test_fetch_trust_on_first_use() {
         );
         assert!(!stdout.contains("creating lock file"));
         assert!(!stderr.contains("creating lock file"));
-          //once again, for good measure
+        //once again, for good measure
         let (_code, stdout, stderr) = run_test(
             &td.path().to_string_lossy(),
             &[
@@ -760,4 +769,14 @@ fn test_flake_change_updates_dependant_flakes() {
     );
     let after = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert_eq!(after, updated);
+}
+
+#[test]
+fn test_editable_path_finder_install() {
+    let ((_code, _stdout, stderr), _td) = run_test_tempdir(
+        "examples/debug_python_editable_venv_path_finder/",
+        &["run", "--", "python", "--", "-c", "'import diopy;'"],
+    );
+    assert!(stderr.contains("/anysnake2/venv/linked_in/diopy"));
+    assert!(!stderr.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
 }

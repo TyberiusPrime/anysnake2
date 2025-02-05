@@ -817,9 +817,7 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
     {
         let tf = ex::fs::File::create(&download_filename)?;
         let mut btf = std::io::BufWriter::new(tf);
-        let mut req = anysnake2::util::get_proxy_req()?
-            .get(url)
-            .call()?;
+        let mut req = anysnake2::util::get_proxy_req()?.get(url).call()?;
         std::io::copy(&mut req.body_mut().as_reader(), &mut btf)?;
     }
     //call tar to unpack
@@ -872,16 +870,11 @@ fn clone(
 
 fn jujutsu_init(git_repo_dir: &Path) -> Result<()> {
     let dtach_url = format!("{}#jujutsu", anysnake2::get_outside_nixpkgs_url().unwrap());
-    let nix_full_args = vec![
-        "shell",
-        &dtach_url,
-        "-c",
-        "jj",
-        "git",
-        "init",
-        "--colocate"
-    ];
-    let status = Command::new("nix").args(nix_full_args).current_dir(git_repo_dir).status()?;
+    let nix_full_args = vec!["shell", &dtach_url, "-c", "jj", "git", "init", "--colocate"];
+    let status = Command::new("nix")
+        .args(nix_full_args)
+        .current_dir(git_repo_dir)
+        .status()?;
     if status.success() {
         Ok(())
     } else {
@@ -889,10 +882,7 @@ fn jujutsu_init(git_repo_dir: &Path) -> Result<()> {
     }
 }
 
-fn perform_clones(
-    flake_dir: &Path,
-    parsed_config: &config::TofuConfigToml,
-) -> Result<()> {
+fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> Result<()> {
     let do_jujustu = parsed_config.clone_options.jujutsu;
     // the old school 'clones' clones
     let mut todo: HashMap<String, HashMap<String, config::TofuPythonPackageSource>> =
@@ -1098,22 +1088,21 @@ fn fill_venv(
             to_build.push((pkg, target_dir));
         }
     }
-    if !to_build.is_empty() {
-        for (safe_pkg, target_dir) in &to_build {
-            info!("Pip install {:?}", &target_dir);
-            let td = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
-            let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
-            let td_home_str = td_home.path().to_string_lossy().to_string();
+    for (safe_pkg, target_dir) in &to_build {
+        info!("Pip install {:?}", &target_dir);
+        let td = PathBuf::from("venv_temp"); //tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
+        let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
+        let td_home_str = td_home.path().to_string_lossy().to_string();
 
-            let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
-            debug!("target_python {:?}", target_python);
-            debug!("search_python {:?}", search_python);
+        let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
+        debug!("target_python {:?}", target_python);
+        debug!("search_python {:?}", search_python);
 
-            let mut cmd_file = tempfile::NamedTempFile::new()?;
-            writeln!(
-                cmd_file,
-                indoc!(
-                    "
+        let mut cmd_file = tempfile::NamedTempFile::new()?;
+        writeln!(
+            cmd_file,
+            indoc!(
+                "
                 set -eux pipefail
                 cat /anysnake2/install.sh
                 mkdir /tmp/venv
@@ -1136,105 +1125,122 @@ fn fill_venv(
                 )
                 cp /tmp/venv/bin/* /anysnake2/venv/bin 2>/dev/null|| true
                "
-                ),
-                safe_pkg = &safe_pkg,
-                search_python = search_python,
-                target_python = &target_python_str,
-            )
-            .context("failed to write tmp file with cmd")?;
+            ),
+            safe_pkg = &safe_pkg,
+            search_python = search_python,
+            target_python = &target_python_str,
+        )
+        .context("failed to write tmp file with cmd")?;
 
-            let mut singularity_args: Vec<String> = vec![
-                "exec".into(),
-                "--userns".into(),
-                "--cleanenv".into(),
-                //"--no-home".into(),
-                "--home".into(),
-                td_home_str,
-                "--bind".into(),
-                "/nix/store:/nix/store:ro".into(),
-                "--bind".into(),
-                format!("{}:/tmp:rw", &td.path().to_string_lossy()),
-                "--bind".into(),
-                format!(
-                    "{}:/anysnake2/venv:rw",
-                    venv_dir.clone().into_os_string().to_string_lossy()
-                ),
-                "--bind".into(),
-                format!(
-                    "{}:/anysnake2/venv/linked_in/{}:rw",
-                    target_dir.clone().into_os_string().to_string_lossy(),
-                    &safe_pkg
-                ),
-                "--bind".into(),
-                format!(
-                    "{}:/anysnake2/venv/bin:rw",
-                    venv_dir.join("bin").into_os_string().to_string_lossy()
-                ),
-                "--bind".into(),
-                format!(
-                    "{}:/anysnake2/install.sh",
-                    cmd_file.path().to_string_lossy()
-                ),
-            ];
-            singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
-            singularity_args.push("bash".into());
-            singularity_args.push("/anysnake2/install.sh".into());
-            info!("installing inside singularity");
-            let singularity_result = run_singularity(
-                &singularity_args[..],
-                Some(&venv_dir.join("singularity.bash")),
-                &None,
-                flake_dir,
-            )
-            .context("singularity failed")?;
-            if !singularity_result.success() {
-                bail!(
-                    "Singularity pip install failed with exit code {}",
-                    singularity_result.code().unwrap()
-                );
+        let mut singularity_args: Vec<String> = vec![
+            "exec".into(),
+            "--userns".into(),
+            "--cleanenv".into(),
+            //"--no-home".into(),
+            "--home".into(),
+            td_home_str,
+            "--bind".into(),
+            "/nix/store:/nix/store:ro".into(),
+            "--bind".into(),
+            format!("{}:/tmp:rw", &td.as_path().to_string_lossy()),
+            "--bind".into(),
+            format!(
+                "{}:/anysnake2/venv:rw",
+                venv_dir.clone().into_os_string().to_string_lossy()
+            ),
+            "--bind".into(),
+            format!(
+                "{}:/anysnake2/venv/linked_in/{}:rw",
+                target_dir.clone().into_os_string().to_string_lossy(),
+                &safe_pkg
+            ),
+            "--bind".into(),
+            format!(
+                "{}:/anysnake2/venv/bin:rw",
+                venv_dir.join("bin").into_os_string().to_string_lossy()
+            ),
+            "--bind".into(),
+            format!(
+                "{}:/anysnake2/install.sh",
+                cmd_file.path().to_string_lossy()
+            ),
+        ];
+        singularity_args.push(flake_dir.join("result/rootfs").to_string_lossy());
+        singularity_args.push("bash".into());
+        singularity_args.push("/anysnake2/install.sh".into());
+        info!("installing inside singularity");
+        let singularity_result = run_singularity(
+            &singularity_args[..],
+            Some(&venv_dir.join("singularity.bash")),
+            &None,
+            flake_dir,
+        )
+        .context("singularity failed")?;
+        if !singularity_result.success() {
+            bail!(
+                "Singularity pip install failed with exit code {}",
+                singularity_result.code().unwrap()
+            );
+        }
+        // now copy the egg/pth files..
+        // appearntly bin patching is no longer necessary.
+        let source_egg_folder = td
+            .as_path()
+            .join("venv/lib")
+            .join(format!("python{python_version}"))
+            .join("site-packages");
+        let target_egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+        let paths = fs::read_dir(&source_egg_folder)
+            .context("could not read site-packages folder in temp venv")?;
+        let mut any_found = false;
+        for path in paths {
+            let path = path.unwrap().path();
+            let suffix = path.extension().map_or_else(
+                || Cow::Owned(String::default()),
+                std::ffi::OsStr::to_string_lossy,
+            );
+            if suffix == "pth" || suffix == "egg-link" {
+                //we want to read {safe_pkg}.egg-link, not __editable__{safe_pkg}-{version}.pth
+                //because we don't *know* the version
+                //and this happens only once
+                let content =
+                    ex::fs::read_to_string(&path).context("Failed reading source link")?;
+                fs::write(&target_egg_link, &content)?;
+                any_found = true;
+                if suffix == "pth" && content.starts_with("import ") {
+                    let finder_filename = path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                        .replace("__editable.", "__editable")
+                        .replace('-', "_")
+                        .replace('.', "_")
+                        + "_finder.py";
+
+                    let finder_path = path.with_file_name(&finder_filename);
+                    dbg!(&finder_path);
+                    let finder_content = ex::fs::read_to_string(finder_path)
+                        .context("Failed reading source finder for pth file")?;
+                    let target_finder = target_egg_link.parent().unwrap().join(finder_filename);
+                    fs::write(target_finder, finder_content)
+                        .context("target finder write failed")?;
+                }
+                break;
             }
-            // now copy the egg/pth files..
-            // appearntly bin patching is no longer necessary.
-            let source_egg_folder = td
-                .path()
-                .join("venv/lib")
-                .join(format!("python{python_version}"))
-                .join("site-packages");
-            let target_egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
-            let paths = fs::read_dir(&source_egg_folder)
-                .context("could not read site-packages folder in temp venv")?;
-            let mut any_found = false;
+        }
+        if !any_found {
+            let paths = fs::read_dir(source_egg_folder).unwrap();
             for path in paths {
                 let path = path.unwrap().path();
-                let suffix = path.extension().map_or_else(
-                    || Cow::Owned(String::default()),
-                    std::ffi::OsStr::to_string_lossy,
-                );
-                if suffix == "pth" || suffix == "egg-link" {
-                    //we want to read {safe_pkg}.egg-link, not __editable__{safe_pkg}-{version}.pth
-                    //because we don't *know* the version
-                    //and this happens only once
-                    fs::write(
-                        target_egg_link,
-                        ex::fs::read_to_string(path).context("Failed reading source  link")?,
-                    )?;
-                    any_found = true;
-                    break;
-                }
+                info!("found in venv folder {}", path.display());
             }
-            if !any_found {
-                let paths = fs::read_dir(source_egg_folder).unwrap();
-                for path in paths {
-                    let path = path.unwrap().path();
-                    info!("found in venv folder {}", path.display());
-                }
-                bail!("Could not find .egg or .pth in venv folder");
-            }
-
-            let target_anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
-            fs::write(target_anysnake_link, &target_python_str)
-                .context("target anysnake link write failed")?;
+            bail!("Could not find .egg or .pth in venv folder");
         }
+
+        let target_anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+        fs::write(target_anysnake_link, &target_python_str)
+            .context("target anysnake link write failed")?;
     }
     Ok(())
 }

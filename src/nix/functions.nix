@@ -34,6 +34,9 @@
          if [ -d "$path/lib/R/library/" ]; then
            ${pkgs.xorg.lndir}/bin/lndir -ignorelinks "$path/lib/R/library" "$out/rootfs/R_libs/" || true
          fi
+         if [ -f "$path/lib/R/lib/libR.so" ]; then 
+           ${pkgs.xorg.lndir}/bin/lndir -ignorelinks "$path/lib/R/lib" "$out/rootfs/lib64" || true
+         fi
          if [ -f "$path/pyvenv.cfg" ]; then # uv2nix special
              ln -s "$path/pyvenv.cfg" "$out/rootfs/pyvenv.cfg" # collision -> erorrx
              mkdir $out/rootfs/lib
