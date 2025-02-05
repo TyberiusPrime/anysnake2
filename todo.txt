@@ -31,3 +31,20 @@
 
 
 -- garbage collection for poetry clones?
+
+
+-- when passing a url to a python package, uv fetches it, then nix fetches it again.
+   Perhaps we can prefetch it, then have uv lock read the nix store path for the wheel?
+   (currently this also means we're refetching the 180mb torch wheel on every lock...)
+   (why was it not suing the wheel before though?. Ah no, the problem is that torch 2.4.1 wanted cuda 9,
+   and nixos 24.05 only had cuda 8.9
+
+
+
+- python build_system_overrides get added to ansynake overrieds - should the be in local_user_overrides instead?
+
+
+-- we have a editable problem,
+e.g. diopy={build_systems = ["setuptools"], url= "github:TyberiusPrime/diopy/fix_scipy/79b720c46318fb1d390b12fa268846a5828a8700",editable=true}
+leads to a sys.path entry of '/project/import __editable___diopy_0_4_0_finder; __editable___diopy_0_4_0_finder.install()' which then can't be found and pulls the site-packages one we used during setup.
+
