@@ -128,7 +128,7 @@ pub struct Uv2Nix {
 }
 
 #[derive(Debug)]
-pub struct TofuUv2Nix{
+pub struct TofuUv2Nix {
     pub source: TofuVCS,
     pub prefer_wheels: bool,
 }
@@ -295,9 +295,6 @@ impl NixPkgs {
     pub fn default_allow_unfree() -> bool {
         false
     }
-
-    
-
 }
 
 #[derive(Debug, Clone)]
@@ -423,20 +420,14 @@ impl TofuPythonPackageSource {
 }
 
 #[cfg(test)]
-mod test {
-    
-
-    
-
-    
-
-}
+mod test {}
 
 #[derive(Debug, Clone)]
 pub struct PythonPackageDefinition {
     pub source: PythonPackageSource,
     pub editable_path: Option<String>,
-    pub override_attrs: toml::map::Map<String, toml::Value>,
+    pub override_attrs: HashMap<String, String>,
+    pub anysnake_override_attrs: Option<HashMap<String, String>>,
     pub pre_poetry_patch: Option<String>,
     pub build_systems: Option<Vec<String>>,
 }
@@ -445,7 +436,8 @@ pub struct PythonPackageDefinition {
 pub struct TofuPythonPackageDefinition {
     pub source: TofuPythonPackageSource,
     pub editable_path: Option<String>,
-    pub override_attrs: toml::map::Map<String, toml::Value>,
+    pub override_attrs: HashMap<String, String>,
+    pub anysnake_override_attrs: Option<HashMap<String, String>>,
     pub pre_poetry_patch: Option<String>,
     pub build_systems: Option<Vec<String>>,
 }
@@ -521,7 +513,8 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: None,
-                    override_attrs: toml::map::Map::new(),
+                    override_attrs: HashMap::new(),
+                    anysnake_override_attrs: None,
                     pre_poetry_patch: None,
                     build_systems: None,
                 })
@@ -602,12 +595,24 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     }
                 };
                 let override_attrs = match parsed.get("override_attrs") {
-                    Some(entry) => Ok(entry
-                        .as_table()
-                        .cloned()
-                        .context("override_attrs was not a table")
-                        .map_err(serde::de::Error::custom)?),
-                    None => Ok(toml::map::Map::new()),
+                    Some(entry) => {
+                        let res: Result<HashMap<String, String>> = entry
+                            .as_table()
+                            .context("override_attrs was not a table")
+                            .map_err(serde::de::Error::custom)?
+                            .iter()
+                            .map(|(k, v)| {
+                                Ok((
+                                    k.to_string(),
+                                    v.as_str().map(|x| x.to_string()).context(
+                                        "override_attrs value was not a string (with nix code)",
+                                    )?,
+                                ))
+                            })
+                            .collect();
+                        Ok(res.map_err(serde::de::Error::custom)?)
+                    }
+                    None => Ok(HashMap::new()),
                 }?;
                 let pre_poetry_patch = match parsed.get("pre_poetry_patch") {
                     Some(entry) => Some(
@@ -640,8 +645,9 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     source,
                     editable_path: editable,
                     override_attrs,
+                    anysnake_override_attrs: None,
                     pre_poetry_patch,
-                    build_systems
+                    build_systems,
                 })
             }
         }

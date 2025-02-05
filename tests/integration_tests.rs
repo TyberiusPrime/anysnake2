@@ -272,7 +272,7 @@ fn rm_clones(path: &str) {
 }
 
 #[test]
-fn test_full() {
+fn test_full_full() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
 
@@ -336,6 +336,7 @@ fn test_full_hello() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
 
+    rm_clones("examples/full");
     let (_code, stdout, _stderr) =
         run_test("examples/full", &["run", "--", "hello", "--version"], true);
     assert!(stdout.contains("Hello World"));

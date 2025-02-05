@@ -84,18 +84,17 @@
 
 
 [python.packages.plotnine]
-	override_attrs.postInstall = """
+	override_attrs.postInstall = """''
 	        touch $out/lib/python3.12/site-packages/plotnine/post_install_worked
-
-"""
+''"""
 # and this is how you patch it after poetry's dependency resolution
 # but before it's actually being build
-	override_attrs.postPatch = """
+	override_attrs.postPatch = """''
 	substituteInPlace setup.py --replace-fail "version=versioneer.get_version()," "version='0.8.0'," \
 		--replace-fail "cmdclass=versioneer.get_cmdclass()," ""
-"""
+''"""
 # escape hatch for packages that just can't define their version number from the checked out
-# path. ( We copy the package to the nix store, then supply poetry with a writeable version
+# path. ( We copy the package to the nix store, then supply uv with a writeable version
 # for it to figure out the package version number. Some packages that's not enough)
 # this get's passed to bash. With set -xoeu pipefail
 	pre_poetry_patch = """

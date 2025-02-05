@@ -362,7 +362,6 @@ fn add_jupyter_kernels(
 struct PrepResult {
     pyproject_fragment: toml::Table,
     writeable_to_nix_store_paths: HashMap<String, String>,
-    name_to_nix_src_code: HashMap<String, String>,
 }
 /// prepare what we put into pyproject.toml
 #[allow(clippy::too_many_lines)]
@@ -374,7 +373,6 @@ fn prep_packages_for_pyproject_toml(
 ) -> Result<PrepResult> {
     let mut result = toml::Table::new();
     let mut writeable_to_nix_store_paths = HashMap::new();
-    let mut name_to_nix_src_code = HashMap::new();
     for (name, spec) in input {
         match &spec.source {
             config::TofuPythonPackageSource::VersionConstraint(version_constraint) => {
@@ -425,7 +423,7 @@ fn prep_packages_for_pyproject_toml(
                         // https://github.com/python-poetry/poetry/issues/9470
                         // so we do the same thing as for mercurial, clone into the nix store,
                         // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
-                        let (path, sha256, nix_code) = clone_to_nix_store(
+                        let (path, sha256) = clone_to_nix_store(
                             &format!("github:{owner}/{repo}"),
                             rev,
                             "git",
@@ -441,7 +439,6 @@ fn prep_packages_for_pyproject_toml(
                             &spec.pre_poetry_patch,
                         )?;
                         writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
-                        name_to_nix_src_code.insert(name.to_string(), nix_code);
                         let mut out_map = toml::Table::new();
                         out_map.insert("path".to_string(), writeable_path.into());
                         let src = format!(
@@ -453,7 +450,9 @@ fn prep_packages_for_pyproject_toml(
                                     hash = \"{sha256}\";
                             }})",
                         );
-                        spec.override_attrs.insert("src".to_string(), src.into());
+                        spec.anysnake_override_attrs
+                            .get_or_insert_with(|| HashMap::new())
+                            .insert("src".to_string(), src.into());
                         result.insert(name.to_string(), toml::Value::Table(out_map));
                     }
                 }
@@ -467,7 +466,7 @@ fn prep_packages_for_pyproject_toml(
                     // https://github.com/python-poetry/poetry/issues/9470
                     // so we do the same thing as for mercurial, clone into the nix store,
                     // add a nix fetchgit dependency, and rewrite it to work inside poetry2nix
-                    let (path, sha256, nix_code) = clone_to_nix_store(
+                    let (path, sha256) = clone_to_nix_store(
                         url,
                         rev,
                         "git",
@@ -483,7 +482,6 @@ fn prep_packages_for_pyproject_toml(
                         &spec.pre_poetry_patch,
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
-                    name_to_nix_src_code.insert(name.to_string(), nix_code);
                     let mut out_map = toml::Table::new();
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
@@ -494,7 +492,9 @@ fn prep_packages_for_pyproject_toml(
                                     hash = \"{sha256}\";
                             }})",
                     );
-                    spec.override_attrs.insert("src".to_string(), src.into());
+                    spec.anysnake_override_attrs
+                        .get_or_insert_with(|| HashMap::new())
+                        .insert("src".to_string(), src.into());
                     result.insert(name.to_string(), toml::Value::Table(out_map));
                 }
                 vcs::TofuVCS::Mercurial { url, rev } => {
@@ -504,7 +504,7 @@ fn prep_packages_for_pyproject_toml(
                     // so we can put the nix store path into poetry.toml
                     // later rewrite it to work inside poetry2nix (which assumes relativ paths)
                     // and add the nix fetchhg to the python packages src.
-                    let (path, sha256, nix_code) = clone_to_nix_store(
+                    let (path, sha256) = clone_to_nix_store(
                         url,
                         rev,
                         "mercurial",
@@ -521,17 +521,18 @@ fn prep_packages_for_pyproject_toml(
                         &spec.pre_poetry_patch,
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
-                    name_to_nix_src_code.insert(name.to_string(), nix_code);
                     out_map.insert("path".to_string(), writeable_path.into());
                     let src = format!(
                         "(
-                            pkgs.fetchgit {{
+                            pkgs.fetchhg {{
                                     url = \"{url}\";
                                     rev = \"{rev}\";
                                     hash = \"{sha256}\";
                             }})",
                     );
-                    spec.override_attrs.insert("src".to_string(), src.into());
+                    spec.anysnake_override_attrs
+                        .get_or_insert_with(|| HashMap::new())
+                        .insert("src".to_string(), src.into());
                     result.insert(name.to_string(), toml::Value::Table(out_map));
                 }
             },
@@ -540,7 +541,6 @@ fn prep_packages_for_pyproject_toml(
     Ok(PrepResult {
         pyproject_fragment: result,
         writeable_to_nix_store_paths,
-        name_to_nix_src_code,
     })
 }
 
@@ -606,24 +606,22 @@ fn clone_to_nix_store(
     prefetch_func: impl Fn(&str, &str) -> Result<PrefetchResult>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
-) -> Result<(String, String, String)> {
+) -> Result<(String, String)> {
     let path_key = format!("{prefix}/{url}/{rev}/path");
     let hash_key = format!("{prefix}/{url}/{rev}/sha256");
-    let nix_code_key = format!("{prefix}/{url}/{rev}/nix_code");
     let path = in_non_spec_but_cached_values.get(&path_key);
     let sha256 = in_non_spec_but_cached_values.get(&hash_key);
-    let nix_code = in_non_spec_but_cached_values.get(&nix_code_key);
     #[allow(clippy::pedantic)]
-    let (path, sha256, nix_code) = match (path, sha256, nix_code) {
-        (Some(path), Some(sha256), Some(nix_code)) => (path.to_string(), sha256.to_string(), nix_code.to_string()),
+    let (path, sha256) = match (path, sha256) {
+        (Some(path), Some(sha256)) => (path.to_string(), sha256.to_string()),
         _ => {
             let path_and_hash = prefetch_func(url, rev)?;
-            (path_and_hash.path, path_and_hash.sha256, path_and_hash.nix_code)
+            (path_and_hash.path, path_and_hash.sha256)
         }
     };
     out_non_spec_but_cached_values.insert(path_key, path.clone());
     out_non_spec_but_cached_values.insert(hash_key, sha256.clone());
-    Ok((path, sha256, nix_code))
+    Ok((path, sha256))
 }
 
 fn get_basic_auth_header(user: &str, pass: &str) -> String {
@@ -1080,12 +1078,27 @@ fn add_r(
 
 fn format_overrides(
     python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
-    name_to_nix_src_code: &HashMap<String, String>,
-) -> Result<Vec<String>> {
-    let mut overrides: HashMap<String, HashMap<String, String>> = HashMap::new();
+) -> Result<(Vec<String>, Vec<String>)> {
+    fn to_vec(overrides: HashMap<String, HashMap<String, String>>) -> Vec<String> {
+        let mut out = Vec::new();
+        for (name, key_value) in overrides.into_iter() {
+            let mut here = format!("{name} = prev.{name}.overrideAttrs (old: {{");
+            for (key, value) in key_value {
+                here.push_str(&format!("{key} = {value};"));
+            }
+            here.push_str("});");
+            out.push(here);
+        }
+        out.sort();
+        out
+    }
+
+    let mut anysnake_overrides: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut user_overrides: HashMap<String, HashMap<String, String>> = HashMap::new();
+
     for (name, spec) in python_packages {
         if let Some(build_systems) = &spec.build_systems {
-            let target = overrides
+            let target = anysnake_overrides
                 .entry(safe_python_package_name(name))
                 .or_insert_with(HashMap::new);
             let str_build_systems = build_systems
@@ -1101,34 +1114,22 @@ fn format_overrides(
                 ),
             );
         }
-
-        if let Some(src_code_fragment) = name_to_nix_src_code.get(name) {
-            let target = overrides
+        for (key, value) in spec.override_attrs.iter() {
+            let target = user_overrides
                 .entry(safe_python_package_name(name))
                 .or_insert_with(HashMap::new);
-            target.insert("src".to_string(), src_code_fragment.to_string()); //format!("\"{store_path}\""));
-            target.insert("unpackPhase".to_string(), "''
-                cp $src/* . -r
-                chmod +w . -R
-                ls -la
-            ''".to_string());
-            // we need to patch again, this time in nix
-            if let Some(pre_poetry_patch) = spec.pre_poetry_patch.as_ref() {
-                target.insert("patchPhase".to_string(), format!("''{pre_poetry_patch}''"));
+            target.insert(key.to_string(), value.to_string());
+        }
+        if let Some(anysnake_override_attrs) = spec.anysnake_override_attrs.as_ref() {
+            for (key, value) in anysnake_override_attrs.iter() {
+                let target = anysnake_overrides
+                    .entry(safe_python_package_name(name))
+                    .or_insert_with(HashMap::new);
+                target.insert(key.to_string(), value.to_string());
             }
         }
     }
-    let mut out = Vec::new();
-    for (name, key_value) in overrides.into_iter() {
-        let mut here = format!("{name} = prev.{name}.overrideAttrs (old: {{");
-        for (key, value) in key_value {
-            here.push_str(&format!("{key} = {value};"));
-        }
-        here.push_str("});");
-        out.push(here);
-    }
-    out.sort();
-    Ok(out)
+    Ok((to_vec(anysnake_overrides), to_vec(user_overrides)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1193,8 +1194,8 @@ fn add_python(
             rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;
             write_setup_cfg(flake_dir, ecosystem_date, git_tracked_files)?;
 
-            let local_overrides = //todo: override_attrs...
-                format_overrides(&python.packages, &prep_result.name_to_nix_src_code)?;
+            let (local_anysnake_overrides, local_user_overrides) = //todo: override_attrs...
+                format_overrides(&python.packages)?;
 
             inputs.push(InputFlake::new(
                 "uv2nix",
@@ -1236,13 +1237,20 @@ fn add_python(
                 format!("workspace.mkPyprojectOverlay {{ sourcePreference = \"{source_preference}\"; }}")
             );
             definitions.insert(
-                "local_overrides".to_string(),
-                format!("(final: prev: {{ {} }})", local_overrides.join("\n")),
+                "local_anysnake_overrides".to_string(),
+                format!(
+                    "(final: prev: {{ {} }})",
+                    local_anysnake_overrides.join("\n")
+                ),
+            );
+            definitions.insert(
+                "local_user_overrides".to_string(),
+                format!("(final: prev: {{ {} }})", local_user_overrides.join("\n")),
             );
 
             definitions.insert(
                 "pyprojectOverrides ".to_string(),
-                "[local_overrides (uv2nix_override_collection.overrides pkgs)]".to_string(),
+                "[(uv2nix_override_collection.overrides pkgs) local_anysnake_overrides local_user_overrides]".to_string(),
             ); //todo: insert override_attrs here.
             definitions.insert(
                 "interpreter".to_string(),
@@ -1311,7 +1319,6 @@ fn add_python(
 struct PrefetchResult {
     path: String,
     sha256: String,
-    nix_code: String,
 }
 
 fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
@@ -1349,20 +1356,7 @@ fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let hash = stdout.trim();
     let sha256 = crate::tofu::convert_hash_to_subresource_format(hash)?;
 
-    let nix_code = format!(
-        "
-        pkgs.fetchhg {{
-            url = \"{url}\";
-            rev = \"{rev}\";  
-            sha256 = \"{sha256}\";
-        }}"
-    );
-
-    Ok(PrefetchResult {
-        path,
-        sha256,
-        nix_code,
-    })
+    Ok(PrefetchResult { path, sha256 })
 }
 
 fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
@@ -1403,31 +1397,8 @@ fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         .as_str()
         .context("path in nix-prefetch-git json output was not a string")?
         .to_string();
-    let nix_code = format!(
-        "pkgs.fetchgit {{
-        url = \"{}\";
-        sha256 = \"{}\";
-        rev =  \"{}\";
-    }}
-    ",
-        structured
-            .get("url")
-            .context("No url in nix-prefetch-git-json-output")?
-            .as_str()
-            .context("url in nix-prefetch-git-json-output was not a string")?,
-        sha256,
-        structured
-            .get("rev")
-            .context("No rev in nix-prefetch-git-json-output")?
-            .as_str()
-            .context("rev in nix-prefetch-git-json-output was not a string")?,
-    );
 
-    Ok(PrefetchResult {
-        path,
-        sha256,
-        nix_code,
-    })
+    Ok(PrefetchResult { path, sha256 })
 }
 fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //every single one of the nix-prefetch-* fails me here
@@ -1509,7 +1480,6 @@ fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
         Ok(PrefetchResult {
             path,
             sha256: new_sha.to_string(),
-            nix_code,
         })
     }
 }
@@ -1520,7 +1490,6 @@ fn rewrite_poetry(
     flake_dir: &Path,
     writeable_to_nix_store_paths: &HashMap<String, String>,
 ) -> Result<()> {
-    dbg!(writeable_to_nix_store_paths);
     ex::fs::create_dir_all(flake_dir.join("uv_rewritten"))?;
 
     let filename = "pyproject.toml";

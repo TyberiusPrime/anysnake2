@@ -159,39 +159,39 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
     // versions.
     if let Some(python) = python {
         #[allow(clippy::map_entry)]
-        if !python.packages.contains_key(&"rpy2".to_string()) {
+        let key = "rpy2".to_string();
+        if !python.packages.contains_key(&key) {
             let source = config::PythonPackageSource::VersionConstraint("".to_string());
-            let override_attrs = toml::toml! {
-                [env]
-                    R_HOME = "${R_tracked}"
-                    NIX_LDFLAGS = "-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib"
-                    postPatch = "
-                      substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
-                              \"os.environ['R_HOME'] = openrlib.R_HOME
-                              os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
-                    "
-            };
             let def = config::PythonPackageDefinition {
                 source,
                 editable_path: None,
-                override_attrs: override_attrs.clone(),
+                override_attrs: Default::default(),
+                anysnake_override_attrs: None,
                 pre_poetry_patch: None,
                 build_systems: None,
             };
             python.packages.insert("rpy2".to_string(), def);
-            /* let tbl = "[rpy2]
-                version = '*'
-            "
-                        .parse::<toml_edit::DocumentMut>()
-                        .unwrap();
-                        updates.push((
-                            ["python", "packages", "rpy2"]
-                                .iter()
-                                .map(ToString::to_string)
-                                .collect(),
-                            tbl["rpy2"].clone(),
-                        )); */
         }
+        let mut overrides = HashMap::new();
+        overrides.insert("R_HOME".to_string(), "''${R_tracked}''".to_string());
+        overrides.insert(
+            "NIX_LDFLAGS".to_string(),
+            "''-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib''".to_string(),
+        );
+        overrides.insert(
+            "postPatch".to_string(),
+            "''
+              substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
+                          \"os.environ['R_HOME'] = openrlib.R_HOME
+                      os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
+                ''
+            ".to_string(),
+        );
+        python
+            .packages
+            .get_mut(&key)
+            .unwrap()
+            .anysnake_override_attrs = Some(overrides);
     }
 }
 
@@ -1321,6 +1321,7 @@ fn tofu_python_package_definition(
     Ok(config::TofuPythonPackageDefinition {
         editable_path: ppd.editable_path.clone(),
         override_attrs: ppd.override_attrs.clone(),
+        anysnake_override_attrs: ppd.anysnake_override_attrs.clone(),
         pre_poetry_patch: ppd.pre_poetry_patch.clone(),
         build_systems: ppd.build_systems.clone(),
         source: match &ppd.source {
@@ -1404,7 +1405,7 @@ impl Tofu<TofuDevShell> for Option<config::DevShell> {
 }
 
 trait SortPackages {
-    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self; 
+    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self;
 }
 
 impl SortPackages for config::TofuNixPkgs {
