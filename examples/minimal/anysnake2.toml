@@ -22,10 +22,6 @@
 	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
 
 
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/a5be1bbbe0af0266147a88e0ec43b18c722f2bb9"
-
-
 [uv2nix]
 	url = "github:adisbladis/uv2nix/master/05b0c148bc53aebc6a906b6d0ac41dde5954cd47"
 

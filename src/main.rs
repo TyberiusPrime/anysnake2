@@ -794,16 +794,16 @@ fn extract_python_package_version_from_uv_lock(
     {
         if package["name"]
             .as_str()
-            .expect("no package name/not a string in poetry.lock")
+            .expect("no package name/not a string in uv.lock")
             == safe_name
         {
             return Ok(package["version"]
                 .as_str()
-                .expect("package version not a string in poetry.lock")
+                .expect("package version not a string in uv.lock")
                 .to_string());
         }
     }
-    bail!("Could not find package {} in poetry.lock", safe_name);
+    bail!("Could not find package {} in uv.lock", safe_name);
 }
 
 fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
