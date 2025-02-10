@@ -64,6 +64,14 @@ pub struct TofuMinimalConfigToml {
     pub anysnake2: TofuAnysnake2,
 }
 
+#[derive(Deserialize, Debug, Default)]
+pub struct CloneOptions {
+    #[serde(default)]
+    pub jujutsu: bool,
+    pub clone_regexps: Option<HashMap<String, String>>,
+}
+
+
 #[derive(Deserialize, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct ConfigToml {
@@ -78,7 +86,8 @@ pub struct ConfigToml {
     pub pyproject_build_systems: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
-    pub clone_regexps: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub clone_options: CloneOptions,
     pub clones: Option<HashMap<String, HashMap<String, String>>>,
     #[serde(default)]
     pub cmd: HashMap<String, Cmd>,
@@ -104,7 +113,7 @@ pub struct TofuConfigToml {
     pub uv2nix_override_collection: TofuVCS,
     pub pyproject_build_systems: TofuVCS,
     pub flake_util: TofuVCS,
-    pub clone_regexps: Option<Vec<(regex::Regex, String)>>,
+    pub clone_options: CloneOptions,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
     pub cmd: HashMap<String, Cmd>,
     pub rust: Option<TofuRust>,

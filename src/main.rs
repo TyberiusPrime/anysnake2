@@ -850,11 +850,13 @@ fn clone(
             config::TofuPythonPackageSource::PyPi { .. }
             | config::TofuPythonPackageSource::VersionConstraint(_) => {
                 let safe_name = safe_python_package_name(name);
-                let actual_version = extract_python_package_version_from_uv_lock(flake_dir, &safe_name)?;
+                let actual_version =
+                    extract_python_package_version_from_uv_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
-                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, Some(&actual_version))
-                    .context("Failed to get python package source")?;
+                let url =
+                    anysnake2::util::get_pypi_package_source_url(&safe_name, Some(&actual_version))
+                        .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
             config::TofuPythonPackageSource::Url(url) => {
@@ -869,7 +871,30 @@ fn clone(
     Ok(())
 }
 
-fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> Result<()> {
+fn jujutsu_init(git_repo_dir: &Path) -> Result<()> {
+    let dtach_url = format!("{}#jujutsu", anysnake2::get_outside_nixpkgs_url().unwrap());
+    let nix_full_args = vec![
+        "shell",
+        &dtach_url,
+        "-c",
+        "jj",
+        "git",
+        "init",
+        "--colocate"
+    ];
+    let status = Command::new("nix").args(nix_full_args).current_dir(git_repo_dir).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("jujustu init failed"))
+    }
+}
+
+fn perform_clones(
+    flake_dir: &Path,
+    parsed_config: &config::TofuConfigToml,
+) -> Result<()> {
+    let do_jujustu = parsed_config.clone_options.jujutsu;
     // the old school 'clones' clones
     let mut todo: HashMap<String, HashMap<String, config::TofuPythonPackageSource>> =
         HashMap::new();
@@ -926,6 +951,9 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 clone(flake_dir, target_dir, name, url, known_clones).with_context(|| {
                     format!("Cloning for {name} into {target_dir} from {url:?}")
                 })?;
+                if do_jujustu {
+                    jujutsu_init(&([target_dir, name].iter().collect::<PathBuf>()))?;
+                }
             }
             Ok(())
         };

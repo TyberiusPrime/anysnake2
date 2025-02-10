@@ -307,6 +307,10 @@ fn test_full_full() {
     let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.12/site-packages/rpy2/rinterface_lib/embedded.py");
     let rpy2_embedded_text = std::fs::read_to_string(rpy2_embededed).unwrap();
     assert!(rpy2_embedded_text.contains("os.environ['R_LIBS_SITE']"));
+
+    assert!(test_dir.join("code/fpick").exists(), "Clone didn't exist");
+    assert!(test_dir.join("code/fpick/.git").exists(), "Clone wasn't a .git repo?");
+    assert!(test_dir.join("code/fpick/.jj").exists(), "Clone wasn't a .jj repo?");
 }
 
 #[test]

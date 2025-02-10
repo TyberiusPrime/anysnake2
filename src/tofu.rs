@@ -24,7 +24,7 @@ trait Tofu<A> {
 impl Tofu<config::TofuConfigToml> for config::ConfigToml {
     #[allow(clippy::too_many_lines)]
     fn tofu(self, updates: &mut TomlUpdates) -> Result<config::TofuConfigToml> {
-        let converted_clone_regexps = match self.clone_regexps {
+        let converted_clone_regexps = match self.clone_options.clone_regexps.as_ref() {
             Some(cr) => Some(clone_regex_strings_to_regex(cr)?),
             None => None,
         };
@@ -133,11 +133,11 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 updates,
                 "github:numtide/flake-utils",
             )?,
-            clone_regexps: converted_clone_regexps,
             clones: match parsed_clones {
                 Some(clones) => Some(tofu_clones(clones, updates)?),
                 None => None,
             },
+            clone_options: self.clone_options,
             cmd: self.cmd,
             rust: self
                 .rust
@@ -267,13 +267,13 @@ fn add_pre_2_0_url_and_rev(
 }
 
 fn clone_regex_strings_to_regex(
-    clone_regex: HashMap<String, String>,
+    clone_regex: &HashMap<String, String>,
 ) -> Result<Vec<(regex::Regex, String)>> {
     let res: Result<Vec<_>> = clone_regex
         .into_iter()
         .map(|(k, v)| {
             let re = regex::Regex::new(&k)?;
-            Ok((re, v))
+            Ok((re, v.to_string()))
         })
         .collect();
     res

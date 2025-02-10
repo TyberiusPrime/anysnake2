@@ -48,12 +48,6 @@
 	fpick= "git+https://github.com//TyberiusPrime/fpick?ref=main&rev=0ddd3756be8a603ae05cabc1b001ebe01e3c38a0"
 
 
-[clone_regexps]
-# to make cloning internal repositories etc easier,
-# we support regexs to replace URLs *in the clones only*
-	"@gh/([^/]+/[^/]+)"="git+https://github.com/$2/$1"
-
-
 [python] # python section is optional
 	ecosystem_date = "2024-08-09"
 # at times, broken python packages need you to set environment variables
@@ -278,6 +272,16 @@ python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library
 	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
 
 
+[clone_options]
+	jujutsu = true
+
+
 [pyproject_build_systems]
 	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
+
+
+[clone_options.regex]
+# to make cloning internal repositories etc easier,
+# we support regexs to replace URLs *in the clones only*
+	"@gh/([^/]+/[^/]+)"="git+https://github.com/$2/$1"
 
