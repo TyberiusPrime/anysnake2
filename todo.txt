@@ -1,10 +1,16 @@
 - flakes that are paths relative to %ANYSNAKE_ROOT% ?
 
 - poetry project in subdirectory of repo. poetry project in subdir, editable.
+  (niche use case?)
 
 - clear up when we're using the github api and when we're doing git ls-remote
+	(we're using the github api soley for tag listing. We could remove it, but should we?)
 
-- under what circumstances do we rebuild the editable packages? does that still happen every time we change the python packages (shouldn't...)
+- under what circumstances do we rebuild the editable packages?
+  does that still happen every time we change the python packages?
+  Yes, that's still happening every time we change add/remove/change any python dependency.
+  I guess it's not wrong, though probably not doing it would be fine most of the time as well.
+
 
 - evaluate shpool as dtach replacement
 
@@ -13,7 +19,7 @@
 
 
 -- garbage collection for poetry clones?
--- rpy2 site path hacks?
--- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?
+
+
 
 
