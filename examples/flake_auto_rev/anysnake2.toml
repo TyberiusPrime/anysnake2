@@ -32,7 +32,7 @@
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
 
 
 [flake-util]
@@ -47,6 +47,3 @@
 # [flakes.hello3]
 # 	url = "github:TyberiusPrime/hello_flake/master" #https://nixos.wiki/wiki/Flakes#Input_schema
 # 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
-
-
-

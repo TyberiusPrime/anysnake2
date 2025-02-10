@@ -19,7 +19,7 @@
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=a21654c0084554b3cc309c5550cabe3cfb7cf7d3"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
 
 
 [uv2nix]
