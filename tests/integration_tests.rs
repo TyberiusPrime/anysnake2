@@ -242,7 +242,7 @@ fn test_basic_cargo() {
 }
 
 #[test]
-fn test_basic_projct_folder() {
+fn test_basic_project_folder() {
     let (code, stdout, _stderr) = run_test(
         "examples/basic",
         &["run", "--", "ls", "/project/pandas_version.ipynb"],
