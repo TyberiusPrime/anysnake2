@@ -60,7 +60,7 @@ pub struct MinimalConfigToml {
 
 #[derive(Debug)]
 pub struct TofuMinimalConfigToml {
-    pub anysnake2_toml_path: Option<PathBuf>,
+    //pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: TofuAnysnake2,
 }
 
@@ -76,7 +76,7 @@ pub struct CloneOptions {
 #[allow(clippy::module_name_repetitions)]
 pub struct ConfigToml {
     #[serde(skip)]
-    pub anysnake2_toml_path: Option<PathBuf>,
+    pub anysnake2_toml_path: Option<PathBuf>, //only needed on untofued config
     pub anysnake2: Anysnake2,
     pub nixpkgs: Option<NixPkgs>,
     pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
@@ -104,10 +104,10 @@ pub struct ConfigToml {
 
 #[derive(Debug)]
 pub struct TofuConfigToml {
-    pub anysnake2_toml_path: Option<PathBuf>,
+    //pub anysnake2_toml_path: Option<PathBuf>,
     pub anysnake2: TofuAnysnake2,
     pub nixpkgs: TofuNixPkgs,
-    pub outside_nixpkgs: TofuVCS,
+    //pub outside_nixpkgs: TofuVCS, / use crate::get_outside_nixpkgs_url
     pub ancient_poetry: TofuVCS,
     pub uv2nix: TofuUv2Nix,
     pub uv2nix_override_collection: TofuVCS,
@@ -252,7 +252,10 @@ pub struct Anysnake2 {
 }
 #[derive(Debug)]
 pub struct TofuAnysnake2 {
+    //anysnake 1.0 compatibility
+    #[allow(dead_code)]
     pub url: String,
+    #[allow(dead_code)]
     pub rev: String,
 
     pub url2: TofuVCSorDev,
@@ -342,11 +345,6 @@ pub enum ParsedPythonPackageDefinition {
     Complex(HashMap<String, toml::Value>),
 } */
 
-#[derive(Debug, Clone)]
-pub struct BuildPythonPackageInfo {
-    //todo: remove
-    pub overrides: Option<Vec<String>>,
-}
 
 #[derive(Debug, Clone)]
 pub enum PythonPackageSource {

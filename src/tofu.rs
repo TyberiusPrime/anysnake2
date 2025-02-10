@@ -12,7 +12,7 @@ use crate::{
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
 
 pub enum PrefetchHashResult {
-    Hash(String),
+    NoChangeNecessary,
     HaveToUseFetchGit,
 }
 const NIXPKGS_TAG_REGEX: &str = r"\d\d\.\d\d$";
@@ -79,8 +79,16 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             updates,
         );
 
+        let outside_nixpkgs= self.outside_nixpkgs.tofu_to_tag(
+                &["outside_nixpkgs", "url"],
+                updates,
+                "github:NixOS/nixpkgs",
+                NIXPKGS_TAG_REGEX,
+            )?; //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
+        anysnake2::define_outside_nipkgs_url(outside_nixpkgs.to_nix_string());
+
         Ok(config::TofuConfigToml {
-            anysnake2_toml_path: self.anysnake2_toml_path,
+            //anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: {
                 config::TofuAnysnake2 {
                     url: pre_2_0_url,
@@ -101,12 +109,6 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                     NIXPKGS_TAG_REGEX,
                 )?
                 .sort_packages(&["nixpkgs", "packages"], updates),
-            outside_nixpkgs: self.outside_nixpkgs.tofu_to_tag(
-                &["outside_nixpkgs", "url"],
-                updates,
-                "github:NixOS/nixpkgs",
-                NIXPKGS_TAG_REGEX,
-            )?, //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
             ancient_poetry: self.ancient_poetry.tofu_to_newest(
                 &["ancient_poetry", "url"],
                 updates,
@@ -358,7 +360,6 @@ impl TofuToTag<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
             default_url,
             tag_regex,
         )?;
-        anysnake2::define_outside_nipkgs_url(res.to_nix_string());
 
         Ok(res)
     }
@@ -489,7 +490,11 @@ fn find_newest_nixr_date(url: &TofuVCS) -> Result<String> {
             let url = format!(
                 "https://raw.githubusercontent.com/{owner}/{repo}/{rev}/generated/readme.md"
             );
-            let text = get_proxy_req()?.get(&url).call()?.body_mut().read_to_string()?;
+            let text = get_proxy_req()?
+                .get(&url)
+                .call()?
+                .body_mut()
+                .read_to_string()?;
             let date_re = regex::Regex::new(r"(\d{4}-\d{2}-\d{2})")?;
             let mut all_dates = date_re
                 .find_iter(&text)
@@ -583,7 +588,7 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
         };
 
         Ok(config::TofuMinimalConfigToml {
-            anysnake2_toml_path: self.anysnake2_toml_path,
+            //anysnake2_toml_path: self.anysnake2_toml_path,
             anysnake2: TofuAnysnake2 {
                 url: match &new_url {
                     config::TofuVCSorDev::Vcs(x) => x.get_url_rev_branch().0,
@@ -989,8 +994,7 @@ pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<P
         }
     }
 
-    let new_format = prefetch_res.sha256;
-    Ok(PrefetchHashResult::Hash(new_format))
+    Ok(PrefetchHashResult::NoChangeNecessary)
 }
 
 fn get_newest_pypi_version(package_name: &SafePythonName) -> Result<String> {
