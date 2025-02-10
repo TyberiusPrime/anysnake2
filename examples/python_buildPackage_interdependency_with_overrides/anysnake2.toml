@@ -25,8 +25,8 @@
 # # you can refer to the repos you cloned
 # testrepo={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo", overrides = ["testrepo2"], rev = "97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", hash_97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f = "sha256-mZw37fLouWrA2L+49UOfUsF1MDy/q5pJImw+zczE4wU=" }
 # testrepo2={method="fetchFromGitHub", owner="TyberiusPrime", repo="_anysnake2_test_repo2", rev = "a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", hash_a42420f8ba0a6bc9bda0425cd665515fb92dc2b4 = "sha256-tLz9vDTxQqFZPKkkBOZmmNNEhtf6JK2nwWiBKNH6od8="}
-	testrepo = { url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", poetry2nix.buildInputs = ["setuptools"] }
-	testrepo2 = { url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", poetry2nix.buildInputs = ["setuptools"]}
+	testrepo = { url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", build_systems= ["setuptools"] }
+	testrepo2 = { url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", build_systems= ["setuptools"]}
 
 
 [dev_shell]
@@ -39,7 +39,15 @@
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/31b316a8ee16d18c1ff4bbd9ee370cd289388f15"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]
@@ -49,6 +57,10 @@
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 
 
 # and you can fetch from github, git and mercurial (any nix fetcher actually, see
