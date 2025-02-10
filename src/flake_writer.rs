@@ -866,11 +866,16 @@ fn write_flake_contents(
     flake_dir: &Path,
 ) -> Result<bool> {
     let res = if use_generated_file_instead {
+
         if old_flake_contents != flake_contents {
+        debug!("Flake content change detected (2). writing old flake to flake.nix.old for comparison");
+        fs::write(flake_dir.join("flake.nix.old"), old_flake_contents)?;
             fs::write(flake_filename, flake_contents)?;
         }
         Ok(true)
     } else if old_flake_contents != flake_contents {
+        debug!("Flake content change detected. writing old flake to flake.nix.old for comparison");
+        fs::write(flake_dir.join("flake.nix.old"), old_flake_contents)?;
         fs::write(flake_filename, flake_contents)
             .with_context(|| format!("failed writing {:?}", &flake_filename))?;
 
@@ -1084,7 +1089,7 @@ fn format_overrides(
         let mut out = Vec::new();
         for (name, key_value) in overrides.into_iter() {
             let mut here = format!("{name} = prev.{name}.overrideAttrs (old: {{");
-            for (key, value) in key_value {
+            for (key, value) in itertools::sorted(key_value) {
                 here.push_str(&format!("{key} = {value};"));
             }
             here.push_str("});");
