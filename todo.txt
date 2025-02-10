@@ -13,13 +13,21 @@
 
 
 - evaluate shpool as dtach replacement
+ - the big advantage might be that it captures/caches the output, so if you reconnect later, bingo :).
+ - the disavantage is that we need to name the sessions - but then they won't polute the local folders on 
+   unexpected reboot? we also need to filter them for 'pr attach'.
+ - I think it runs a per user daemon? At least there's no nix systemd wrapper
+   Yeah, they suggest a user systemd job. Home-manager also has no such wrapper.
+ - calling arbitrary programs with arguments seems troublesome, there's no '--' for -c
+   and it needs absolute binary path? and then it can't find argument file (directory issue?)
+ - my biggest dtach pet peeve is that I need to scroll up after a command / the screen clear behaviour. 
+ - the biggest advantage of shpool is the output caching.
+ - abduco, dtach and diss have no output caching. Diss is essentialy rust based dtach.
+ - shpool apperantly needs 10k memory per line of output cached?! and it defaults to storing just the screen.
+ -> not worth replacing dtach.
 
 
 - either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.
 
 
 -- garbage collection for poetry clones?
-
-
-
-
