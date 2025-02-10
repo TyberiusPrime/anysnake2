@@ -46,10 +46,6 @@
 	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-[uv2nix]
-	url = "github:adisbladis/uv2nix/master/fd41fdec2fed599ba884bc2706c2263f01e2183c"
-
-
 [uv2nix_override_collection]
 	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
 
