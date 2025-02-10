@@ -34,6 +34,7 @@ jobs:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
           ARCHIVE_TYPES: "tar.gz"
+          TOOLCHAIN_VERSION: "1.84.1"
       - name: tell release flake
         run: |
           curl \
