@@ -951,6 +951,7 @@ fn rebuild_flake(
 
     if !use_generated_file_instead {
         if flake_content_changed {
+            debug!("flake content changed, relocking to avoid locking-path-dependencies");
             let flake_lock_path = flake_dir.as_ref().join("flake.lock");
             if flake_lock_path.exists() {
                 fs::remove_file(&flake_lock_path)?;
