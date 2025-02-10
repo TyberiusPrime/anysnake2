@@ -1192,6 +1192,7 @@ fn add_python(
             )?;
 
             rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;
+            let extend_build_systems = check_if_setuptools_needs_expansion(uv_lock_path)?;
             write_setup_cfg(flake_dir, ecosystem_date, git_tracked_files)?;
 
             let (local_anysnake_overrides, local_user_overrides) = //todo: override_attrs...
@@ -1236,6 +1237,28 @@ fn add_python(
                 "overlay".to_string(),
                 format!("workspace.mkPyprojectOverlay {{ sourcePreference = \"{source_preference}\"; }}")
             );
+
+            definitions.insert(
+                "fix_resolve_build_systems".to_string(),
+                (if extend_build_systems {
+                    "
+                    (final: prev: {
+                        resolveBuildSystem =
+                        arg: prev.resolveBuildSystem (arg
+                        //
+                        # only if setuptools is in arg
+                        (
+                          if arg.setuptools or null != null
+                          then {wheel = [];}
+                          else {}
+                        ));
+                    })"
+                } else {
+                    "(final: prev: {} )"
+                })
+                .to_string(),
+            );
+
             definitions.insert(
                 "local_anysnake_overrides".to_string(),
                 format!(
@@ -1250,7 +1273,12 @@ fn add_python(
 
             definitions.insert(
                 "pyprojectOverrides ".to_string(),
-                "[(uv2nix_override_collection.overrides pkgs) local_anysnake_overrides local_user_overrides]".to_string(),
+                "[ fix_resolve_build_systems
+                    (uv2nix_override_collection.overrides pkgs)
+                    local_anysnake_overrides
+                    local_user_overrides
+                ]"
+                .to_string(),
             ); //todo: insert override_attrs here.
             definitions.insert(
                 "interpreter".to_string(),
@@ -1526,7 +1554,7 @@ fn rewrite_poetry(
 
 /// old setuptools can't read pyprojec.toml, leading to build errors
 /// for 'unknown metadata Name.
-/// this places a dummy setup.cfg
+/// this places a dummy setup.cfg in our generated top level project
 fn write_setup_cfg(
     flake_dir: &Path,
     ecosystem_date: chrono::naive::NaiveDate,
@@ -1541,4 +1569,45 @@ fn write_setup_cfg(
         git_tracked_files.push("uv_rewritten/setup.cfg".to_string());
     }
     Ok(())
+}
+
+/// setuptools before 70.1.1 needs us to add 'wheel' every time we see setuptools in a buildSystems
+fn check_if_setuptools_needs_expansion(uv_lock_path: &Path) -> Result<bool> {
+    let parsed_uv_lock: toml::Table =
+        toml::from_str(&ex::fs::read_to_string(uv_lock_path).context("Failed to read uv.lock")?)
+            .context("Failed to parse uv.lock")?;
+    for pkg_info in parsed_uv_lock["package"]
+        .as_array()
+        .context("No package sections in uv.lock?")?
+    {
+        let name = pkg_info["name"]
+            .as_str()
+            .context("No name in package section")?;
+        if name == "setuptools" {
+            let version = pkg_info["version"]
+                .as_str()
+                .context("No version in package section for setuptools")?;
+            let mut ver = version.split(".");
+            let start: u32 = ver
+                .next()
+                .context("Failed to parse setuptools version")?
+                .parse()
+                .context("Failed to parse setuptools version")?;
+            if start < 70 {
+                return Ok(true);
+            } else if start == 70 {
+                let second: u32 = ver
+                    .next()
+                    .context("Failed to parse setuptools version")?
+                    .parse()
+                    .context("Failed to parse setuptools version")?;
+                if second < 1 {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+    }
+
+    Ok(false)
 }
