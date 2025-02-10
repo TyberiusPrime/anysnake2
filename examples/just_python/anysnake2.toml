@@ -5,6 +5,7 @@
 
 
 [nixpkgs]
+	packages =["which"]
 	url = "github:nixos/nixpkgs/master/24.05"
 
 
@@ -16,12 +17,12 @@
 
 [python.packages]
 	black=""
-	dppd = {poetry2nix.buildInputs = ["setuptools"]}
-	dppd_plotnine = {version = "", editable=true, poetry2nix.buildInputs = ["setuptools", "pyscaffold"]}
+	dppd = {build_systems = ["wheel"]}
+	dppd_plotnine = {version = "", editable=true, build_systems = ["setuptools", "wheel"]}
 # that supplies 'hello'
-	example-cli-python={ editable=true, url = "github:ojixzzz/example-cli-python/master/a981a9ea5468faa66fccc6c69c5d5807ef8115c4", poetry2nix.buildInputs = ["setuptools"]}
+	example-cli-python={ editable=true, url = "github:TyberiusPrime/example-cli-python/main/6df1084dbd3dd2fc122068377ed041ea7d17adf5", build_systems = ["setuptools", "wheel"]}
 	hatchling=""
-	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
+	lvr = { editable=true, url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  build_systems = ["setuptools"]}
 	pandas="1.5.1"
 	polars={version = "pypi:0.20.31"}
 	pyscaffold = "3.1"
@@ -29,6 +30,7 @@
 #requests = {url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"}
 	requests = { version = "pypi:2.32.2" }
 	tomli=">1.2"
+	wrapt = {build_systems = ["wheel"]}
 
 
 [dev_shell]
@@ -37,23 +39,21 @@
 
 
 [outside_nixpkgs]
-	url = "github:nixos/nixpkgs/master/24.05"
+	url = "github:nixos/nixpkgs/master/6efe194fbec6d156eedff4210476eb06bb844bc7"
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=961eb418d95583dad83b35619b1973874b4c5bab"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-#url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
-
-[poetry2nix]
-	preferWheels=true
-	url = "github:nix-community/poetry2nix/master/5392004e2b350afda0dd5e92ccd53ab9b1261947"
-
-
-#pytest=""
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
 
 
 [flake-util]
-	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 

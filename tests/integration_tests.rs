@@ -1,4 +1,5 @@
 use named_lock::NamedLock;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
@@ -135,10 +136,11 @@ fn test_just_python() {
     assert!(!stderr.contains("ImportError"));
 
     //now test the 'will not remove clone code' functionality
-    let query = "a981a9ea5468faa66fccc6c69c5d5807ef8115c4";
-    let replacement = "73c059bc0941149f59c56e4410b46be7f809587e";
+    let query = "6df1084dbd3dd2fc122068377ed041ea7d17adf5";
+    let replacement = "f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d";
     let raw = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
     let out = raw.replace(query, replacement);
+    assert!(raw != out);
     ex::fs::write(td.path().join("anysnake2.toml"), out).unwrap();
 
     let (code, _stdout, stderr) = run_test(&td_path, &["run", "--", "hello"], true);
@@ -271,7 +273,7 @@ fn rm_clones(path: &str) {
 }
 
 #[test]
-fn test_full() {
+fn test_full_full() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
 
@@ -335,6 +337,7 @@ fn test_full_hello() {
     let lock = NamedLock::create("anysnaketest_full").unwrap();
     let _guad = lock.lock().unwrap();
 
+    rm_clones("examples/full");
     let (_code, stdout, _stderr) =
         run_test("examples/full", &["run", "--", "hello", "--version"], true);
     assert!(stdout.contains("Hello World"));
@@ -437,23 +440,29 @@ fn test_python_pip_reinstall_if_venv_changes() {
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let toml_path = td.path().join("anysnake2.toml");
-    let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml = ex::fs::read_to_string(&toml_path).unwrap();
     println!("{}", toml);
-    toml = toml.replace(
+    let new_toml = toml.replace(
         "pandas=",
-        "solidpython=\"\"\neuclid3 = {poetry2nix.nativeBuildInputs = [\"setuptools\"]}\npandas=",
+        "solidpython=\"\"\neuclid3 = {build_systems = [\"setuptools\"]}\npandas=",
     );
-    ex::fs::write(toml_path, toml).unwrap();
+    assert!(new_toml != toml);
+    ex::fs::write(toml_path, new_toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
-    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"], true);
+    let (_code, stdout, _stderr) =
+        run_test(&td_path, &["run", "--", "python", "-m", "euclid3"], true);
     println!("second: {}", stdout);
+
     let second =
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let lines_first: Vec<_> = first.split('\n').collect();
     let lines_second: Vec<_> = second.split('\n').collect();
-    assert!(lines_first[0] != lines_second[0]);
+    // we test that the shebang has changed, for only then the venv has the right python.
+    println!("lines_first: {:?}", lines_first[0]);
+    println!("lines_second: {:?}", lines_second[0]);
+    assert!(lines_first[0] != lines_second[0], "python was unchanged but should have changed");
     assert!(lines_first[1..] == lines_second[1..]);
 }
 
@@ -474,11 +483,11 @@ fn test_fetch_from_github_to_fetchgit_transition() {
             "--",
             "python",
             "-c",
-            "'import plotnine; print(plotnine.__version__)'",
+            "'import plotnine; print(\"p9_ver=\", plotnine.__version__)'",
         ],
     );
     dbg!(&stdout);
-    assert!(stdout.contains("999")); // plotnine fallback for 'could not detect from git
+    assert!(Regex::new(r"p9_ver= [\d.]+").unwrap().is_match(&stdout));
     let toml_path = td.path().join("anysnake2.toml");
     let toml = ex::fs::read_to_string(toml_path).unwrap();
     assert!(!toml.contains("github:has2k1/plotnine/main"));
@@ -497,16 +506,17 @@ fn test_fetch_trust_on_first_use() {
         assert!(!toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
     }
     {
-        let ((_code, _stdout, _stderr), td) = run_test_tempdir(
+        let ((_code, stdout, _stderr), td) = run_test_tempdir(
             "examples/just_python_trust_on_first_use",
             &[
                 "run",
                 "--",
                 "python",
                 "-c",
-                "'import plotnine; print(plotnine.__version__)'",
+                "'import dppd; print(\"dppd_version:\", dppd.__version__)'",
             ],
         );
+        assert!(stdout.contains("dppd_version"));
         let toml_path = td.path().join("anysnake2.toml");
         let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
@@ -515,6 +525,35 @@ fn test_fetch_trust_on_first_use() {
         assert!(toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
         assert!(toml.contains("pypi:"));
         assert!(toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
+
+        //ensure we're not recreating the lock file if nothing changed!
+        let (_code, stdout, stderr) = run_test(
+            &td.path().to_string_lossy(),
+            &[
+                "run",
+                "--",
+                "python",
+                "-c",
+                "'import dppd; print(dppd.__version__)'",
+            ],
+            false,
+        );
+        assert!(!stdout.contains("creating lock file"));
+        assert!(!stderr.contains("creating lock file"));
+          //once again, for good measure
+        let (_code, stdout, stderr) = run_test(
+            &td.path().to_string_lossy(),
+            &[
+                "run",
+                "--",
+                "python",
+                "-c",
+                "'import dppd; print(dppd.__version__)'",
+            ],
+            false,
+        );
+        assert!(!stdout.contains("creating lock file"));
+        assert!(!stderr.contains("creating lock file"));
     }
 }
 
@@ -701,8 +740,10 @@ fn replace_in_file(path: impl AsRef<Path>, query: &str, replacement: &str) {
 
 #[test]
 fn test_flake_change_updates_dependant_flakes() {
-    let ((_code, _stdout, _stderr), td) =
-        run_test_tempdir("examples/flake_subdependency", &["run", "--", "bash" ,"--version"]);
+    let ((_code, _stdout, _stderr), td) = run_test_tempdir(
+        "examples/flake_subdependency",
+        &["run", "--", "bash", "--version"],
+    );
     let before = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert!(before.contains("8810f7d31d4d8372f764d567ea140270745fe173"));
     replace_in_file(
@@ -714,14 +755,14 @@ fn test_flake_change_updates_dependant_flakes() {
     assert!(updated_anysnake2_toml.contains("f554d27c1544d9c56e5f1f8e2b8aff399803674e"));
     run_test(
         &td.path().to_string_lossy(),
-        &["run", "--", "bash" ,"--version"],
+        &["run", "--", "bash", "--version"],
         false,
     );
     let updated = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert!(updated != before);
     run_test(
         &td.path().to_string_lossy(),
-        &["run", "--", "bash" ,"--version"],
+        &["run", "--", "bash", "--version"],
         true,
     );
     let after = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();

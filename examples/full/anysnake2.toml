@@ -56,6 +56,10 @@
 
 [python] # python section is optional
 	ecosystem_date = "2024-08-09"
+# at times, broken python packages need you to set environment variables
+# when 'uv lock' is being done,
+# hence this option
+	uv_lock_env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}
 	version="3.12" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
@@ -63,11 +67,11 @@
 #cffi = "pypi:1.15.1"
 # The source definition is fairly flexible and follows the url definitions for nix flakes
 # see https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake.html#flake-references
-	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", poetry2nix.nativeBuildInputs=['setuptools']}
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", build_systems = ['setuptools']}
 # mercurial example
-	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", poetry2nix.nativeBuildInputs=['setuptools']}
+	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", build_systems = ['setuptools']}
 # so we have something that has an 'entrypoint'
-	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", poetry2nix.nativeBuildInputs=['setuptools'] } # editable may be a folder!
+	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", build_systems = ['setuptools'] } # editable may be a folder!
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
 	pypipegraph2=">2.0"
 # You can circumvent the ecosystem date restriction from above
@@ -75,31 +79,32 @@
 	scanpy = "pypi:1.9.6"
 	scipy=""
 #sometimes you just need to supply a nativeBuildInput to get poetry2nix working, but do not want to specify the version
-	session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
+#session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
 # or for C dependencies
 # packages that depend on otehr packages from this list should 'just work'.
 
-	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", poetry2nix.nativeBuildInputs=['setuptools']}
-	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", poetry2nix.nativeBuildInputs=['setuptools']}
+	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", build_systems = ['setuptools']}
+	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", build_systems = ['setuptools']}
 
 
 [python.packages.plotnine]
-	poetry2nix.env.postInstall = """
+	override_attrs.postInstall = """''
 	        touch $out/lib/python3.12/site-packages/plotnine/post_install_worked
-
-"""
+''"""
 # and this is how you patch it after poetry's dependency resolution
-# but before it's actually being ubuld
-	poetry2nix.env.postPatch = """
+# but before it's actually being build
+	override_attrs.postPatch = """''
 	substituteInPlace setup.py --replace-fail "version=versioneer.get_version()," "version='0.8.0'," \
 		--replace-fail "cmdclass=versioneer.get_cmdclass()," ""
-"""
+''"""
 # escape hatch for packages that just can't define their version number from the checked out
-# path. ( We copy the package to the nix store, then supply poetry with a writeable version
+# path. ( We copy the package to the nix store, then supply uv with a writeable version
 # for it to figure out the package version number. Some packages that's not enough)
 # this get's passed to bash. With set -xoeu pipefail
 	pre_poetry_patch = """
 	sed -i 's/git_refnames = ""/git_refnames = " (tag: v0.8.0)"/' plotnine/_version.py
+	sed -i 's/version=versioneer.get_version()/version="0.8.0"/' setup.py
+	sed -i 's/cmdclass=versioneer.get_cmdclass(),//' setup.py
 """
 	url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"
 
@@ -258,14 +263,21 @@ python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/05b0c148bc53aebc6a906b6d0ac41dde5954cd47"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]
-	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
 
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 

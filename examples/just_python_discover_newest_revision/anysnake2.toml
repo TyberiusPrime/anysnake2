@@ -20,8 +20,7 @@ ecosystem_date="2024-02-16" # you get whatever packages the solver would have pr
 [python.packages]
 # for git / github
 plotnine = { url = "git+https://github.com/has2k1/plotnine"}#
-#, poetry2nix.buildInputs = ["setuptools", "setuptools-scm"] }
-#lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  poetry2nix.buildInputs = ["setuptools"]}
+#lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1",  build_systems = ["setuptools"]}
 
 # this plotnine needs a newer mizani than we have on 2022-02-16
 # so we fetch the newest version from pypi

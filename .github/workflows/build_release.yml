@@ -13,12 +13,6 @@ jobs:
       matrix:
         target: [x86_64-unknown-linux-musl]
     steps:
-      - name: what is in the box
-        run: |
-          echo "payload" ${{  github.event}}
-      - name: what is in the box part 2
-        run: |
-          echo "payload" ${{  github.event.release}}
 
       - uses: actions/checkout@v3
         with: 

@@ -73,7 +73,9 @@ pub struct ConfigToml {
     pub nixpkgs: Option<NixPkgs>,
     pub outside_nixpkgs: Option<ParsedVCSInsideURLTag>,
     pub ancient_poetry: Option<ParsedVCSInsideURLTag>,
-    pub poetry2nix: Option<Poetry2Nix>,
+    pub uv2nix: Option<Uv2Nix>,
+    pub uv2nix_override_collection: Option<ParsedVCSInsideURLTag>,
+    pub pyproject_build_systems: Option<ParsedVCSInsideURLTag>,
     #[serde(default, rename = "flake-util")]
     pub flake_util: Option<ParsedVCSInsideURLTag>,
     pub clone_regexps: Option<HashMap<String, String>>,
@@ -98,7 +100,9 @@ pub struct TofuConfigToml {
     pub nixpkgs: TofuNixPkgs,
     pub outside_nixpkgs: TofuVCS,
     pub ancient_poetry: TofuVCS,
-    pub poetry2nix: TofuPoetry2Nix,
+    pub uv2nix: TofuUv2Nix,
+    pub uv2nix_override_collection: TofuVCS,
+    pub pyproject_build_systems: TofuVCS,
     pub flake_util: TofuVCS,
     pub clone_regexps: Option<Vec<(regex::Regex, String)>>,
     pub clones: Option<HashMap<String, HashMap<String, TofuVCS>>>,
@@ -118,13 +122,13 @@ pub struct ParsedVCSInsideURLTag {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Poetry2Nix {
+pub struct Uv2Nix {
     pub url: Option<ParsedVCS>,
     pub prefer_wheels: Option<bool>,
 }
 
 #[derive(Debug)]
-pub struct TofuPoetry2Nix {
+pub struct TofuUv2Nix {
     pub source: TofuVCS,
     pub prefer_wheels: bool,
 }
@@ -291,9 +295,6 @@ impl NixPkgs {
     pub fn default_allow_unfree() -> bool {
         false
     }
-
-    
-
 }
 
 #[derive(Debug, Clone)]
@@ -419,29 +420,26 @@ impl TofuPythonPackageSource {
 }
 
 #[cfg(test)]
-mod test {
-    
-
-    
-
-    
-
-}
+mod test {}
 
 #[derive(Debug, Clone)]
 pub struct PythonPackageDefinition {
     pub source: PythonPackageSource,
     pub editable_path: Option<String>,
-    pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub override_attrs: HashMap<String, String>,
+    pub anysnake_override_attrs: Option<HashMap<String, String>>,
     pub pre_poetry_patch: Option<String>,
+    pub build_systems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TofuPythonPackageDefinition {
     pub source: TofuPythonPackageSource,
     pub editable_path: Option<String>,
-    pub poetry2nix: toml::map::Map<String, toml::Value>,
+    pub override_attrs: HashMap<String, String>,
+    pub anysnake_override_attrs: Option<HashMap<String, String>>,
     pub pre_poetry_patch: Option<String>,
+    pub build_systems: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -515,27 +513,30 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: None,
-                    poetry2nix: toml::map::Map::new(),
+                    override_attrs: HashMap::new(),
+                    anysnake_override_attrs: None,
                     pre_poetry_patch: None,
+                    build_systems: None,
                 })
             }
             StrOrHashMap::HashMap(parsed) => {
                 if parsed.contains_key("preferWheel") {
                     return Err(serde::de::Error::custom(
-                        "preferWheel is not a valid key, did you mean poetry2nix.preferWheel?",
+                        "preferWheel is not a valid key, did you mean override_attrs.preferWheel?",
                     ));
                 }
                 if parsed.contains_key("buildInputs") {
                     return Err(serde::de::Error::custom(
-                        "preferWheel is not a valid key, did you mean poetry2nix.buildInputs?",
+                        "buildInputs is not a valid key, did you mean override_attrs.buildInputs?",
                     ));
                 }
                 let allowed_keys = &[
                     "url",
                     "version",
-                    "poetry2nix",
+                    "override_attrs",
                     "editable",
                     "pre_poetry_patch",
+                    "build_systems",
                 ];
                 for key in &parsed {
                     if !allowed_keys.contains(&key.0.as_str()) {
@@ -593,13 +594,25 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                         }
                     }
                 };
-                let poetry2nix = match parsed.get("poetry2nix") {
-                    Some(entry) => Ok(entry
-                        .as_table()
-                        .cloned()
-                        .context("poetry2nix was not a table")
-                        .map_err(serde::de::Error::custom)?),
-                    None => Ok(toml::map::Map::new()),
+                let override_attrs = match parsed.get("override_attrs") {
+                    Some(entry) => {
+                        let res: Result<HashMap<String, String>> = entry
+                            .as_table()
+                            .context("override_attrs was not a table")
+                            .map_err(serde::de::Error::custom)?
+                            .iter()
+                            .map(|(k, v)| {
+                                Ok((
+                                    k.to_string(),
+                                    v.as_str().map(|x| x.to_string()).context(
+                                        "override_attrs value was not a string (with nix code)",
+                                    )?,
+                                ))
+                            })
+                            .collect();
+                        Ok(res.map_err(serde::de::Error::custom)?)
+                    }
+                    None => Ok(HashMap::new()),
                 }?;
                 let pre_poetry_patch = match parsed.get("pre_poetry_patch") {
                     Some(entry) => Some(
@@ -611,14 +624,68 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     ),
                     None => None,
                 };
+                let build_systems = match parsed.get("build_systems") {
+                    Some(entry) => Some(
+                        entry
+                            .as_array()
+                            .context("build_systems was not an array")
+                            .map_err(serde::de::Error::custom)?
+                            .iter()
+                            .map(|x| {
+                                x.as_str()
+                                    .context("build_systems entry was not a string")
+                                    .map_err(serde::de::Error::custom)
+                                    .map(|x| x.to_string())
+                            })
+                            .collect::<Result<Vec<String>, _>>()?,
+                    ),
+                    None => None,
+                };
                 Ok(PythonPackageDefinition {
                     source,
                     editable_path: editable,
-                    poetry2nix,
+                    override_attrs,
+                    anysnake_override_attrs: None,
                     pre_poetry_patch,
+                    build_systems,
                 })
             }
         }
+    }
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct SafePythonName(String);
+
+impl<'de> Deserialize<'de> for SafePythonName {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        Ok(SafePythonName(crate::safe_python_package_name(&s)))
+    }
+}
+
+impl PartialEq<str> for SafePythonName {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == crate::safe_python_package_name(other)
+    }
+}
+
+impl std::fmt::Display for SafePythonName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl SafePythonName {
+    pub fn new(input: impl Into<String>) -> SafePythonName {
+        SafePythonName(input.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
@@ -626,14 +693,16 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
 pub struct Python {
     pub version: String,
     pub ecosystem_date: Option<String>,
-    pub packages: HashMap<String, PythonPackageDefinition>,
+    pub packages: HashMap<SafePythonName, PythonPackageDefinition>,
+    pub uv_lock_env: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug)]
 pub struct TofuPython {
     pub version: String,
     pub ecosystem_date: String,
-    pub packages: HashMap<String, TofuPythonPackageDefinition>,
+    pub packages: HashMap<SafePythonName, TofuPythonPackageDefinition>,
+    pub uv_lock_env: Option<HashMap<String, String>>,
 }
 
 impl TofuPython {

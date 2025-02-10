@@ -20,28 +20,30 @@
 
 [python] # python section is optional
 	ecosystem_date="2023-11-21" # you get whatever packages the solver would have produced on that day
+	uv_lock_env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}
 	version="3.11" # does not go down to 3.8.x. Thats implicit in the nixpkgs (for now)
 
 
 [python.packages]
-	mdataframe={ editable=true, url = "github:MarcoMernberger/mdataframe/master/93fd47ffba5f4a0aa59fd02a105ace33a705da71", poetry2nix.buildInputs = ["setuptools"]}
+	mdataframe={ editable=true, url = "github:MarcoMernberger/mdataframe/master/93fd47ffba5f4a0aa59fd02a105ace33a705da71", build_systems = ["setuptools"]}
 # this is how we now specify cloned python packages
 
-	pypipegraph={ editable=true, url = "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", poetry2nix.buildInputs = ["setuptools"]}
+	pypipegraph={ editable=true, url = "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", build_systems = ["setuptools"]}
 	setuptools=""
-	sklearn = {poetry2nix.buildInputs = ["setuptools"], poetry2nix.env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}}
+	sklearn = {build_systems = ["setuptools"], override_attrs= {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "\"True\""}}
 
 
 [python.packages.pypipegraph2]
 	editable=true
-	poetry2nix.nativeBuildInputs = [
-		"pkgs.rustPlatform.maturinBuildHook",
-		"pkgs.rustPlatform.cargoSetupHook"]
-	poetry2nix.overridePythonAttrs = {cargoDeps = """
+# yes, this is import from derivation.
+	override_attrs.cargoDeps = """
 	pkgs.rustPlatform.importCargoLock {
-          lockFile = "${src}/Cargo.lock";
+          lockFile = "${old.src}/Cargo.lock";
         }
-"""}
+"""
+	override_attrs.nativeBuildInputs = '''old.nativeBuildInputs ++ [
+		pkgs.rustPlatform.maturinBuildHook
+		pkgs.rustPlatform.cargoSetupHook]'''
 	url = "github:TyberiusPrime/pypipegraph2/main/264187207ffd4416074bb24d7b440ff5d838f199"
 
 
@@ -60,11 +62,15 @@
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/551cd76c920b9eabed3fb095a4091af7676b31ba"
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/31b316a8ee16d18c1ff4bbd9ee370cd289388f15"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]
@@ -74,5 +80,9 @@
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 
 

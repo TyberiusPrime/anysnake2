@@ -18,24 +18,13 @@
 
 
 [python.packages]
-	dppd = { url = "git+https://github.com/tyberiusprime/dppd", poetry2nix.buildInputs = ["setuptools"] }
-	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr" , poetry2nix.buildInputs = ["setuptools"] }
+	dppd = { url = "git+https://github.com/tyberiusprime/dppd", build_systems = ["setuptools"] }
+	lvr = { url = "hg+https://hg.sr.ht/~bwe/lvr" , build_systems = ["setuptools"] }
 	mizani = { version = "pypi" }
 # example for github and hg. See just_python_discover_newest_revision for git
-	i3-instant-layout = { url = "github:TyberiusPrime/i3-instant-layout", poetry2nix.buildInputs = ["setuptools"] }
+	i3-instant-layout = { url = "github:TyberiusPrime/i3-instant-layout", build_systems = ["setuptools"] }
 
 
 [outside_nixpkgs]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
-
-[ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
-
-
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/8c25e871bba3f472e1569bbf6c0f52dcc34bf2a4"
-
-
-[flake-util]
-	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"

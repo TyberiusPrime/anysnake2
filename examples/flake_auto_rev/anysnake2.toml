@@ -35,10 +35,6 @@
 	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=68f1e759c557757e55d05027319d5c9751626fba"
 
 
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/48e7ed4ef7832efa5a5558e573986c4128fc478f"
-
-
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 # 	follows = ["nixpkgs"] # so we overwrite the flakes dependencies

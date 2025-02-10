@@ -9,11 +9,11 @@ use anysnake2::{
 };
 use clap::parser::ValueSource;
 use clap::{Arg, ArgMatches};
+use config::SafePythonName;
 use ex::fs;
 use indoc::indoc;
 use log::{debug, error, info, trace, warn};
 use python_parsing::parse_egg;
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
@@ -381,7 +381,7 @@ fn inner_main() -> Result<()> {
                     info!("Building oci-image in flake/result");
                     rebuild_flake(
                         use_generated_file_instead,
-                        "oci_image.x86_64-linux",
+                        "oci_image",
                         &flake_dir,
                         flake_changed.flake_nix_changed,
                     )?;
@@ -572,16 +572,15 @@ fn inner_main() -> Result<()> {
                     .iter()
                     .filter(|(_, spec)| spec.editable_path.is_some())
                 {
-                    let safe_pkg = safe_python_package_name(pkg);
-                    let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
+                    let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), pkg.as_str()]
                         .iter()
                         .collect(); //todo: make configurable
                     binds.push((
                         target_dir.to_string_lossy(),
-                        format!("/anysnake2/venv/linked_in/{safe_pkg}"),
+                        format!("/anysnake2/venv/linked_in/{pkg}"),
                         "ro".to_string(),
                     ));
-                    let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+                    let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
                     let egg_target = parse_egg(egg_link)?;
                     python_paths.push(egg_target);
                 }
@@ -782,29 +781,29 @@ fn pretty_print_singularity_call(args: &[String]) -> String {
     res
 }
 
-fn extract_python_package_version_from_poetry_lock(
+fn extract_python_package_version_from_uv_lock(
     flake_dir: &Path,
     safe_name: &str,
 ) -> Result<String> {
-    let poetry_lock: PathBuf = flake_dir.join("poetry/poetry.lock");
-    let poetry_lock = fs::read_to_string(&poetry_lock)?;
-    let poetry_lock: toml::Value = toml::from_str(&poetry_lock)?;
-    for package in poetry_lock["package"]
+    let uv_lock_path: PathBuf = flake_dir.join("uv/uv.lock");
+    let uv_lock_raw = fs::read_to_string(&uv_lock_path)?;
+    let uv_lock: toml::Value = toml::from_str(&uv_lock_raw)?;
+    for package in uv_lock["package"]
         .as_array()
-        .expect("poetry.toml parsing error")
+        .expect("uv.lock parsing error")
     {
         if package["name"]
             .as_str()
-            .expect("no package name/not a string in poetry.lock")
+            .expect("no package name/not a string in uv.lock")
             == safe_name
         {
             return Ok(package["version"]
                 .as_str()
-                .expect("package version not a string in poetry.lock")
+                .expect("package version not a string in uv.lock")
                 .to_string());
         }
     }
-    bail!("Could not find package {} in poetry.lock", safe_name);
+    bail!("Could not find package {} in uv.lock", safe_name);
 }
 
 fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
@@ -851,11 +850,10 @@ fn clone(
             config::TofuPythonPackageSource::PyPi { .. }
             | config::TofuPythonPackageSource::VersionConstraint(_) => {
                 let safe_name = safe_python_package_name(name);
-                let actual_version =
-                    extract_python_package_version_from_poetry_lock(flake_dir, &safe_name)?;
+                let actual_version = extract_python_package_version_from_uv_lock(flake_dir, &safe_name)?;
                 // I don't see how we get from what's in poetry.lock to the url right now, and this
                 // is at hand
-                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, &actual_version)
+                let url = anysnake2::util::get_pypi_package_source_url(&safe_name, Some(&actual_version))
                     .context("Failed to get python package source")?;
                 download_and_unzip(&url, &final_dir)?;
             }
@@ -895,7 +893,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 let entry = todo
                     .entry(editable_path.to_string())
                     .or_insert_with(HashMap::new);
-                let safe_name = safe_python_package_name(pkg_name);
+                let safe_name = pkg_name.to_string();
                 entry.insert(safe_name, package.source.clone());
             }
         }
@@ -953,6 +951,7 @@ fn rebuild_flake(
 
     if !use_generated_file_instead {
         if flake_content_changed {
+            debug!("flake content changed, relocking to avoid locking-path-dependencies");
             let flake_lock_path = flake_dir.as_ref().join("flake.lock");
             if flake_lock_path.exists() {
                 fs::remove_file(&flake_lock_path)?;
@@ -1032,7 +1031,7 @@ fn replace_env_vars(input: &str) -> String {
 // deal with the editable packages.
 fn fill_venv(
     python_version: &str,
-    python: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
@@ -1051,17 +1050,16 @@ fn fill_venv(
         .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
         debug!("ensuring venv  for {pkg}");
-        let safe_pkg = safe_python_package_name(pkg);
-        let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
+        let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), pkg.as_str()]
             .iter()
             .collect();
         if !target_dir.exists() {
             bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}",
                                pkg, target_dir);
         }
-        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+        let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
         let venv_used = {
-            let anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+            let anysnake_link = venv_dir.join(format!("{pkg}.anysnake-link"));
             if anysnake_link.exists() {
                 ex::fs::read_to_string(anysnake_link)?
             } else {
@@ -1070,7 +1068,7 @@ fn fill_venv(
         };
         if !egg_link.exists() || venv_used != target_python_str {
             // so that changing python versions triggers a rebuild.
-            to_build.push((safe_pkg, target_dir));
+            to_build.push((pkg, target_dir));
         }
     }
     if !to_build.is_empty() {
@@ -1297,7 +1295,8 @@ fn add_r_library_path(
 } */
 
 fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
-    let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
+    let out = path.to_string_lossy().to_string();
+    /* let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
     let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
     let hits = binary_re.captures(&text);
     #[allow(clippy::single_match_else)]
@@ -1315,7 +1314,7 @@ fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
                 .to_string();
             out
         }
-    };
+    }; */
 
     Ok(out)
 }
@@ -1503,7 +1502,7 @@ fn run_dtach(p: impl AsRef<Path>) -> Result<()> {
 #[allow(unused)] //todo, there's a missing code path in 'develop'
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
-    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     python_version: &str,
 ) -> Result<()> {
     let mut develop_python_paths = Vec::new();
@@ -1517,9 +1516,8 @@ fn write_develop_python_path(
         .iter()
         .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
-        let safe_pkg = safe_python_package_name(pkg);
-        let real_target = parent_dir.join("code").join(pkg);
-        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+        let real_target = parent_dir.join("code").join(pkg.as_str());
+        let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
         let egg_target = parse_egg(egg_link)?;
         let egg_target =
             egg_target.replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());

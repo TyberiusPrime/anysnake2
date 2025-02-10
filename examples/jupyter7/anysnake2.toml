@@ -1,6 +1,8 @@
 # basic anysnake2.toml example
 # package settings
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2" # pre 2.0 - 2.0+ uses url2
 	url2 = "dev"
 	use_binary=false # optional, default = true. Download anysnake2 binary instead of building from source (both via a flake)
 
@@ -77,17 +79,26 @@ done
 """
 
 
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
 [outside_nixpkgs]
 # the nixpkgs used to run singularity and nixfmt
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
 
 
-[poetry2nix]
-	url = "github:nix-community/poetry2nix/master/cc0af1948e0887cd280496bd891fd40e52b40ff4"
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/31b316a8ee16d18c1ff4bbd9ee370cd289388f15"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]
@@ -97,3 +108,7 @@ done
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"

@@ -6,7 +6,7 @@ use toml_edit::value;
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{self, TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
+    config::{self, SafePythonName, TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
@@ -106,17 +106,28 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                 updates,
                 "github:NixOS/nixpkgs",
                 NIXPKGS_TAG_REGEX,
-            )?, //todo: only tofu newest nixpkgs release..
+            )?, //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
             ancient_poetry: self.ancient_poetry.tofu_to_newest(
                 &["ancient_poetry", "url"],
                 updates,
                 "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git",
             )?,
-            poetry2nix: self.poetry2nix.tofu_to_newest(
-                &["poetry2nix", "url"],
+            uv2nix: self.uv2nix.tofu_to_newest(
+                &["uv2nix", "url"],
                 updates,
-                "github:nix-community/poetry2nix",
+                "github:adisbladis/uv2nix",
             )?,
+            uv2nix_override_collection: self.uv2nix_override_collection.tofu_to_newest(
+                &["uv2nix_override_collection", "url"],
+                updates,
+                "github:TyberiusPrime/uv2nix_hammer_overrides",
+            )?,
+            pyproject_build_systems: self.pyproject_build_systems.tofu_to_newest(
+                &["pyproject_build_systems", "url"],
+                updates,
+                "github:pyproject-nix/build-system-pkgs",
+            )?,
+
             flake_util: self.flake_util.tofu_to_newest(
                 &["flake-util", "url"],
                 updates,
@@ -148,38 +159,39 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
     // versions.
     if let Some(python) = python {
         #[allow(clippy::map_entry)]
-        if !python.packages.contains_key(&"rpy2".to_string()) {
-            let source = config::PythonPackageSource::VersionConstraint("*".to_string());
-            let poetry2nix = toml::toml! {
-                [env]
-                    R_HOME = "${R_tracked}"
-                    NIX_LDFLAGS = "-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib"
-                    postPatch = "
-                      substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
-                              \"os.environ['R_HOME'] = openrlib.R_HOME
-                              os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
-                    "
-            };
+        let key = SafePythonName::new("rpy2");
+        if !python.packages.contains_key(&key) {
+            let source = config::PythonPackageSource::VersionConstraint("".to_string());
             let def = config::PythonPackageDefinition {
                 source,
                 editable_path: None,
-                poetry2nix: poetry2nix.clone(),
+                override_attrs: Default::default(),
+                anysnake_override_attrs: None,
                 pre_poetry_patch: None,
+                build_systems: None,
             };
-            python.packages.insert("rpy2".to_string(), def);
-            /* let tbl = "[rpy2]
-                version = '*'
-            "
-                        .parse::<toml_edit::DocumentMut>()
-                        .unwrap();
-                        updates.push((
-                            ["python", "packages", "rpy2"]
-                                .iter()
-                                .map(ToString::to_string)
-                                .collect(),
-                            tbl["rpy2"].clone(),
-                        )); */
+            python.packages.insert(SafePythonName::new("rpy2"), def);
         }
+        let mut overrides = HashMap::new();
+        overrides.insert("R_HOME".to_string(), "''${R_tracked}''".to_string());
+        overrides.insert(
+            "NIX_LDFLAGS".to_string(),
+            "''-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib''".to_string(),
+        );
+        overrides.insert(
+            "postPatch".to_string(),
+            "''
+              substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
+                          \"os.environ['R_HOME'] = openrlib.R_HOME
+                      os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
+                ''
+            ".to_string(),
+        );
+        python
+            .packages
+            .get_mut(&key)
+            .unwrap()
+            .anysnake_override_attrs = Some(overrides);
     }
 }
 
@@ -363,16 +375,16 @@ impl TofuToNewest<vcs::TofuVCS> for Option<config::ParsedVCSInsideURLTag> {
     }
 }
 
-impl TofuToNewest<config::TofuPoetry2Nix> for Option<config::Poetry2Nix> {
+impl TofuToNewest<config::TofuUv2Nix> for Option<config::Uv2Nix> {
     fn tofu_to_newest(
         self,
         toml_name: &[&str],
         updates: &mut TomlUpdates,
         default_url: &str,
-    ) -> Result<config::TofuPoetry2Nix> {
+    ) -> Result<config::TofuUv2Nix> {
         let prefer_wheels = self.as_ref().and_then(|x| x.prefer_wheels).unwrap_or(true);
         let input = self.and_then(|x| x.url);
-        Ok(config::TofuPoetry2Nix {
+        Ok(config::TofuUv2Nix {
             source: tofu_repo_to_newest(toml_name, updates, input, default_url)?,
             prefer_wheels,
         })
@@ -1059,7 +1071,7 @@ pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<P
     Ok(PrefetchHashResult::Hash(new_format))
 }
 
-fn get_newest_pypi_version(package_name: &str) -> Result<String> {
+fn get_newest_pypi_version(package_name: &SafePythonName) -> Result<String> {
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
@@ -1292,6 +1304,7 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
                     version: inner_self.version,
                     ecosystem_date: date,
                     packages: tofu_packages?,
+                    uv_lock_env: inner_self.uv_lock_env,
                 }))
             }
             None => Ok(None),
@@ -1301,20 +1314,22 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
 
 #[allow(clippy::enum_glob_use)]
 fn tofu_python_package_definition(
-    name: &str,
+    name: &SafePythonName,
     ppd: &config::PythonPackageDefinition,
     updates: &mut TomlUpdates,
 ) -> Result<config::TofuPythonPackageDefinition> {
     use config::TofuPythonPackageSource::*;
     Ok(config::TofuPythonPackageDefinition {
         editable_path: ppd.editable_path.clone(),
-        poetry2nix: ppd.poetry2nix.clone(),
+        override_attrs: ppd.override_attrs.clone(),
+        anysnake_override_attrs: ppd.anysnake_override_attrs.clone(),
         pre_poetry_patch: ppd.pre_poetry_patch.clone(),
+        build_systems: ppd.build_systems.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),
             config::PythonPackageSource::Vcs(parsed_vcs) => Vcs(tofu_repo_to_newest(
-                &["python", "packages", name, "url"],
+                &["python", "packages", &name.to_string(), "url"],
                 updates,
                 Some(parsed_vcs.clone()),
                 "",
@@ -1391,7 +1406,7 @@ impl Tofu<TofuDevShell> for Option<config::DevShell> {
 }
 
 trait SortPackages {
-    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self; 
+    fn sort_packages(self, toml_name: &[&str], updates: &mut TomlUpdates) -> Self;
 }
 
 impl SortPackages for config::TofuNixPkgs {

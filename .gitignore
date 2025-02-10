@@ -17,6 +17,5 @@ examples/**/venv
 examples/**/.ipynb_checkpoints
 hello_flake
 examples/flake_in_non_root_github/no-home/*
-activate_github_token.fish
 target*/
 .bacon-locations
