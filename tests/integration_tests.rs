@@ -440,22 +440,28 @@ fn test_python_pip_reinstall_if_venv_changes() {
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let toml_path = td.path().join("anysnake2.toml");
-    let mut toml = ex::fs::read_to_string(&toml_path).unwrap();
+    let toml = ex::fs::read_to_string(&toml_path).unwrap();
     println!("{}", toml);
-    toml = toml.replace(
+    let new_toml = toml.replace(
         "pandas=",
-        "solidpython=\"\"\neuclid3 = {poetry2nix.nativeBuildInputs = [\"setuptools\"]}\npandas=",
+        "solidpython=\"\"\neuclid3 = {build_systems = [\"setuptools\"]}\npandas=",
     );
-    ex::fs::write(toml_path, toml).unwrap();
+    assert!(new_toml != toml);
+    ex::fs::write(toml_path, new_toml).unwrap();
 
     let td_path = td.path().to_string_lossy();
-    let (_code, stdout, _stderr) = run_test(&td_path, &["run", "--", "which", "hello"], true);
+    let (_code, stdout, _stderr) =
+        run_test(&td_path, &["run", "--", "python", "-m", "euclid3"], true);
     println!("second: {}", stdout);
+
     let second =
         ex::fs::read_to_string(td.path().join(".anysnake2_flake/venv/3.11/bin/hello")).unwrap();
 
     let lines_first: Vec<_> = first.split('\n').collect();
     let lines_second: Vec<_> = second.split('\n').collect();
+    // we test that the shebang has changed, for only then the venv has the right python.
+    println!("lines_first: {:?}", lines_first[0]);
+    println!("lines_second: {:?}", lines_second[0]);
     assert!(lines_first[0] != lines_second[0]);
     assert!(lines_first[1..] == lines_second[1..]);
 }
