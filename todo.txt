@@ -20,7 +20,6 @@
 - either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.
 
 
--- combine prefetchers from tofu and flake writer ( one gets the path, the other doesn't...)
 -- garbage collection for poetry clones?
 -- rpy2 site path hacks?
 -- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?

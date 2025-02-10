@@ -1351,12 +1351,12 @@ fn add_python(
     Ok(changed)
 }
 
-struct PrefetchResult {
-    path: String,
-    sha256: String,
+pub struct PrefetchResult {
+    pub path: String,
+    pub sha256: String,
 }
 
-fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+pub fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let nix_prefetch_hg_url = format!(
         "{}#nix-prefetch-hg",
         anysnake2::get_outside_nixpkgs_url().unwrap()
@@ -1394,7 +1394,7 @@ fn prefetch_hg_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     Ok(PrefetchResult { path, sha256 })
 }
 
-fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+pub fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     let nix_prefetch_git_url = format!(
         "{}#nix-prefetch-git",
         anysnake2::get_outside_nixpkgs_url().unwrap()
@@ -1435,7 +1435,8 @@ fn prefetch_git_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
 
     Ok(PrefetchResult { path, sha256 })
 }
-fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
+
+pub fn prefetch_github_store_path(url: &str, rev: &str) -> Result<PrefetchResult> {
     //every single one of the nix-prefetch-* fails me here
     //nix-prefetch-github: doesn't get you the store path
     //nix-prefetch doesn't actually realize the store path.

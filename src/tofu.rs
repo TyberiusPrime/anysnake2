@@ -966,89 +966,12 @@ pub fn apply_trust_on_first_use(
     Ok(tofued)
 }
 
-/* currently unused
-fn prefetch_git_hash(url: &str, rev: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    let nix_prefetch_git_url = format!("{}#nix-prefetch-git", outside_nixpkgs_url);
-    let nix_prefetch_git_url_args = &[
-        "shell",
-        &nix_prefetch_git_url,
-        "-c",
-        "nix-prefetch-git",
-        "--url",
-        url,
-        "--rev",
-        rev,
-        "--quiet",
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_git_url_args)
-        .output()
-        .context("failed on nix-prefetch-git")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?;
-    let structured: HashMap<String, serde_json::Value> =
-        serde_json::from_str(stdout).context("nix-prefetch-git output failed json parsing")?;
-    let old_format = structured
-        .get("sha256")
-        .context("No sha256 in nix-prefetch-git json output")?;
-    let old_format: &str = old_format.as_str().context("sha256 was no string")?;
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-
-
-fn prefetch_pypi_hash(pname: &str, version: &str, outside_nixpkgs_url: &str) -> Result<String> {
-    /*
-         * nix-universal-prefetch pythonPackages.fetchPypi \
-        --pname home-assistant-frontend \
-        --version 20200519.1
-    149v56q5anzdfxf0dw1h39vdmcigx732a7abqjfb0xny5484iq8w
-    */
-    let nix_prefetch_scripts = format!("{}#nix-universal-prefetch", outside_nixpkgs_url);
-    let nix_prefetch_args = &[
-        "shell",
-        &nix_prefetch_scripts,
-        "-c",
-        "nix-universal-prefetch",
-        "pythonPackages.fetchPypi",
-        "--pname",
-        pname,
-        "--version",
-        version,
-    ];
-    let stdout = Command::new("nix")
-        .args(nix_prefetch_args)
-        .output()
-        .context("failed on nix-prefetch-url for pypi")?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?.trim();
-    let lines = stdout.split('\n');
-    let old_format = lines
-        .last()
-        .expect("Could not parse nix-prefetch-pypi output");
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-
-    Ok(new_format)
-}
-*/
-
 pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<PrefetchHashResult> {
-    let url = format!("https://github.com/{owner}/{repo}/archive/{git_hash}.tar.gz",);
-
-    let stdout = Command::new("nix-prefetch-url")
-        .args([&url, "--type", "sha256", "--unpack", "--print-path"])
-        .output()
-        .context(format!("Failed to nix-prefetch {url}"))?
-        .stdout;
-    let stdout = std::str::from_utf8(&stdout)?;
-    let mut stdout_split = stdout.split('\n');
-    let old_format = stdout_split
-        .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {url} --type sha256 --unpack --print-path' (line 0  - should have been hash)"))?;
-    let path = stdout_split
-        .next()
-        .with_context(||format!("unexpected output from 'nix-prefetch-url {url} --type sha256 --unpack --print-path' (line 1  - should have been hash)"))?;
+    let prefetch_res = crate::flake_writer::prefetch_github_store_path(
+        &format!("github:{owner}/{repo}"),
+        git_hash,
+    )?;
+    let path = prefetch_res.path;
 
     /* if the git repo is using .gitattributes and 'export-subst'
      * then github tarballs are actually not stable - if the drop out of the caching
@@ -1066,8 +989,7 @@ pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<P
         }
     }
 
-    let new_format = convert_hash_to_subresource_format(old_format)?;
-    debug!("before convert: {}, after: {}", &old_format, &new_format);
+    let new_format = prefetch_res.sha256;
     Ok(PrefetchHashResult::Hash(new_format))
 }
 
