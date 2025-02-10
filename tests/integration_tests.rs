@@ -4,17 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
-fn assert_have_github_api_token() {
-    if std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD").is_err() {
-        panic!("Need to set ANYSNAKE2_GITHUB_API_PASSWORD to run tests");
-    }
-    if std::env::var("ANYSNAKE2_GITHUB_API_USERNAME").is_err() {
-        panic!("Need to set ANYSNAKE2_GITHUB_API_USERNAME to run tests");
-    }
-}
-
 fn run_test(cwd: &str, args: &[&str], remove_old: bool) -> (i32, String, String) {
-    assert_have_github_api_token();
     //can't have more than one running from a given folder at a time
     //let lock = NamedLock::create(&cwd.replace("/", "_")).unwrap();
     let lock = NamedLock::create("anysnaketest").unwrap();
@@ -57,7 +47,6 @@ fn run_test(cwd: &str, args: &[&str], remove_old: bool) -> (i32, String, String)
 }
 
 fn run_test_tempdir(cwd: &str, args: &[&str]) -> ((i32, String, String), TempDir) {
-    assert_have_github_api_token();
     let td = tempfile::Builder::new()
         .prefix("anysnake_test")
         .tempdir()

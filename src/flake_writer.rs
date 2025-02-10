@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::vcs;
-use anysnake2::{run_without_ctrl_c};
+use anysnake2::run_without_ctrl_c;
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -623,25 +623,6 @@ fn clone_to_nix_store(
     Ok((path, sha256))
 }
 
-fn get_basic_auth_header(user: &str, pass: &str) -> String {
-    use base64::Engine;
-    let usrpw = String::from(user) + ":" + pass;
-    String::from("Basic ") + &base64::engine::general_purpose::STANDARD.encode(usrpw.as_bytes())
-}
-
-pub fn add_auth(mut request: ureq::Request) -> ureq::Request {
-    if let Ok(api_username) = std::env::var("ANYSNAKE2_GITHUB_API_USERNAME") {
-        if let Ok(api_password) = std::env::var("ANYSNAKE2_GITHUB_API_PASSWORD") {
-            debug!("Using github auth");
-            request = request.set(
-                "Authorization",
-                &get_basic_auth_header(&api_username, &api_password),
-            );
-        }
-    }
-    request
-}
-
 fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
     let full_url = format!("{}#nixfmt", anysnake2::get_outside_nixpkgs_url().unwrap());
     // debug!("registering nixfmt with {}", &full_url);
@@ -866,10 +847,9 @@ fn write_flake_contents(
     flake_dir: &Path,
 ) -> Result<bool> {
     let res = if use_generated_file_instead {
-
         if old_flake_contents != flake_contents {
-        debug!("Flake content change detected (2). writing old flake to flake.nix.old for comparison");
-        fs::write(flake_dir.join("flake.nix.old"), old_flake_contents)?;
+            debug!("Flake content change detected (2). writing old flake to flake.nix.old for comparison");
+            fs::write(flake_dir.join("flake.nix.old"), old_flake_contents)?;
             fs::write(flake_filename, flake_contents)?;
         }
         Ok(true)
@@ -1195,7 +1175,7 @@ fn add_python(
                 &python_version,
                 &python_major_minor,
                 ecosystem_date,
-                &python.uv_lock_env
+                &python.uv_lock_env,
             )?;
 
             rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;

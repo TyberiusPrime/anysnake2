@@ -2,14 +2,13 @@ use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, error};
-use serde::{Serialize};
+use serde::Serialize;
 use version_compare::Version;
 
 use crate::{
     config::{self, remove_username_from_url, TofuPythonPackageSource},
-    flake_writer::add_auth,
 };
-use anysnake2::{run_without_ctrl_c, util::get_proxy_req};
+use anysnake2::run_without_ctrl_c;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParsedVCS {
@@ -199,7 +198,6 @@ impl TofuVCS {
                 format!("hg+{url}?rev={rev}")
             }
         }
-    
     }
 }
 
@@ -339,49 +337,32 @@ impl TryFrom<&str> for ParsedVCS {
 
 impl ParsedVCS {
     fn get_tags(&self) -> Result<HashMap<String, String>> {
+        fn tags_from_git_ls(url: &str) -> Result<HashMap<String, String>> {
+            let hash_and_ref = run_git_ls(url, None)?;
+            let res: Result<_> = hash_and_ref
+                .into_iter()
+                .filter_map(|(hash, refname)| {
+                    refname
+                        .strip_prefix("refs/tags/")
+                        .map(|tag| Ok((tag.to_string(), hash)))
+                })
+                .collect();
+            Ok(res?)
+        }
         match self {
             ParsedVCS::Git {
                 url,
                 branch: _branch,
                 rev: _rev,
-            } => {
-                let hash_and_ref = run_git_ls(url, None)?;
-                let res: Result<_> = hash_and_ref
-                    .into_iter()
-                    .filter_map(|(hash, refname)| {
-                        refname
-                            .strip_prefix("refs/tags/")
-                            .map(|tag| Ok((tag.to_string(), hash)))
-                    })
-                    .collect();
-                Ok(res?)
-            }
+            } => Ok(tags_from_git_ls(url)?),
             ParsedVCS::GitHub {
                 owner,
                 repo,
                 branch: _,
                 rev: _rev,
             } => {
-                //should be run git_ls instead?
-                let mut res = HashMap::new();
-                for page in 0..30 {
-                    let json = get_github_tags(owner, repo, page)?;
-                    if json.is_empty() {
-                        break;
-                    }
-                    for entry in json {
-                        let name: String = entry["name"]
-                            .as_str()
-                            .context("No name found in github tags")?
-                            .to_string();
-                        let sha: String = entry["commit"]["sha"]
-                            .as_str()
-                            .context("No sha found in github tags")?
-                            .to_string();
-                        res.insert(name, sha);
-                    }
-                }
-                Ok(res)
+                let url = format!("https://github.com/{owner}/{repo}.git");
+                Ok(tags_from_git_ls(&url)?)
             }
             ParsedVCS::Mercurial { .. } => Ok(HashMap::new()), // ignoring mercurial
                                                                // bookmarks/tags/branches
@@ -623,22 +604,6 @@ pub fn extract_query_string(input: &str) -> Result<HashMap<String, String>> {
         }
     }
     Ok(res)
-}
-
-pub(crate) fn get_github_tags(
-    owner: &str,
-    repo: &str,
-    page: i32,
-) -> Result<Vec<serde_json::Value>> {
-    let url = format!("https://api.github.com/repos/{owner}/{repo}/tags?per_page=100&page={page}",);
-    debug!("Retrieving {}", &url);
-    let body: String = add_auth(get_proxy_req()?.get(&url)).call()?.into_string()?;
-    let json: serde_json::Value =
-        serde_json::from_str(&body).context("Failed to parse github tags api")?;
-    Ok(json
-        .as_array()
-        .context("No entries in github tags api?")?
-        .clone())
 }
 
 fn could_be_a_sha1(input: &str) -> bool {
