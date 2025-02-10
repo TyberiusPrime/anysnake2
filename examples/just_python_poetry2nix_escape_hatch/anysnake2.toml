@@ -18,6 +18,8 @@
 
 
 [python.packages]
+	setuptools = ""# dppd_plotnine needs this
+
 
 [python.packages.dppd]
 	build_systems = ["setuptools"]
@@ -27,14 +29,14 @@
 
 [python.packages.dppd-plotnine]
 	build_systems = ["setuptools"]
-	overrideAttributes.postPatch = """
+	override_attrs.postPatch = """''
 	substituteInPlace setup.cfg \
 		--replace-fail "pyscaffold>=3.1a0,<3.2a0" ""
 
 	substituteInPlace setup.py --replace-fail "use_pyscaffold=True" ""
 	# dppd_plotnine version resolution in 0.2 is borked
 	substituteInPlace src/dppd_plotnine/__init__.py --replace-fail "__version__ = get_distribution(dist_name).version" "__version__ = '0.2'"
-"""
+''"""
 	version="0.2"
 
 
@@ -47,7 +49,27 @@
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/31b316a8ee16d18c1ff4bbd9ee370cd289388f15"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
+
+
 [devshell]
 	inputs = []
 	shell = "bash"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 
