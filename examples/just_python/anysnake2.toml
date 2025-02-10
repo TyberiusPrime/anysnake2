@@ -6,7 +6,7 @@
 
 [nixpkgs]
 	packages =["which"]
-	url = "github:nixos/nixpkgs/master/6efe194fbec6d156eedff4210476eb06bb844bc7"
+	url = "github:nixos/nixpkgs/master/24.05"
 
 
 [python]

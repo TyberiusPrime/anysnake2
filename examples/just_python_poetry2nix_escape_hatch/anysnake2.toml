@@ -19,9 +19,6 @@
 
 [python.packages]
 
-
-#setuptools="" # needed by dppd-plotnine
-
 [python.packages.dppd]
 	build_systems = ["setuptools"]
 # could also be version="pypi:0.24"
@@ -47,16 +44,7 @@
 
 
 [outside_nixpkgs]
-	rev = "23.11" 
 	url = "github:NixOS/nixpkgs/master/24.05"
-
-
-[ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
-
-
-[flake-util]
-	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
 
 
 [devshell]

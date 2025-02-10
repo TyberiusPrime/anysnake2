@@ -1,5 +1,7 @@
 [anysnake2]
-	url = "dev" # replace with fixed version outside of tests/examples
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+	url2="dev"
 
 
 [nixpkgs]
@@ -17,8 +19,16 @@
 	solidpython=""
 
 
-#TODO: This needs to be rewritten to be a git dependency automatically!
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
 
 [outside_nixpkgs]
-	url = "github:NixOS/nixpkgs/master/24.05"
+	url = "github:NixOS/nixpkgs/master/branch-off-24.11"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
+
 

@@ -136,10 +136,11 @@ fn test_just_python() {
     assert!(!stderr.contains("ImportError"));
 
     //now test the 'will not remove clone code' functionality
-    let query = "a981a9ea5468faa66fccc6c69c5d5807ef8115c4";
-    let replacement = "73c059bc0941149f59c56e4410b46be7f809587e";
+    let query = "6df1084dbd3dd2fc122068377ed041ea7d17adf5";
+    let replacement = "f9f23d4abbbabae401a0c3fe9c66214dd4f7f19d";
     let raw = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
     let out = raw.replace(query, replacement);
+    assert!(raw != out);
     ex::fs::write(td.path().join("anysnake2.toml"), out).unwrap();
 
     let (code, _stdout, stderr) = run_test(&td_path, &["run", "--", "hello"], true);

@@ -267,7 +267,7 @@ python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library
 
 
 [uv2nix_override_collection]
-	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]

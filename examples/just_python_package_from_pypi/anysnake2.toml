@@ -7,6 +7,8 @@
 # see mbf_bam for an example
 
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
 	url2 = "dev"
 
 
@@ -22,6 +24,7 @@
 
 [python.packages]
 	dppd={version="pypi:0.26", build_systems = ["setuptools"] }
+	numba = {override_attrs = { buildInputs = "old.buildInputs ++ [ pkgs.tbb_2021_11.out ]" }}
 	scanpy={version="pypi:1.9.3", build_systems = ["flit-core", "setuptools-scm"]}
 	session-info={version="pypi:1.0.0", build_systems = ["setuptools"]}
 
@@ -35,14 +38,31 @@
 	run="bash"
 
 
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
+
 [outside_nixpkgs]
 	url = "github:NixOS/nixpkgs/master/24.05"
 
 
 [ancient_poetry]
-	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=54a06abec3273f42f9d86a36f184dbb3089cd9c9"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=b23dbf4c7beaa94bc3bfd2f766a953f405ae9afc"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/31b316a8ee16d18c1ff4bbd9ee370cd289388f15"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/e53075de5587a33b3b68a809ea3124b615ab260c"
 
 
 [flake-util]
 	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/e1487e5cefda0c7990bdd2e660bee20971680e45"
 
