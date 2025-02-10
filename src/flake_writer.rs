@@ -1,4 +1,4 @@
-use crate::config;
+use crate::config::{self, SafePythonName};
 use anyhow::{anyhow, bail, Context, Result};
 use ex::fs;
 use itertools::Itertools;
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::vcs;
-use anysnake2::{run_without_ctrl_c, safe_python_package_name};
+use anysnake2::{run_without_ctrl_c};
 
 /// captures everything we need to know about an 'input' to our flake.
 struct InputFlake {
@@ -365,7 +365,7 @@ struct PrepResult {
 /// prepare what we put into pyproject.toml
 #[allow(clippy::too_many_lines)]
 fn prep_packages_for_pyproject_toml(
-    input: &mut HashMap<String, config::TofuPythonPackageDefinition>,
+    input: &mut HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     in_non_spec_but_cached_values: &HashMap<String, String>,
     out_non_spec_but_cached_values: &mut HashMap<String, String>,
     pyproject_toml_path: &Path,
@@ -547,7 +547,7 @@ fn prep_packages_for_pyproject_toml(
 /// because it needs to build egg-infos that write into the checkout
 fn copy_for_poetry(
     path: &str,
-    name: &str,
+    name: &SafePythonName,
     sha256: &str,
     pyproject_toml_path: &Path,
     pre_poetry_patch: &Option<String>,
@@ -559,7 +559,7 @@ fn copy_for_poetry(
     let target_path = pyproject_toml_path
         .parent()
         .unwrap()
-        .join(name)
+        .join(name.to_string())
         .join(format!("{sha256}-{pre_poetry_patch_sha}"));
     //copy the full path, using cp...
     if !target_path.exists() {
@@ -680,7 +680,7 @@ fn ancient_poetry(
     ancient_poetry: &vcs::TofuVCS,
     nixpkgs: &config::TofuNixPkgs,
     uv_flake: &vcs::TofuVCS,
-    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     python_package_definitions: &toml::Table,
     pyproject_toml_path: &Path,
     uv_lock_path: &Path,
@@ -1083,7 +1083,7 @@ fn add_r(
 }
 
 fn format_overrides(
-    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
 ) -> Result<(Vec<String>, Vec<String>)> {
     fn to_vec(overrides: HashMap<String, HashMap<String, String>>) -> Vec<String> {
         let mut out = Vec::new();
@@ -1105,7 +1105,7 @@ fn format_overrides(
     for (name, spec) in python_packages {
         if let Some(build_systems) = &spec.build_systems {
             let target = anysnake_overrides
-                .entry(safe_python_package_name(name))
+                .entry(name.to_string())
                 .or_insert_with(HashMap::new);
             let str_build_systems = build_systems
                 .iter()
@@ -1122,14 +1122,14 @@ fn format_overrides(
         }
         for (key, value) in spec.override_attrs.iter() {
             let target = user_overrides
-                .entry(safe_python_package_name(name))
+                .entry(name.to_string())
                 .or_insert_with(HashMap::new);
             target.insert(key.to_string(), value.to_string());
         }
         if let Some(anysnake_override_attrs) = spec.anysnake_override_attrs.as_ref() {
             for (key, value) in anysnake_override_attrs.iter() {
                 let target = anysnake_overrides
-                    .entry(safe_python_package_name(name))
+                    .entry(name.to_string())
                     .or_insert_with(HashMap::new);
                 target.insert(key.to_string(), value.to_string());
             }

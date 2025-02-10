@@ -462,7 +462,7 @@ fn test_python_pip_reinstall_if_venv_changes() {
     // we test that the shebang has changed, for only then the venv has the right python.
     println!("lines_first: {:?}", lines_first[0]);
     println!("lines_second: {:?}", lines_second[0]);
-    assert!(lines_first[0] != lines_second[0]);
+    assert!(lines_first[0] != lines_second[0], "python was unchanged but should have changed");
     assert!(lines_first[1..] == lines_second[1..]);
 }
 

@@ -9,6 +9,7 @@ use anysnake2::{
 };
 use clap::parser::ValueSource;
 use clap::{Arg, ArgMatches};
+use config::SafePythonName;
 use ex::fs;
 use indoc::indoc;
 use log::{debug, error, info, trace, warn};
@@ -571,16 +572,15 @@ fn inner_main() -> Result<()> {
                     .iter()
                     .filter(|(_, spec)| spec.editable_path.is_some())
                 {
-                    let safe_pkg = safe_python_package_name(pkg);
-                    let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
+                    let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), pkg.as_str()]
                         .iter()
                         .collect(); //todo: make configurable
                     binds.push((
                         target_dir.to_string_lossy(),
-                        format!("/anysnake2/venv/linked_in/{safe_pkg}"),
+                        format!("/anysnake2/venv/linked_in/{pkg}"),
                         "ro".to_string(),
                     ));
-                    let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+                    let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
                     let egg_target = parse_egg(egg_link)?;
                     python_paths.push(egg_target);
                 }
@@ -893,7 +893,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 let entry = todo
                     .entry(editable_path.to_string())
                     .or_insert_with(HashMap::new);
-                let safe_name = safe_python_package_name(pkg_name);
+                let safe_name = pkg_name.to_string();
                 entry.insert(safe_name, package.source.clone());
             }
         }
@@ -1031,7 +1031,7 @@ fn replace_env_vars(input: &str) -> String {
 // deal with the editable packages.
 fn fill_venv(
     python_version: &str,
-    python: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
@@ -1050,17 +1050,16 @@ fn fill_venv(
         .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
         debug!("ensuring venv  for {pkg}");
-        let safe_pkg = safe_python_package_name(pkg);
-        let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), &safe_pkg]
+        let target_dir: PathBuf = [spec.editable_path.as_ref().unwrap(), pkg.as_str()]
             .iter()
             .collect();
         if !target_dir.exists() {
             bail!("editable python package that was not present in file system (missing clone)? looking for package {} in {:?}",
                                pkg, target_dir);
         }
-        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+        let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
         let venv_used = {
-            let anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+            let anysnake_link = venv_dir.join(format!("{pkg}.anysnake-link"));
             if anysnake_link.exists() {
                 ex::fs::read_to_string(anysnake_link)?
             } else {
@@ -1069,7 +1068,7 @@ fn fill_venv(
         };
         if !egg_link.exists() || venv_used != target_python_str {
             // so that changing python versions triggers a rebuild.
-            to_build.push((safe_pkg, target_dir));
+            to_build.push((pkg, target_dir));
         }
     }
     if !to_build.is_empty() {
@@ -1503,7 +1502,7 @@ fn run_dtach(p: impl AsRef<Path>) -> Result<()> {
 #[allow(unused)] //todo, there's a missing code path in 'develop'
 fn write_develop_python_path(
     flake_dir: impl AsRef<Path>,
-    python_packages: &HashMap<String, config::TofuPythonPackageDefinition>,
+    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
     python_version: &str,
 ) -> Result<()> {
     let mut develop_python_paths = Vec::new();
@@ -1517,9 +1516,8 @@ fn write_develop_python_path(
         .iter()
         .filter(|(_pkg, spec)| spec.editable_path.is_some())
     {
-        let safe_pkg = safe_python_package_name(pkg);
-        let real_target = parent_dir.join("code").join(pkg);
-        let egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+        let real_target = parent_dir.join("code").join(pkg.as_str());
+        let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
         let egg_target = parse_egg(egg_link)?;
         let egg_target =
             egg_target.replace("/anysnake2/venv/linked_in", &real_target.to_string_lossy());

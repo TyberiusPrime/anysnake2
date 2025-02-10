@@ -654,11 +654,46 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
     }
 }
 
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct SafePythonName(String);
+
+impl<'de> Deserialize<'de> for SafePythonName {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        Ok(SafePythonName(crate::safe_python_package_name(&s)))
+    }
+}
+
+impl PartialEq<str> for SafePythonName {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == crate::safe_python_package_name(other)
+    }
+}
+
+impl std::fmt::Display for SafePythonName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl SafePythonName {
+    pub fn new(input: impl Into<String>) -> SafePythonName {
+        SafePythonName(input.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Python {
     pub version: String,
     pub ecosystem_date: Option<String>,
-    pub packages: HashMap<String, PythonPackageDefinition>,
+    pub packages: HashMap<SafePythonName, PythonPackageDefinition>,
     pub uv_lock_env: Option<HashMap<String, String>>,
 }
 
@@ -666,7 +701,7 @@ pub struct Python {
 pub struct TofuPython {
     pub version: String,
     pub ecosystem_date: String,
-    pub packages: HashMap<String, TofuPythonPackageDefinition>,
+    pub packages: HashMap<SafePythonName, TofuPythonPackageDefinition>,
     pub uv_lock_env: Option<HashMap<String, String>>,
 }
 

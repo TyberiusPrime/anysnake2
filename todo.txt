@@ -26,4 +26,4 @@
 -- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?
 
 
--- ensure we have safe_python_names right after parsing
+ - pre_poetry_patch must be renamed, and must trigger a rebuild (think that's in the ancient-poetry function)

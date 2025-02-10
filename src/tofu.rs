@@ -6,7 +6,7 @@ use toml_edit::value;
 use log::{debug, error, info, warn};
 
 use crate::{
-    config::{self, TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
+    config::{self, SafePythonName, TofuAnysnake2, TofuConfigToml, TofuDevShell, TofuVCSorDev},
     vcs::{self, BranchOrTag, ParsedVCS, TofuVCS},
 };
 use anysnake2::util::{change_toml_file, get_proxy_req, TomlUpdates};
@@ -159,7 +159,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
     // versions.
     if let Some(python) = python {
         #[allow(clippy::map_entry)]
-        let key = "rpy2".to_string();
+        let key = SafePythonName::new("rpy2");
         if !python.packages.contains_key(&key) {
             let source = config::PythonPackageSource::VersionConstraint("".to_string());
             let def = config::PythonPackageDefinition {
@@ -170,7 +170,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
                 pre_poetry_patch: None,
                 build_systems: None,
             };
-            python.packages.insert("rpy2".to_string(), def);
+            python.packages.insert(SafePythonName::new("rpy2"), def);
         }
         let mut overrides = HashMap::new();
         overrides.insert("R_HOME".to_string(), "''${R_tracked}''".to_string());
@@ -1071,7 +1071,7 @@ pub fn prefetch_github_hash(owner: &str, repo: &str, git_hash: &str) -> Result<P
     Ok(PrefetchHashResult::Hash(new_format))
 }
 
-fn get_newest_pypi_version(package_name: &str) -> Result<String> {
+fn get_newest_pypi_version(package_name: &SafePythonName) -> Result<String> {
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
@@ -1314,7 +1314,7 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
 
 #[allow(clippy::enum_glob_use)]
 fn tofu_python_package_definition(
-    name: &str,
+    name: &SafePythonName,
     ppd: &config::PythonPackageDefinition,
     updates: &mut TomlUpdates,
 ) -> Result<config::TofuPythonPackageDefinition> {
@@ -1329,7 +1329,7 @@ fn tofu_python_package_definition(
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),
             config::PythonPackageSource::Url(x) => Url(x.to_string()),
             config::PythonPackageSource::Vcs(parsed_vcs) => Vcs(tofu_repo_to_newest(
-                &["python", "packages", name, "url"],
+                &["python", "packages", &name.to_string(), "url"],
                 updates,
                 Some(parsed_vcs.clone()),
                 "",
