@@ -819,9 +819,8 @@ fn download_and_unzip(url: &str, target_dir: &Path) -> Result<()> {
         let mut btf = std::io::BufWriter::new(tf);
         let mut req = anysnake2::util::get_proxy_req()?
             .get(url)
-            .call()?
-            .into_reader();
-        std::io::copy(&mut req, &mut btf)?;
+            .call()?;
+        std::io::copy(&mut req.body_mut().as_reader(), &mut btf)?;
     }
     //call tar to unpack
     Command::new("tar")

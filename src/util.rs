@@ -236,7 +236,7 @@ fn get_score(key: &str) -> usize {
 
 /// retrieve an url, possibly using the http proxy from the environment
 pub fn get_proxy_req() -> Result<ureq::Agent> {
-    let mut agent = ureq::AgentBuilder::new();
+    let mut agent = ureq::Agent::config_builder();
     let proxy_url = if let Ok(proxy_url) = std::env::var("https_proxy") {
         debug!("found https proxy env var");
         Some(proxy_url)
@@ -251,10 +251,10 @@ pub fn get_proxy_req() -> Result<ureq::Agent> {
         //.strip_prefix("https://")
         //.unwrap_or_else(|| proxy_url.strip_prefix("http://").unwrap_or(&proxy_url));
         debug!("using proxy_url {}", proxy_url);
-        let proxy = ureq::Proxy::new(proxy_url)?;
-        agent = agent.proxy(proxy);
+        let proxy = ureq::Proxy::new(&proxy_url)?;
+        agent = agent.proxy(Some(proxy));
     }
-    Ok(agent.build())
+    Ok(agent.build().into())
 }
 
 pub fn get_pypi_package_source_url(
@@ -264,7 +264,8 @@ pub fn get_pypi_package_source_url(
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
-        .into_string()?;
+        .body_mut()
+        .read_to_string()?;
     let json: serde_json::Value = serde_json::from_str(&json)?;
     let files = if let Some(pypi_version) = pypi_version {
         json["releases"][&pypi_version]

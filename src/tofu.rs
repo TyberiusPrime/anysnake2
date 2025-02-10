@@ -489,7 +489,7 @@ fn find_newest_nixr_date(url: &TofuVCS) -> Result<String> {
             let url = format!(
                 "https://raw.githubusercontent.com/{owner}/{repo}/{rev}/generated/readme.md"
             );
-            let text = get_proxy_req()?.get(&url).call()?.into_string()?;
+            let text = get_proxy_req()?.get(&url).call()?.body_mut().read_to_string()?;
             let date_re = regex::Regex::new(r"(\d{4}-\d{2}-\d{2})")?;
             let mut all_dates = date_re
                 .find_iter(&text)
@@ -997,7 +997,8 @@ fn get_newest_pypi_version(package_name: &SafePythonName) -> Result<String> {
     let json = get_proxy_req()?
         .get(&format!("https://pypi.org/pypi/{package_name}/json"))
         .call()?
-        .into_string()?;
+        .body_mut()
+        .read_to_string()?;
     let json: serde_json::Value = serde_json::from_str(&json)?;
     let version = json["info"]["version"]
         .as_str()
