@@ -500,16 +500,17 @@ fn test_fetch_trust_on_first_use() {
         assert!(!toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
     }
     {
-        let ((_code, _stdout, _stderr), td) = run_test_tempdir(
+        let ((_code, stdout, _stderr), td) = run_test_tempdir(
             "examples/just_python_trust_on_first_use",
             &[
                 "run",
                 "--",
                 "python",
                 "-c",
-                "'import plotnine; print(plotnine.__version__)'",
+                "'import dppd; print(\"dppd_version:\", dppd.__version__)'",
             ],
         );
+        assert!(stdout.contains("dppd_version"));
         let toml_path = td.path().join("anysnake2.toml");
         let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
@@ -518,6 +519,35 @@ fn test_fetch_trust_on_first_use() {
         assert!(toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
         assert!(toml.contains("pypi:"));
         assert!(toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
+
+        //ensure we're not recreating the lock file if nothing changed!
+        let (_code, stdout, stderr) = run_test(
+            &td.path().to_string_lossy(),
+            &[
+                "run",
+                "--",
+                "python",
+                "-c",
+                "'import dppd; print(dppd.__version__)'",
+            ],
+            false,
+        );
+        assert!(!stdout.contains("creating lock file"));
+        assert!(!stderr.contains("creating lock file"));
+          //once again, for good measure
+        let (_code, stdout, stderr) = run_test(
+            &td.path().to_string_lossy(),
+            &[
+                "run",
+                "--",
+                "python",
+                "-c",
+                "'import dppd; print(dppd.__version__)'",
+            ],
+            false,
+        );
+        assert!(!stdout.contains("creating lock file"));
+        assert!(!stderr.contains("creating lock file"));
     }
 }
 
