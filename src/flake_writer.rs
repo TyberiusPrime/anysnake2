@@ -667,12 +667,12 @@ fn ancient_poetry(
     uv_lock_path: &Path,
     python_version: &str,
     python_major_minor: &str,
-    date: chrono::NaiveDate,
+    date: jiff::civil::Date,
     uv_env: &Option<HashMap<String, String>>,
 ) -> Result<()> {
     //let mut pyproject_toml_contents = toml::Table::new();
     //pyproject_toml_contents["tool.poetry"] = toml::Value::Table(toml::Table::new());
-    let str_date = date.format("%Y-%m-%d").to_string();
+    let str_date = date.strftime("%Y-%m-%d").to_string();
     let mut pyproject_toml_contents: toml::Table = format!(
         r#"
 [project]
@@ -1545,10 +1545,10 @@ fn rewrite_poetry(
 /// this places a dummy setup.cfg in our generated top level project
 fn write_setup_cfg(
     flake_dir: &Path,
-    ecosystem_date: chrono::naive::NaiveDate,
+    ecosystem_date: jiff::civil::Date,
     git_tracked_files: &mut Vec<String>,
 ) -> Result<()> {
-    if ecosystem_date <= chrono::naive::NaiveDate::from_ymd_opt(2022, 3, 24).unwrap() {
+    if ecosystem_date <= jiff::civil::Date::constant(2022, 3, 24) {
         let setup_cfg = flake_dir.join("uv_rewritten/setup.cfg");
         ex::fs::write(
             setup_cfg,

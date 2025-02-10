@@ -713,7 +713,7 @@ pub struct TofuPython {
 }
 
 impl TofuPython {
-    pub fn parsed_ecosystem_date(&self) -> Result<chrono::NaiveDate> {
+    pub fn parsed_ecosystem_date(&self) -> Result<jiff::civil::Date> {
         parse_my_date(&self.ecosystem_date)
     }
 
@@ -777,11 +777,8 @@ pub struct TofuR {
     pub use_inside_nix_pkgs: Option<bool>,
 }
 
-fn parse_my_date(input: &str) -> Result<chrono::NaiveDate> {
-    const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+fn parse_my_date(input: &str) -> Result<jiff::civil::Date> {
     Ok(
-        chrono::NaiveDateTime::parse_from_str(&format!("{input} 00:00:00"), FORMAT)?
-            .and_utc()
-            .date_naive(),
+        input.parse()?
     )
 }

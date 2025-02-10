@@ -1073,7 +1073,8 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
 
                 let date = inner_self.ecosystem_date.unwrap_or_else(|| {
                     //today in yyyy-mm-dd
-                    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                    let date = jiff::Zoned::now().date().to_string();
+                    //chrono::Utc::now().format("%Y-%m-%d").to_string();
                     let toml_path = vec!["python".to_string(), "ecosystem_date".to_string()];
                     updates.push((toml_path, value(date.clone())));
                     date

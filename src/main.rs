@@ -640,7 +640,7 @@ fn inner_main() -> Result<()> {
                         Some(format!(
                             "{}_{}",
                             cmd,
-                            chrono::Local::now().format("%Y-%m-%d_%H:%M:%S")
+                            jiff::Zoned::now().datetime().to_string()
                         ))
                     } else {
                         None
