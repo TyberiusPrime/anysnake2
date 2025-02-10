@@ -1304,6 +1304,7 @@ impl Tofu<Option<config::TofuPython>> for Option<config::Python> {
                     version: inner_self.version,
                     ecosystem_date: date,
                     packages: tofu_packages?,
+                    uv_lock_env: inner_self.uv_lock_env,
                 }))
             }
             None => Ok(None),

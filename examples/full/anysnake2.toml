@@ -57,6 +57,11 @@
 [python] # python section is optional
 	ecosystem_date = "2024-08-09"
 	version="3.12" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+	# at times, broken python packages need you to set environment variables 
+	# when 'uv lock' is being done,
+	# hence this option
+	uv_lock_env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}
+
 
 
 [python.packages]

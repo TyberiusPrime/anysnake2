@@ -659,6 +659,7 @@ pub struct Python {
     pub version: String,
     pub ecosystem_date: Option<String>,
     pub packages: HashMap<String, PythonPackageDefinition>,
+    pub uv_lock_env: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug)]
@@ -666,6 +667,7 @@ pub struct TofuPython {
     pub version: String,
     pub ecosystem_date: String,
     pub packages: HashMap<String, TofuPythonPackageDefinition>,
+    pub uv_lock_env: Option<HashMap<String, String>>,
 }
 
 impl TofuPython {

@@ -208,7 +208,6 @@ pub fn write_flake(
     run_git_add(&git_tracked_files, flake_dir)?;
     run_git_commit(flake_dir)?; //after nix 2.23 we will need to commit the flake, possibly. At
                                 //least if we wanted to reference it from another flake
-
     Ok({
         WriteFlakeResult {
             flake_nix_changed,
@@ -688,6 +687,7 @@ fn ancient_poetry(
     python_version: &str,
     python_major_minor: &str,
     date: chrono::NaiveDate,
+    uv_env: &Option<HashMap<String, String>>,
 ) -> Result<()> {
     //let mut pyproject_toml_contents = toml::Table::new();
     //pyproject_toml_contents["tool.poetry"] = toml::Value::Table(toml::Table::new());
@@ -795,6 +795,7 @@ ancient-date = "{str_date}"
         );
         let out = Command::new("nix")
             .args(full_args)
+            .envs(uv_env.as_ref().unwrap_or(&HashMap::new()))
             .current_dir(".")
             //.stdin(Stdio::piped())
             //.stdout(Stdio::piped())
@@ -1189,6 +1190,7 @@ fn add_python(
                 &python_version,
                 &python_major_minor,
                 ecosystem_date,
+                &python.uv_lock_env
             )?;
 
             rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;
