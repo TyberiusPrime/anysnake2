@@ -52,19 +52,27 @@
       defaultApp = apps.my-project;
 
       # `nix develop`
-      devShell = pkgs.mkShell {
+      devShells.default = pkgs.mkShell {
         # supply the specific rust version
         nativeBuildInputs = [
           rust
           pkgs.rust-analyzer
           pkgs.git
-          pkgs.cargo-udeps
           pkgs.cargo-crev
           pkgs.cargo-vet
           pkgs.cargo-outdated
           pkgs.cargo-audit
           ancient-poetry.defaultPackage.x86_64-linux
           bacon
+        ];
+      };
+      devShells.nightly = pkgs.mkShell {
+        # udeps needs nightly
+        nativeBuildInputs = [
+          (
+            pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal) # or `toolchain.minimal`
+          )
+          pkgs.cargo-udeps
         ];
       };
     });

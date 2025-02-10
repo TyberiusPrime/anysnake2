@@ -9,7 +9,6 @@ edition = "2021"
 [dependencies]
 
 anyhow = {version="1.0.44", features=["backtrace"]}
-base64 = "0.21.4"
 chrono = "0.4"
 clap = "4.5.0"
 ctrlc = {version="3.2.1", features = ["termination"] }
@@ -30,10 +29,6 @@ toml_edit = "0.22"
 ureq = "3.0"
 url = "2.5.4"
 version-compare = "0.2.0"
-
-[dependencies.uzers] 
-version = "0.11.3"
-features = []
 
 [dev-dependencies]
 named-lock = "0.3"
