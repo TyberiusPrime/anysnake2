@@ -435,7 +435,7 @@ fn prep_packages_for_pyproject_toml(
                             name,
                             &sha256,
                             pyproject_toml_path,
-                            &spec.pre_poetry_patch,
+                            &spec.patch_before_lock,
                         )?;
                         writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                         let mut out_map = toml::Table::new();
@@ -478,7 +478,7 @@ fn prep_packages_for_pyproject_toml(
                         name,
                         &sha256,
                         pyproject_toml_path,
-                        &spec.pre_poetry_patch,
+                        &spec.patch_before_lock,
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                     let mut out_map = toml::Table::new();
@@ -517,7 +517,7 @@ fn prep_packages_for_pyproject_toml(
                         name,
                         &sha256,
                         pyproject_toml_path,
-                        &spec.pre_poetry_patch,
+                        &spec.patch_before_lock,
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                     out_map.insert("path".to_string(), writeable_path.into());
@@ -550,9 +550,9 @@ fn copy_for_poetry(
     name: &SafePythonName,
     sha256: &str,
     pyproject_toml_path: &Path,
-    pre_poetry_patch: &Option<String>,
+    patch_before_lock: &Option<String>,
 ) -> Result<String> {
-    let pre_poetry_patch_sha = pre_poetry_patch
+    let patch_before_lock_sha = patch_before_lock
         .as_ref()
         .map_or_else(|| "None".to_string(), sha256::digest);
 
@@ -560,7 +560,7 @@ fn copy_for_poetry(
         .parent()
         .unwrap()
         .join(name.to_string())
-        .join(format!("{sha256}-{pre_poetry_patch_sha}"));
+        .join(format!("{sha256}-{patch_before_lock_sha}"));
     //copy the full path, using cp...
     if !target_path.exists() {
         ex::fs::create_dir_all(target_path.parent().unwrap())?;
@@ -574,14 +574,14 @@ fn copy_for_poetry(
             .args(["-R", "ug+w", &target_path.to_string_lossy()])
             .status()?;
         info!("Executing prePoetryPatch for {}", name);
-        if let Some(pre_poetry_patch) = pre_poetry_patch {
+        if let Some(patch_before_lock) = patch_before_lock {
             let mut cmd = Command::new("bash")
                 .current_dir(&target_path)
                 .stdin(Stdio::piped())
                 .spawn()?;
             {
                 let stdin = cmd.stdin.as_mut().unwrap();
-                stdin.write_all(format!("set -xeou pipefail\n{pre_poetry_patch}").as_bytes())?;
+                stdin.write_all(format!("set -xeou pipefail\n{patch_before_lock}").as_bytes())?;
             }
             let output = cmd.wait().context("prePoetryPatch failed")?;
             if output.success() {

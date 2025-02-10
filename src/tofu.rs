@@ -167,7 +167,7 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
                 editable_path: None,
                 override_attrs: Default::default(),
                 anysnake_override_attrs: None,
-                pre_poetry_patch: None,
+                patch_before_lock: None,
                 build_systems: None,
             };
             python.packages.insert(SafePythonName::new("rpy2"), def);
@@ -1245,7 +1245,7 @@ fn tofu_python_package_definition(
         editable_path: ppd.editable_path.clone(),
         override_attrs: ppd.override_attrs.clone(),
         anysnake_override_attrs: ppd.anysnake_override_attrs.clone(),
-        pre_poetry_patch: ppd.pre_poetry_patch.clone(),
+        patch_before_lock: ppd.patch_before_lock.clone(),
         build_systems: ppd.build_systems.clone(),
         source: match &ppd.source {
             config::PythonPackageSource::VersionConstraint(x) => VersionConstraint(x.to_string()),

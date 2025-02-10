@@ -1,16 +1,8 @@
 - flakes that are paths relative to %ANYSNAKE_ROOT% ?
+
 - poetry project in subdirectory of repo. poetry project in subdir, editable.
-- why does it pull in pytest 8.1.something when you don't set pytest in 
-    the just_python example
-- run all the tests, fix all the examples...
- - clear up when we're using the github api and when we're doing git ls-remote
- - auto separate sections in anysnake.toml with newlines
 
- - test cases for
-  - prefer wheels
-  - prefer wheel
-  ( though that stuff doesn't quite work in poetry2nix right now https://github.com/nix-community/poetry2nix/issues/1403 )
-
+- clear up when we're using the github api and when we're doing git ls-remote
 
 - under what circumstances do we rebuild the editable packages? does that still happen every time we change the python packages (shouldn't...)
 
@@ -25,4 +17,3 @@
 -- rpy2 needs too many buildInputs etc... maybe fix upstream in poetry2nix?
 
 
- - pre_poetry_patch must be renamed, and must trigger a rebuild (think that's in the ancient-poetry function)

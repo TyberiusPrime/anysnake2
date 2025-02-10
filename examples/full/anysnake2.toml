@@ -101,7 +101,7 @@
 # path. ( We copy the package to the nix store, then supply uv with a writeable version
 # for it to figure out the package version number. Some packages that's not enough)
 # this get's passed to bash. With set -xoeu pipefail
-	pre_poetry_patch = """
+	patch_before_lock= """
 	sed -i 's/git_refnames = ""/git_refnames = " (tag: v0.8.0)"/' plotnine/_version.py
 	sed -i 's/version=versioneer.get_version()/version="0.8.0"/' setup.py
 	sed -i 's/cmdclass=versioneer.get_cmdclass(),//' setup.py

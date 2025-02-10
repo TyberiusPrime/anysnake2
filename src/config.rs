@@ -428,7 +428,7 @@ pub struct PythonPackageDefinition {
     pub editable_path: Option<String>,
     pub override_attrs: HashMap<String, String>,
     pub anysnake_override_attrs: Option<HashMap<String, String>>,
-    pub pre_poetry_patch: Option<String>,
+    pub patch_before_lock: Option<String>,
     pub build_systems: Option<Vec<String>>,
 }
 
@@ -438,7 +438,7 @@ pub struct TofuPythonPackageDefinition {
     pub editable_path: Option<String>,
     pub override_attrs: HashMap<String, String>,
     pub anysnake_override_attrs: Option<HashMap<String, String>>,
-    pub pre_poetry_patch: Option<String>,
+    pub patch_before_lock: Option<String>,
     pub build_systems: Option<Vec<String>>,
 }
 
@@ -515,7 +515,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     editable_path: None,
                     override_attrs: HashMap::new(),
                     anysnake_override_attrs: None,
-                    pre_poetry_patch: None,
+                    patch_before_lock: None,
                     build_systems: None,
                 })
             }
@@ -535,7 +535,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     "version",
                     "override_attrs",
                     "editable",
-                    "pre_poetry_patch",
+                    "patch_before_lock",
                     "build_systems",
                 ];
                 for key in &parsed {
@@ -614,11 +614,11 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     }
                     None => Ok(HashMap::new()),
                 }?;
-                let pre_poetry_patch = match parsed.get("pre_poetry_patch") {
+                let patch_before_lock = match parsed.get("patch_before_lock") {
                     Some(entry) => Some(
                         entry
                             .as_str()
-                            .context("pre_poetry_patch was not a string")
+                            .context("patch_before_lock was not a string")
                             .map_err(serde::de::Error::custom)?
                             .to_string(),
                     ),
@@ -646,7 +646,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                     editable_path: editable,
                     override_attrs,
                     anysnake_override_attrs: None,
-                    pre_poetry_patch,
+                    patch_before_lock,
                     build_systems,
                 })
             }
