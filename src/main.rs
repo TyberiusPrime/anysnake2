@@ -380,7 +380,7 @@ fn inner_main() -> Result<()> {
                     info!("Building oci-image in flake/result");
                     rebuild_flake(
                         use_generated_file_instead,
-                        "oci_image.x86_64-linux",
+                        "oci_image",
                         &flake_dir,
                         flake_changed.flake_nix_changed,
                     )?;
