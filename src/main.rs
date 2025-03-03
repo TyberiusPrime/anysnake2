@@ -13,7 +13,7 @@ use config::SafePythonName;
 use ex::fs;
 use indoc::indoc;
 use log::{debug, error, info, trace, warn};
-use python_parsing::parse_egg;
+use python_parsing::{parse_egg, parse_pth_for_import};
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
@@ -580,11 +580,46 @@ fn inner_main() -> Result<()> {
                         format!("/anysnake2/venv/linked_in/{pkg}"),
                         "ro".to_string(),
                     ));
+
                     let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
-                    let egg_target = parse_egg(egg_link)?;
-                    python_paths.push(egg_target);
+                    if egg_link.exists() {
+                        python_paths.push(parse_egg(egg_link)?);
+                    } else {
+                        let pth_path = venv_dir.join(format!("{pkg}.pth"));
+                        let pth_first_line = parse_egg(pth_path)?;
+                        if pth_first_line.startswith('/') {
+                            //easy case, we have the full path.
+                            python_paths.push(pth_first_line);
+                        } else {
+                            if pth_first_line.startswith("import") {
+                                todo!("Need to figure out something clever");
+                            } else {
+                                bail!("Setuptools left us with a .pth file we don't know to handle. File a bug report");
+                            }
+                        }
+                        //parse_pth(venv_dir.join(format!("{pkg}.pth")))?
+                        /* let td: PathBuf = venv_dir.join(format!("{pkg}.pth"));
+                        binds.push((
+                            td.to_string_lossy(),
+                            format!("/anysnake2/venv/{pkg}.pth"),
+                            "ro".to_string(),
+                        ));
+                        let import_editable_filename = parse_pth_for_import(td)?;
+                        let td: PathBuf = venv_dir.join(&import_editable_filename);
+                        binds.push((
+                            td.to_string_lossy(),
+                            format!("/anysnake2/venv/{import_editable_filename}"),
+                            "ro".to_string(),
+                        ));
+
+ */
+                        python_paths.push(
+                            format!("/anysnake2/venv/linked_in/{pkg}"));
+                    };
                 }
-                envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+                if !python_paths.is_empty() {
+                    envs.push(format!("PYTHONPATH={}", python_paths.join(":")));
+                }
                 paths.push("/anysnake2/venv/bin");
             };
 
@@ -1075,6 +1110,7 @@ fn fill_venv(
                                pkg, target_dir);
         }
         let egg_link = venv_dir.join(format!("{pkg}.egg-link"));
+        let pth_link = venv_dir.join(format!("{pkg}.pth"));
         let venv_used = {
             let anysnake_link = venv_dir.join(format!("{pkg}.anysnake-link"));
             if anysnake_link.exists() {
@@ -1083,14 +1119,14 @@ fn fill_venv(
                 String::new()
             }
         };
-        if !egg_link.exists() || venv_used != target_python_str {
+        if !(egg_link.exists() || pth_link.exists()) || venv_used != target_python_str {
             // so that changing python versions triggers a rebuild.
             to_build.push((pkg, target_dir));
         }
     }
     for (safe_pkg, target_dir) in &to_build {
         info!("Pip install {:?}", &target_dir);
-        let td = PathBuf::from("venv_temp"); //tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
+        let td = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
         let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
         let td_home_str = td_home.path().to_string_lossy().to_string();
 
@@ -1142,7 +1178,7 @@ fn fill_venv(
             "--bind".into(),
             "/nix/store:/nix/store:ro".into(),
             "--bind".into(),
-            format!("{}:/tmp:rw", &td.as_path().to_string_lossy()),
+            format!("{}:/tmp:rw", &td.path().to_string_lossy()),
             "--bind".into(),
             format!(
                 "{}:/anysnake2/venv:rw",
@@ -1185,11 +1221,10 @@ fn fill_venv(
         // now copy the egg/pth files..
         // appearntly bin patching is no longer necessary.
         let source_egg_folder = td
-            .as_path()
+            .path()
             .join("venv/lib")
             .join(format!("python{python_version}"))
             .join("site-packages");
-        let target_egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
         let paths = fs::read_dir(&source_egg_folder)
             .context("could not read site-packages folder in temp venv")?;
         let mut any_found = false;
@@ -1199,15 +1234,23 @@ fn fill_venv(
                 || Cow::Owned(String::default()),
                 std::ffi::OsStr::to_string_lossy,
             );
-            if suffix == "pth" || suffix == "egg-link" {
+            if suffix == "egg-link" {
+                let content =
+                    ex::fs::read_to_string(&path).context("Failed reading source link")?;
+                let target_egg_link = venv_dir.join(format!("{safe_pkg}.egg-link"));
+                fs::write(&target_egg_link, &content)?;
+                break;
+            } else if suffix == "pth" {
                 //we want to read {safe_pkg}.egg-link, not __editable__{safe_pkg}-{version}.pth
                 //because we don't *know* the version
                 //and this happens only once
+                any_found = true;
                 let content =
                     ex::fs::read_to_string(&path).context("Failed reading source link")?;
-                fs::write(&target_egg_link, &content)?;
-                any_found = true;
-                if suffix == "pth" && content.starts_with("import ") {
+                let target_pth = venv_dir.join(format!("{safe_pkg}.pth"));
+                fs::write(&target_pth, &content)?;
+
+                if content.starts_with("import ") {
                     let finder_filename = path
                         .file_stem()
                         .unwrap()
@@ -1222,7 +1265,7 @@ fn fill_venv(
                     dbg!(&finder_path);
                     let finder_content = ex::fs::read_to_string(finder_path)
                         .context("Failed reading source finder for pth file")?;
-                    let target_finder = target_egg_link.parent().unwrap().join(finder_filename);
+                    let target_finder = target_pth.parent().unwrap().join(finder_filename);
                     fs::write(target_finder, finder_content)
                         .context("target finder write failed")?;
                 }

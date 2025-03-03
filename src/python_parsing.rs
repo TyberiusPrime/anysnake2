@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::path::Path;
 
 //
@@ -10,3 +10,15 @@ pub fn parse_egg(egg_link: impl AsRef<Path>) -> Result<String> {
         None => raw,
     })
 }
+
+
+pub fn parse_pth_for_import(pth_link: impl AsRef<Path>) -> Result<String> {
+    let raw = ex::fs::read_to_string(pth_link)?;
+    if !raw.starts_with("import ") {
+        bail!("pth did not start with import - unexpected");
+    }
+    let editable = raw.strip_prefix("import ").unwrap();
+    let (module_name, _) = editable.split_once(';').unwrap();
+    Ok(format!("{module_name}.py"))
+}
+//parse a python pth
