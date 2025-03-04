@@ -694,6 +694,11 @@ impl SafePythonName {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    ///return the likely 'import <module>' name.
+    pub fn to_python_name(&self) -> String {
+        self.0.replace("-", "_")
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]

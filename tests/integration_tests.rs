@@ -774,8 +774,8 @@ fn test_flake_change_updates_dependant_flakes() {
 #[test]
 fn test_editable_path_finder_install() {
     let ((_code, _stdout, stderr), _td) = run_test_tempdir(
-        "examples/debug_python_editable_venv_path_finder/",
-        &["run", "--", "python", "--", "-c", "'import diopy;'"],
+        "examples/test_python_editable_venv_path/",
+        &["run", "--", "python", "--", "-c", "'import diopy;import sys;print(sys.modules['diopy']'"],
     );
     assert!(stderr.contains("/anysnake2/venv/linked_in/diopy"));
     assert!(!stderr.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
