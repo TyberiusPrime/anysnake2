@@ -611,7 +611,8 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                             .map(|(k, v)| {
                                 Ok((
                                     k.to_string(),
-                                    v.as_str().map(|x| x.to_string()).context(
+                                    v.as_str().map(std::string::ToString::to_string)
+                                        .context(
                                         "override_attrs value was not a string (with nix code)",
                                     )?,
                                 ))
@@ -642,7 +643,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                                 x.as_str()
                                     .context("build_systems entry was not a string")
                                     .map_err(serde::de::Error::custom)
-                                    .map(|x| x.to_string())
+                                    .map(std::string::ToString::to_string)
                             })
                             .collect::<Result<Vec<String>, _>>()?,
                     ),
@@ -697,7 +698,7 @@ impl SafePythonName {
 
     ///return the likely 'import <module>' name.
     pub fn to_python_name(&self) -> String {
-        self.0.replace("-", "_")
+        self.0.replace('-', "_")
     }
 }
 

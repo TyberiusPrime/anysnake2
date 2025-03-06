@@ -261,7 +261,6 @@ impl TryFrom<&str> for ParsedVCS {
     /// - `github:NixOS/patchelf/master/f34751b88bd07d7f44f5cd3200fb4122bf916c7e` to be the specific branch and revision of a Github repository.
     ///    (that's mostly a 'we ignore the branch', but it's useful so you can strip of the tag and
     ///    get the newest from that branch tofued)
-
     fn try_from(input: &str) -> Result<Self> {
         Ok(if input.starts_with("git+") {
             let url = input.strip_prefix("git+").unwrap();
@@ -347,7 +346,7 @@ impl ParsedVCS {
                         .map(|tag| Ok((tag.to_string(), hash)))
                 })
                 .collect();
-            Ok(res?)
+            res
         }
         match self {
             ParsedVCS::Git {

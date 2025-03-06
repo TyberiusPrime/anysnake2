@@ -64,7 +64,7 @@ fn main() {
             };
             std::process::exit(code);
         }
-        Ok(_) => {
+        Ok(()) => {
             std::process::exit(0);
         }
     }
@@ -341,8 +341,6 @@ fn inner_main() -> Result<()> {
         );
     }
 
-    let tofued_config = tofued_config;
-    //lookup_clones(&mut tofued_config)?;
     let mut tofued_config = tofued_config;
 
     let flake_changed = flake_writer::write_flake(
@@ -499,17 +497,14 @@ fn inner_main() -> Result<()> {
                 fs::write(&post_run_sh, "")?;
             } else {
                 let cmd_info = tofued_config.cmd.get(cmd).context("Command not found")?;
-                match &cmd_info.pre_run_outside {
-                    Some(bash_script) => {
-                        info!("Running pre_run_outside for cmd - cmd {}", cmd);
-                        run_bash(bash_script).with_context(|| {
-                            format!(
-                                "pre run outside failed. Script:\n{}",
-                                add_line_numbers(bash_script)
-                            )
-                        })?;
-                    }
-                    None => {}
+                if let Some(bash_script) = &cmd_info.pre_run_outside {
+                    info!("Running pre_run_outside for cmd - cmd {}", cmd);
+                    run_bash(bash_script).with_context(|| {
+                        format!(
+                            "pre run outside failed. Script:\n{}",
+                            add_line_numbers(bash_script)
+                        )
+                    })?;
                 };
                 if let Some(while_run_outside) = &cmd_info.while_run_outside {
                     parallel_running_child = Some(spawn_bash(while_run_outside)?);
@@ -525,7 +520,7 @@ fn inner_main() -> Result<()> {
             )?;
                 fs::write(&run_sh, run_script)?;
                 fs::write(&post_run_sh, post_run_script)?;
-                post_run_outside = cmd_info.post_run_outside.clone();
+                post_run_outside.clone_from(&cmd_info.post_run_outside);
             }
 
             let outer_run_sh_str: String =
@@ -591,27 +586,25 @@ fn inner_main() -> Result<()> {
                 paths.push("/anysnake2/venv/bin");
             };
 
-            match &tofued_config.container.volumes_ro {
-                Some(volumes_ro) => {
-                    for (from, to) in volumes_ro {
-                        let from: PathBuf = fs::canonicalize(from)
-                            .context(format!("canonicalize path failed on {} (read only volume - does the path exist?)", &from))?;
-                        let from = from.into_os_string().to_string_lossy().to_string();
-                        binds.push((from, to.to_string(), "ro".to_string()));
-                    }
+            if let Some(volumes_ro) = &tofued_config.container.volumes_ro {
+                for (from, to) in volumes_ro {
+                    let from: PathBuf = fs::canonicalize(from).context(format!(
+                        "canonicalize path failed on {} (read only volume - does the path exist?)",
+                        &from
+                    ))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "ro".to_string()));
                 }
-                None => {}
             };
-            match &tofued_config.container.volumes_rw {
-                Some(volumes_ro) => {
-                    for (from, to) in volumes_ro {
-                        let from: PathBuf = fs::canonicalize(from)
-                            .context(format!("canonicalize path failed on {} (read/write volume - does the path exist?)", &from))?;
-                        let from = from.into_os_string().to_string_lossy().to_string();
-                        binds.push((from, to.to_string(), "rw".to_string()));
-                    }
+            if let Some(volumes_rw) = &tofued_config.container.volumes_rw {
+                for (from, to) in volumes_rw {
+                    let from: PathBuf = fs::canonicalize(from).context(format!(
+                        "canonicalize path failed on {} (read/write volume - does the path exist?)",
+                        &from
+                    ))?;
+                    let from = from.into_os_string().to_string_lossy().to_string();
+                    binds.push((from, to.to_string(), "rw".to_string()));
                 }
-                None => {}
             }
             for (from, to, opts) in binds {
                 singularity_args.push("--bind".into());
@@ -643,7 +636,7 @@ fn inner_main() -> Result<()> {
                         Some(format!(
                             "{}_{}",
                             cmd,
-                            jiff::Zoned::now().datetime().to_string()
+                            jiff::Zoned::now().datetime()
                         ))
                     } else {
                         None
@@ -655,7 +648,7 @@ fn inner_main() -> Result<()> {
             let singularity_result = run_singularity(
                 &singularity_args[..],
                 Some(&run_dir.join("singularity.bash")),
-                &dtach_socket,
+                dtach_socket.as_ref(),
                 &flake_dir,
             )?;
             if let Some(bash_script) = post_run_outside {
@@ -686,7 +679,7 @@ fn inner_main() -> Result<()> {
 fn run_singularity(
     args: &[String],
     log_file: Option<&PathBuf>,
-    dtach_socket: &Option<String>,
+    dtach_socket: Option<&String>,
     flake_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
     let singularity_url = format!(
@@ -895,7 +888,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
             for (name, source) in entries {
                 let entry = todo
                     .entry(target_dir.to_string())
-                    .or_insert_with(HashMap::new);
+                    .or_default();
                 entry.insert(
                     name.clone(),
                     config::TofuPythonPackageSource::Vcs(source.clone()),
@@ -909,7 +902,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
             if let Some(editable_path) = &package.editable_path {
                 let entry = todo
                     .entry(editable_path.to_string())
-                    .or_insert_with(HashMap::new);
+                    .or_default();
                 let safe_name = pkg_name.to_string();
                 entry.insert(safe_name, package.source.clone());
             }
@@ -1055,7 +1048,7 @@ fn fill_venv(
     flake_dir: &Path,
 ) -> Result<()> {
     let venv_dir: PathBuf = flake_dir.join("venv").join(python_version);
-    fs::create_dir_all(&venv_dir.join("bin"))?;
+    fs::create_dir_all(venv_dir.join("bin"))?;
     fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
     let mut to_rewrite_python_shebang = Vec::new();
@@ -1118,15 +1111,14 @@ fn fill_venv(
             }
         }
 
-        for bin_file in fs::read_dir(&venv_dir.join("bin"))? {
+        for bin_file in fs::read_dir(venv_dir.join("bin"))? {
             let bin_file = bin_file?;
-            let old_content = fs::read_to_string(&bin_file.path())?;
+            let old_content = fs::read_to_string(bin_file.path())?;
             let first_line = old_content.lines().next().unwrap_or("");
-            if first_line.starts_with("#!") {
-                if old_pythons.contains(first_line) {
-                    let new_content = old_content.replace(first_line, &format!("#!{target_python_str}"));
-                    fs::write(bin_file.path(), new_content).context("failed to write to file")?;
-                }
+            if first_line.starts_with("#!") && old_pythons.contains(first_line) {
+                let new_content =
+                    old_content.replace(first_line, &format!("#!{target_python_str}"));
+                fs::write(bin_file.path(), new_content).context("failed to write to file")?;
             }
         }
         // we only update the anysnake link after fixing all the bin files
@@ -1146,7 +1138,7 @@ fn install_editable_into_venv(
     target_dir: &PathBuf,
     target_python: &PathBuf,
     target_python_str: &str,
-    venv_dir: &PathBuf,
+    venv_dir: &Path,
     flake_dir: &Path,
     python_version: &str,
 ) -> Result<()> {
@@ -1156,7 +1148,7 @@ fn install_editable_into_venv(
         let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
         let td_home_str = td_home.path().to_string_lossy().to_string();
 
-        let search_python = extract_python_exec_from_python_env_bin(&target_python)?;
+        let search_python = target_python.to_string_lossy();
         debug!("target_python {:?}", target_python);
         debug!("search_python {:?}", search_python);
         let pkg_python_name = safe_pkg.to_python_name();
@@ -1217,7 +1209,7 @@ fn install_editable_into_venv(
             "--bind".into(),
             format!(
                 "{}:/anysnake2/venv:rw",
-                venv_dir.clone().into_os_string().to_string_lossy()
+                venv_dir.to_string_lossy()
             ),
             "--bind".into(),
             format!(
@@ -1243,7 +1235,7 @@ fn install_editable_into_venv(
         let singularity_result = run_singularity(
             &singularity_args[..],
             Some(&venv_dir.join("singularity.bash")),
-            &None,
+            None,
             flake_dir,
         )
         .context("singularity failed")?;
@@ -1294,7 +1286,7 @@ fn install_editable_into_venv(
         }
 
         let target_anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
-        fs::write(target_anysnake_link, &target_python_str)
+        fs::write(target_anysnake_link, target_python_str)
             .context("target anysnake link write failed")?;
     }
     Ok(())
@@ -1382,30 +1374,6 @@ fn add_r_library_path(
     Ok(ld_libarry_path.to_string())
 } */
 
-fn extract_python_exec_from_python_env_bin(path: &PathBuf) -> Result<String> {
-    let out = path.to_string_lossy().to_string();
-    /* let text: Vec<u8> = ex::fs::read(path).with_context(|| format!("failed reading {path:?}"))?;
-    let binary_re = regex::bytes::Regex::new("'NIX_PYTHONEXECUTABLE' '([^']+)'").unwrap();
-    let hits = binary_re.captures(&text);
-    #[allow(clippy::single_match_else)]
-    let out = match hits {
-        Some(x) => std::str::from_utf8(&x[1])?.to_string(),
-        None => {
-            let text = std::str::from_utf8(&text).with_context(|| {
-                format!("failed utf-8 converting {path:?}, but also had no NIX_PYTHONEXECUTABLE. Did you leak a python binary with one of your input flakes into the container?")
-            })?;
-            let re = Regex::new("exec \"([^\"]+)\"").unwrap();
-            let out: String = re
-                .captures_iter(text)
-                .next()
-                .context(format!("Could not find exec in {:?}", &path))?[1]
-                .to_string();
-            out
-        }
-    }; */
-
-    Ok(out)
-}
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
@@ -1498,9 +1466,9 @@ fn nix_build_flake(url: &str) -> Result<String> {
     })
 }
 
-////register the used tools and the flake itself as gcroots
-///our own flake is automatically gc rooted.
-///and teh flake-inputs are handled when/if the flake changed
+/// register the used tools and the flake itself as gcroots
+/// our own flake is automatically gc rooted.
+/// and the flake-inputs are handled when/if the flake changed
 pub fn register_nix_gc_root(url: &str, flake_dir: impl AsRef<Path>) -> Result<()> {
     debug!("registering gc root for {}", url);
     //where we store this stuff

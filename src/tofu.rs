@@ -36,7 +36,7 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                         let parsed_entries: Result<HashMap<String, ParsedVCS>> = entries
                             .into_iter()
                             .map(|(k, v)| {
-                                let replaced_v = apply_clone_regexps(&v, &converted_clone_regexps);
+                                let replaced_v = apply_clone_regexps(&v, converted_clone_regexps.as_ref());
                                 let parsed_v = ParsedVCS::try_from(replaced_v.as_str()).context(
                             "Failed to parse clone url. Before regex: {v:?}, after: {replaced_v:?}",
                         )?;
@@ -72,8 +72,8 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
         };
 
         let (pre_2_0_url, pre_2_0_rev) = add_pre_2_0_url_and_rev(
-            &self.anysnake2.url,
-            &self.anysnake2.rev,
+            self.anysnake2.url.as_ref(),
+            self.anysnake2.rev.as_ref(),
             &parsed_url,
             self.anysnake2.use_binary,
             updates,
@@ -163,11 +163,11 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
         #[allow(clippy::map_entry)]
         let key = SafePythonName::new("rpy2");
         if !python.packages.contains_key(&key) {
-            let source = config::PythonPackageSource::VersionConstraint("".to_string());
+            let source = config::PythonPackageSource::VersionConstraint(String::new());
             let def = config::PythonPackageDefinition {
                 source,
                 editable_path: None,
-                override_attrs: Default::default(),
+                override_attrs: HashMap::default(),
                 anysnake_override_attrs: None,
                 patch_before_lock: None,
                 build_systems: None,
@@ -198,8 +198,8 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
 }
 
 fn add_pre_2_0_url_and_rev(
-    incoming_pre_2_0_url: &Option<String>,
-    incoming_rev: &Option<String>,
+    incoming_pre_2_0_url: Option<&String>,
+    incoming_rev: Option<&String>,
     parsed_url: &TofuVCSorDev,
     use_binary: Option<bool>,
     updates: &mut TomlUpdates,
@@ -209,14 +209,14 @@ fn add_pre_2_0_url_and_rev(
         TofuVCSorDev::Dev => config::Anysnake2::default_use_binary(),
     });
 
-    let pre_2_0_url = incoming_pre_2_0_url.clone().unwrap_or_else(|| {
+    let pre_2_0_url = incoming_pre_2_0_url.cloned();
+    let pre_2_0_url = pre_2_0_url
+        .unwrap_or_else(|| {
         (if use_binary {
             "github:TyberiusPrime/anysnake2_release_flakes"
         } else {
             "github:TyberiusPrime/anysnake2"
-        })
-        .try_into()
-        .expect("invalid default url")
+        }).to_string()
     });
     let pre_2_0_rev = match &parsed_url {
         config::TofuVCSorDev::Dev => "dev".to_string(),
@@ -236,7 +236,7 @@ fn add_pre_2_0_url_and_rev(
         .decor_mut()
         .set_suffix(" # pre 2.0 - 2.0+ uses url2");
 
-    let update_url = match &incoming_pre_2_0_url {
+    let update_url = match incoming_pre_2_0_url {
         None => true,
         Some(s) => s != pre_2_0_url.as_str(),
     };
@@ -251,7 +251,7 @@ fn add_pre_2_0_url_and_rev(
     }
 
     let update_rev = {
-        match &incoming_rev {
+        match incoming_rev {
             None => true,
             Some(s) => s != pre_2_0_rev.as_str(),
         }
@@ -265,16 +265,16 @@ fn add_pre_2_0_url_and_rev(
             value(pre_2_0_rev_toml.as_value().unwrap()),
         ));
     }
-    (pre_2_0_url, pre_2_0_rev)
+    (pre_2_0_url.to_string(), pre_2_0_rev)
 }
 
 fn clone_regex_strings_to_regex(
     clone_regex: &HashMap<String, String>,
 ) -> Result<Vec<(regex::Regex, String)>> {
     let res: Result<Vec<_>> = clone_regex
-        .into_iter()
+        .iter()
         .map(|(k, v)| {
-            let re = regex::Regex::new(&k)?;
+            let re = regex::Regex::new(k)?;
             Ok((re, v.to_string()))
         })
         .collect();
@@ -283,7 +283,7 @@ fn clone_regex_strings_to_regex(
 
 fn apply_clone_regexps(
     input: &str,
-    converted_clone_regexps: &Option<Vec<(regex::Regex, String)>>,
+    converted_clone_regexps: Option<&Vec<(regex::Regex, String)>>,
 ) -> String {
     if let Some(converted_clone_regexps) = converted_clone_regexps {
         for (search, replacement) in converted_clone_regexps {
@@ -576,8 +576,8 @@ impl Tofu<config::TofuMinimalConfigToml> for config::MinimalConfigToml {
                     r"(\d\.){1,3}",
                 )?;
                 add_pre_2_0_url_and_rev(
-                    &None,
-                    &None,
+                    None,
+                    None,
                     &TofuVCSorDev::Vcs(new_url.clone()),
                     anysnake.use_binary,
                     updates,
@@ -614,11 +614,11 @@ fn tofu_repo_to_tag(
     tag_regex: &str,
 ) -> Result<vcs::TofuVCS> {
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
-    _tofu_repo_to_tag(toml_name, updates, input, default_url, tag_regex).context(error_msg)
+    tofu_repo_to_tag_(toml_name, updates, input, default_url, tag_regex).context(error_msg)
 }
 
 #[allow(clippy::too_many_lines)]
-fn _tofu_repo_to_tag(
+fn tofu_repo_to_tag_(
     toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: Option<vcs::ParsedVCS>,
@@ -781,7 +781,7 @@ fn tofu_repo_to_newest(
     let input = input.unwrap_or_else(|| default_url.try_into().expect("invalid default url"));
     let error_msg = format!("Trust-on-first-use-failed on {input:?}. Default url: {default_url}");
     let (changed, mut newest) =
-        _tofu_repo_to_newest(toml_name, updates, &input).context(error_msg)?;
+        tofu_repo_to_newest_(toml_name, updates, &input).context(error_msg)?;
 
     // workaround for repos that break githubs tar file consistency >
     // todo: this needs to be done once, but even if the user inputs everything, right?
@@ -813,7 +813,7 @@ fn tofu_repo_to_newest(
 }
 
 #[allow(clippy::too_many_lines)]
-fn _tofu_repo_to_newest(
+fn tofu_repo_to_newest_(
     toml_name: &[&str],
     updates: &mut TomlUpdates,
     input: &vcs::ParsedVCS,
@@ -1048,7 +1048,7 @@ fn tofu_clones(
                 .map(|(key2, value)| {
                     let _error_msg =
                         format!("Failed to tofu clone clones.{key1}.{key2} - {value:?}");
-                    let inner = _tofu_repo_to_newest(&["clones", &key1, &key2], updates, &value)?;
+                    let inner = tofu_repo_to_newest_(&["clones", &key1, &key2], updates, &value)?;
                     Ok((key2, inner.1))
                 })
                 .collect::<Result<HashMap<String, TofuVCS>>>()?;

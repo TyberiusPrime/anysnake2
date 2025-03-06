@@ -284,7 +284,7 @@ pub fn get_pypi_package_source_url(
                 if y["yanked"].as_bool().unwrap_or(false) {
                     return None;
                 }
-                Some(v.as_array()?)
+                v.as_array()
             })
             .last().context("No non yanked release found?")?
     };

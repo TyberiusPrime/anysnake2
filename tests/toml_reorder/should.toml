@@ -69,7 +69,7 @@
 # by manually specifying a fixed pypi version
 	scanpy = "pypi:1.9.6"
 	scipy=""
-# packages that depend on otehr packages from this list should 'just work'.
+# packages that depend on other packages from this list should 'just work'.
 
 	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f" }
 	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4" }

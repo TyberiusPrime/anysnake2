@@ -751,7 +751,7 @@ fn test_flake_change_updates_dependant_flakes() {
     let before = ex::fs::read_to_string(td.path().join(".anysnake2_flake/flake.lock")).unwrap();
     assert!(before.contains("8810f7d31d4d8372f764d567ea140270745fe173"));
     replace_in_file(
-        &td.path().join("anysnake2.toml"),
+        td.path().join("anysnake2.toml"),
         "8810f7d31d4d8372f764d567ea140270745fe173",
         "f554d27c1544d9c56e5f1f8e2b8aff399803674e",
     );

@@ -171,7 +171,7 @@ pub fn write_flake(
     flake_contents = insert_allow_unfree(
         &flake_contents,
         parsed_config.nixpkgs.allow_unfree,
-        &parsed_config.nixpkgs.permitted_insecure_packages,
+        parsed_config.nixpkgs.permitted_insecure_packages.as_ref(),
     );
     flake_contents = flake_contents
         .replace("#%INPUT_DEFS%", &format_input_defs(&inputs))
@@ -283,7 +283,7 @@ fn insert_nixpkgs_pkgs(flake_contents: &str, nixpkgs_pkgs: &BTreeSet<String>) ->
 fn insert_allow_unfree(
     flake_contents: &str,
     allow_unfree: bool,
-    permitted_insecure_packages: &Option<Vec<String>>,
+    permitted_insecure_packages: Option<&Vec<String>>,
 ) -> String {
     let flake_contents = flake_contents.replace(
         "\"%ALLOW_UNFREE%\"",
@@ -394,7 +394,7 @@ fn prep_packages_for_pyproject_toml(
                 } else {
                     result.insert(
                         name.to_string(),
-                        toml::Value::String(format!("=={}", version_constraint)),
+                        toml::Value::String(format!("=={version_constraint}")),
                     );
                 }
             }
@@ -435,7 +435,7 @@ fn prep_packages_for_pyproject_toml(
                             name,
                             &sha256,
                             pyproject_toml_path,
-                            &spec.patch_before_lock,
+                            spec.patch_before_lock.as_ref(),
                         )?;
                         writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                         let mut out_map = toml::Table::new();
@@ -450,8 +450,8 @@ fn prep_packages_for_pyproject_toml(
                             }})",
                         );
                         spec.anysnake_override_attrs
-                            .get_or_insert_with(|| HashMap::new())
-                            .insert("src".to_string(), src.into());
+                            .get_or_insert_with(HashMap::new)
+                            .insert("src".to_string(), src);
                         result.insert(name.to_string(), toml::Value::Table(out_map));
                     }
                 }
@@ -478,7 +478,7 @@ fn prep_packages_for_pyproject_toml(
                         name,
                         &sha256,
                         pyproject_toml_path,
-                        &spec.patch_before_lock,
+                        spec.patch_before_lock.as_ref(),
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                     let mut out_map = toml::Table::new();
@@ -492,8 +492,8 @@ fn prep_packages_for_pyproject_toml(
                             }})",
                     );
                     spec.anysnake_override_attrs
-                        .get_or_insert_with(|| HashMap::new())
-                        .insert("src".to_string(), src.into());
+                        .get_or_insert_with(HashMap::new)
+                        .insert("src".to_string(), src);
                     result.insert(name.to_string(), toml::Value::Table(out_map));
                 }
                 vcs::TofuVCS::Mercurial { url, rev } => {
@@ -517,7 +517,7 @@ fn prep_packages_for_pyproject_toml(
                         name,
                         &sha256,
                         pyproject_toml_path,
-                        &spec.patch_before_lock,
+                        spec.patch_before_lock.as_ref(),
                     )?;
                     writeable_to_nix_store_paths.insert(writeable_path.clone(), path.clone());
                     out_map.insert("path".to_string(), writeable_path.into());
@@ -530,8 +530,8 @@ fn prep_packages_for_pyproject_toml(
                             }})",
                     );
                     spec.anysnake_override_attrs
-                        .get_or_insert_with(|| HashMap::new())
-                        .insert("src".to_string(), src.into());
+                        .get_or_insert_with(HashMap::new)
+                        .insert("src".to_string(), src);
                     result.insert(name.to_string(), toml::Value::Table(out_map));
                 }
             },
@@ -550,11 +550,10 @@ fn copy_for_poetry(
     name: &SafePythonName,
     sha256: &str,
     pyproject_toml_path: &Path,
-    patch_before_lock: &Option<String>,
+    patch_before_lock: Option<&String>,
 ) -> Result<String> {
-    let patch_before_lock_sha = patch_before_lock
-        .as_ref()
-        .map_or_else(|| "None".to_string(), sha256::digest);
+    let patch_before_lock_sha =
+        patch_before_lock.map_or_else(|| "None".to_string(), sha256::digest);
 
     let target_path = pyproject_toml_path
         .parent()
@@ -655,24 +654,12 @@ fn nix_format(input: &str, flake_dir: impl AsRef<Path>) -> Result<String> {
         ))
     }
 }
-
-#[allow(clippy::too_many_arguments)]
-fn ancient_poetry(
-    ancient_poetry: &vcs::TofuVCS,
-    nixpkgs: &config::TofuNixPkgs,
-    uv_flake: &vcs::TofuVCS,
-    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
-    python_package_definitions: &toml::Table,
+fn prep_ancient_poetry_pyproject_toml(
+    str_date: &str,
     pyproject_toml_path: &Path,
-    uv_lock_path: &Path,
     python_version: &str,
-    python_major_minor: &str,
-    date: jiff::civil::Date,
-    uv_env: &Option<HashMap<String, String>>,
-) -> Result<()> {
-    //let mut pyproject_toml_contents = toml::Table::new();
-    //pyproject_toml_contents["tool.poetry"] = toml::Value::Table(toml::Table::new());
-    let str_date = date.strftime("%Y-%m-%d").to_string();
+    python_package_definitions: &toml::Table,
+) -> Result<String> {
     let mut pyproject_toml_contents: toml::Table = format!(
         r#"
 [project]
@@ -696,7 +683,7 @@ ancient-date = "{str_date}"
     for (name, version_constraint) in python_package_definitions {
         match version_constraint {
             toml::Value::String(constraint) => {
-                dependencies.push(format!("{name}{}", constraint).into())
+                dependencies.push(format!("{name}{constraint}").into());
             }
             toml::Value::Table(tbl) => {
                 dependencies.push(name.to_string().into());
@@ -723,11 +710,36 @@ ancient-date = "{str_date}"
     ex::fs::write(pyproject_toml_path, &pyproject_contents)
         .context("Failed to generate pyproject.toml")?;
     let pyproject_toml_hash = sha256::digest(pyproject_contents);
+    Ok(pyproject_toml_hash)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ancient_poetry(
+    ancient_poetry: &vcs::TofuVCS,
+    nixpkgs: &config::TofuNixPkgs,
+    uv_flake: &vcs::TofuVCS,
+    python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
+    python_package_definitions: &toml::Table,
+    pyproject_toml_path: &Path,
+    uv_lock_path: &Path,
+    python_version: &str,
+    python_major_minor: &str,
+    date: jiff::civil::Date,
+    uv_env: Option<&HashMap<String, String>>,
+) -> Result<()> {
+    let str_date = date.strftime("%Y-%m-%d").to_string();
+    let pyproject_toml_hash = prep_ancient_poetry_pyproject_toml(
+        &str_date,
+        pyproject_toml_path,
+        python_version,
+        python_package_definitions,
+    )?;
 
     let last_hash = ex::fs::read_to_string(pyproject_toml_path.with_extension("sha256"))
-        .unwrap_or(String::new())
+        .unwrap_or_default()
         .trim()
         .to_string();
+
     if (pyproject_toml_hash != last_hash)
         || !uv_lock_path.exists()
         || uv_lock_path.metadata()?.len() == 0
@@ -776,7 +788,7 @@ ancient-date = "{str_date}"
         );
         let out = Command::new("nix")
             .args(full_args)
-            .envs(uv_env.as_ref().unwrap_or(&HashMap::new()))
+            .envs(uv_env.unwrap_or(&HashMap::new()))
             .current_dir(".")
             //.stdin(Stdio::piped())
             //.stdout(Stdio::piped())
@@ -967,8 +979,7 @@ fn add_flakes(
             ));
             if flake.packages.is_none() {
                 nixpkgs_pkgs.insert(format!(
-                    "({}.defaultPackage.x86_64-linux or {}.packages.x86_64-linux.defaults)",
-                    name, name
+                    "({name}.defaultPackage.x86_64-linux or {name}.packages.x86_64-linux.defaults)",
                 ));
             } else if let Some(pkgs) = &flake.packages {
                 for pkg in pkgs {
@@ -1065,10 +1076,10 @@ fn add_r(
 
 fn format_overrides(
     python_packages: &HashMap<SafePythonName, config::TofuPythonPackageDefinition>,
-) -> Result<(Vec<String>, Vec<String>)> {
+) -> (Vec<String>, Vec<String>) {
     fn to_vec(overrides: HashMap<String, HashMap<String, String>>) -> Vec<String> {
         let mut out = Vec::new();
-        for (name, key_value) in overrides.into_iter() {
+        for (name, key_value) in overrides {
             let mut here = format!("{name} = prev.{name}.overrideAttrs (old: {{");
             for (key, value) in itertools::sorted(key_value) {
                 here.push_str(&format!("{key} = {value};"));
@@ -1085,9 +1096,7 @@ fn format_overrides(
 
     for (name, spec) in python_packages {
         if let Some(build_systems) = &spec.build_systems {
-            let target = anysnake_overrides
-                .entry(name.to_string())
-                .or_insert_with(HashMap::new);
+            let target = anysnake_overrides.entry(name.to_string()).or_default();
             let str_build_systems = build_systems
                 .iter()
                 .map(|x| format!("{x} = [];"))
@@ -1096,27 +1105,22 @@ fn format_overrides(
             target.insert(
                 "nativeBuildInputs".to_string(),
                 format!(
-                    "old.nativeBuildInputs ++ ( final.resolveBuildSystem {{ {} }} ) ",
-                    str_build_systems
+                    "old.nativeBuildInputs ++ ( final.resolveBuildSystem {{ {str_build_systems} }} ) ",
                 ),
             );
         }
-        for (key, value) in spec.override_attrs.iter() {
-            let target = user_overrides
-                .entry(name.to_string())
-                .or_insert_with(HashMap::new);
+        for (key, value) in &spec.override_attrs {
+            let target = user_overrides.entry(name.to_string()).or_default();
             target.insert(key.to_string(), value.to_string());
         }
         if let Some(anysnake_override_attrs) = spec.anysnake_override_attrs.as_ref() {
-            for (key, value) in anysnake_override_attrs.iter() {
-                let target = anysnake_overrides
-                    .entry(name.to_string())
-                    .or_insert_with(HashMap::new);
+            for (key, value) in anysnake_override_attrs {
+                let target = anysnake_overrides.entry(name.to_string()).or_default();
                 target.insert(key.to_string(), value.to_string());
             }
         }
     }
-    Ok((to_vec(anysnake_overrides), to_vec(user_overrides)))
+    (to_vec(anysnake_overrides), to_vec(user_overrides))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1176,7 +1180,7 @@ fn add_python(
                 &python_version,
                 &python_major_minor,
                 ecosystem_date,
-                &python.uv_lock_env,
+                python.uv_lock_env.as_ref(),
             )?;
 
             rewrite_poetry(flake_dir, &prep_result.writeable_to_nix_store_paths)?;
@@ -1184,7 +1188,7 @@ fn add_python(
             write_setup_cfg(flake_dir, ecosystem_date, git_tracked_files)?;
 
             let (local_anysnake_overrides, local_user_overrides) = //todo: override_attrs...
-                format_overrides(&python.packages)?;
+                format_overrides(&python.packages);
 
             inputs.push(InputFlake::new(
                 "uv2nix",
@@ -1215,10 +1219,7 @@ fn add_python(
             let workspace = "uv_rewritten";
             definitions.insert(
                 "workspace".to_string(),
-                format!(
-                    "uv2nix.lib.workspace.loadWorkspace {{workspaceRoot = ./{};}}",
-                    workspace
-                ),
+                format!("uv2nix.lib.workspace.loadWorkspace {{workspaceRoot = ./{workspace};}}",),
             );
 
             definitions.insert(
@@ -1270,7 +1271,7 @@ fn add_python(
             ); //todo: insert override_attrs here.
             definitions.insert(
                 "interpreter".to_string(),
-                format!("pkgs.{}", python_major_minor),
+                format!("pkgs.{python_major_minor}"),
             );
             definitions.insert(
                 "spec".to_string(),
@@ -1298,7 +1299,7 @@ fn add_python(
 
             definitions.insert(
                 "python_package".to_string(),
-                format!("pythonSet.mkVirtualEnv \"anysnake2-venv\" spec"),
+                "pythonSet.mkVirtualEnv \"anysnake2-venv\" spec".to_string(),
             );
             nixpkgs_pkgs.insert("python_package".to_string());
 
@@ -1532,7 +1533,7 @@ fn rewrite_poetry(
             .strip_prefix("/")
             .unwrap_or(search)
             .replace('+', "[+]");
-        let re = regex::Regex::new(&format!(r"([.][.]/)+{}", search_minus_slash)).unwrap();
+        let re = regex::Regex::new(&format!(r"([.][.]/)+{search_minus_slash}")).unwrap();
         let replace_with = format!("../../../..{replace}"); //must be relative to the nix store.
         out = re.replace_all(&out, replace_with).to_string();
     }
@@ -1576,15 +1577,16 @@ fn check_if_setuptools_needs_expansion(uv_lock_path: &Path) -> Result<bool> {
             let version = pkg_info["version"]
                 .as_str()
                 .context("No version in package section for setuptools")?;
-            let mut ver = version.split(".");
+            let mut ver = version.split('.');
             let start: u32 = ver
                 .next()
                 .context("Failed to parse setuptools version")?
                 .parse()
                 .context("Failed to parse setuptools version")?;
-            if start < 70 {
-                return Ok(true);
-            } else if start == 70 {
+            match start.cmp(&70) {
+                std::cmp::Ordering::Less => {
+                return Ok(true)}
+                std::cmp::Ordering::Equal => {
                 let second: u32 = ver
                     .next()
                     .context("Failed to parse setuptools version")?
@@ -1594,6 +1596,8 @@ fn check_if_setuptools_needs_expansion(uv_lock_path: &Path) -> Result<bool> {
                     return Ok(true);
                 }
             }
+                std::cmp::Ordering::Greater => {},
+            } 
             return Ok(false);
         }
     }
