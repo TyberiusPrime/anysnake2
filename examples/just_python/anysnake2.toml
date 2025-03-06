@@ -50,6 +50,10 @@
 	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/1e739d79d54799f3ad62d0c529073390ec8b8ddb"
 
 
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/92e939465b4ace66f9c882f02b4a0ee3712f724f"
+
+
 [flake-util]
 	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
 

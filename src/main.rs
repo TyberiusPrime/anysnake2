@@ -17,6 +17,7 @@ use python_parsing::parse_egg;
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1057,6 +1058,7 @@ fn fill_venv(
     fs::create_dir_all(&venv_dir.join("bin"))?;
     fs::create_dir_all(flake_dir.join("venv_develop"))?;
     let mut to_build = Vec::new();
+    let mut to_rewrite_python_shebang = Vec::new();
 
     let target_python: PathBuf = PathBuf::from_str(".anysnake2_flake/result/rootfs/bin/python")
         .unwrap()
@@ -1086,12 +1088,69 @@ fn fill_venv(
                 String::new()
             }
         };
-        if !venv_link.exists() || venv_used != target_python_str {
+        if !venv_link.exists() {
             // so that changing python versions triggers a rebuild.
             to_build.push((pkg, target_dir));
+        } else if venv_used != target_python_str {
+            to_rewrite_python_shebang.push((pkg, target_dir));
         }
     }
     for (safe_pkg, target_dir) in &to_build {
+        install_editable_into_venv(
+            safe_pkg,
+            target_dir,
+            &target_python,
+            &target_python_str,
+            &venv_dir,
+            flake_dir,
+            python_version,
+        )?;
+    }
+    if !to_rewrite_python_shebang.is_empty() {
+        let mut old_pythons = HashSet::new();
+        for (safe_pkg, _target_dir) in &to_rewrite_python_shebang {
+            let anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+            if anysnake_link.exists() {
+                old_pythons.insert(format!(
+                    "#!{}",
+                    ex::fs::read_to_string(&anysnake_link)?.trim()
+                ));
+            }
+        }
+
+        for bin_file in fs::read_dir(&venv_dir.join("bin"))? {
+            let bin_file = bin_file?;
+            let old_content = fs::read_to_string(&bin_file.path())?;
+            let first_line = old_content.lines().next().unwrap_or("");
+            if first_line.starts_with("#!") {
+                if old_pythons.contains(first_line) {
+                    let new_content = old_content.replace(first_line, &format!("#!{target_python_str}"));
+                    fs::write(bin_file.path(), new_content).context("failed to write to file")?;
+                }
+            }
+        }
+        // we only update the anysnake link after fixing all the bin files
+        // so we'd attempt it again if it was aborted
+        for (safe_pkg, _target_dir) in &to_rewrite_python_shebang {
+            let anysnake_link = venv_dir.join(format!("{safe_pkg}.anysnake-link"));
+
+            fs::write(anysnake_link, &target_python_str)
+                .context("target anysnake link write failed")?;
+        }
+    }
+    Ok(())
+}
+
+fn install_editable_into_venv(
+    safe_pkg: &SafePythonName,
+    target_dir: &PathBuf,
+    target_python: &PathBuf,
+    target_python_str: &str,
+    venv_dir: &PathBuf,
+    flake_dir: &Path,
+    python_version: &str,
+) -> Result<()> {
+    {
         info!("Pip install {:?}", &target_dir);
         let td = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp /tmp
         let td_home = tempfile::Builder::new().prefix("anysnake_venv").tempdir()?; // temp home directory
@@ -1195,7 +1254,6 @@ fn fill_venv(
             );
         }
 
-        //just paranoia
         let target_venv_link = venv_dir.join(format!("{safe_pkg}.venv-link"));
         if !target_venv_link.exists() {
             //ok, we failed because the python module name and package name didn't match.

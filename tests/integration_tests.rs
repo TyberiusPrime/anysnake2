@@ -431,6 +431,8 @@ fn test_python_package_already_pulled_by_other_editable_package() {
 
 #[test]
 fn test_python_pip_reinstall_if_venv_changes() {
+    //the shebangs need to have been changed to the new venv
+    //
     // needs to be copied to test the tofu functionality.
     let ((_code, stdout, _stderr), td) =
         run_test_tempdir("examples/just_python", &["run", "--", "cat"]);
