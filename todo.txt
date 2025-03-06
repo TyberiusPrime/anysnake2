@@ -1,15 +1,7 @@
 - flakes that are paths relative to %ANYSNAKE_ROOT% ?
 
-- poetry project in subdirectory of repo. poetry project in subdir, editable.
+- uv project in subdirectory of repo. uv project in subdir, editable.
   (niche use case?)
-
-- clear up when we're using the github api and when we're doing git ls-remote
-	(we're using the github api soley for tag listing. We could remove it, but should we?)
-
-- under what circumstances do we rebuild the editable packages?
-  does that still happen every time we change the python packages?
-  Yes, that's still happening every time we change add/remove/change any python dependency.
-  I guess it's not wrong, though probably not doing it would be fine most of the time as well.
 
 
 - evaluate shpool as dtach replacement
@@ -29,22 +21,15 @@
 
 - either switch from singularity, or find another way to get around the mount issues: https://github.com/NixOS/nixpkgs/pull/293787 so we can get this thing to 24.05. 23.05 already complains as well.
 
-
--- garbage collection for poetry clones?
+-- garbage collection for uv clones?
 
 
 -- when passing a url to a python package, uv fetches it, then nix fetches it again.
    Perhaps we can prefetch it, then have uv lock read the nix store path for the wheel?
    (currently this also means we're refetching the 180mb torch wheel on every lock...)
-   (why was it not suing the wheel before though?. Ah no, the problem is that torch 2.4.1 wanted cuda 9,
+   (why was it not using the wheel before though?. Ah no, the problem is that torch 2.4.1 wanted cuda 9,
    and nixos 24.05 only had cuda 8.9
 
 
-
-- python build_system_overrides get added to ansynake overrieds - should the be in local_user_overrides instead?
-
-
--- we have a editable problem,
-e.g. diopy={build_systems = ["setuptools"], url= "github:TyberiusPrime/diopy/fix_scipy/79b720c46318fb1d390b12fa268846a5828a8700",editable=true}
-leads to a sys.path entry of '/project/import __editable___diopy_0_4_0_finder; __editable___diopy_0_4_0_finder.install()' which then can't be found and pulls the site-packages one we used during setup.
+- python build_system_overrides get added to ansynake overrides - should the be in local_user_overrides instead?
 
