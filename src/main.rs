@@ -17,7 +17,7 @@ use python_parsing::parse_egg;
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io::BufRead;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1598,7 +1598,13 @@ fn save_cached_values(
     flake_dir: &Path,
     out_non_spec_but_cached_values: &HashMap<String, String>,
 ) -> Result<()> {
-    let out: String = serde_json::to_string_pretty(&out_non_spec_but_cached_values)?;
+    let mut sorted_out = BTreeMap::new();
+    let mut keys: Vec<_> = out_non_spec_but_cached_values.keys().collect();
+    keys.sort();
+    for k in keys {
+        sorted_out.insert(k.clone(), out_non_spec_but_cached_values[k].clone());
+    }
+    let out: String = serde_json::to_string_pretty(&sorted_out)?;
     ex::fs::write(flake_dir.join("cached.json"), out)?;
     Ok(())
 }
