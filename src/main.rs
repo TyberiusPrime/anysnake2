@@ -618,6 +618,7 @@ fn inner_main() -> Result<()> {
             }
 
             envs.push(format!("PATH={}", paths.join(":")));
+            envs.sort();
 
             for e in envs {
                 singularity_args.push("--env".into());
