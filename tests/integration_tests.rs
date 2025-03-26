@@ -775,10 +775,59 @@ fn test_flake_change_updates_dependant_flakes() {
 
 #[test]
 fn test_editable_path_finder_install() {
-    let ((_code, _stdout, stderr), _td) = run_test_tempdir(
+    let ((code, stdout, _stderr), td) = run_test_tempdir(
         "examples/test_python_editable_venv_path/",
-        &["run", "--", "python", "--", "-c", "'import diopy;import sys;print(sys.modules['diopy']'"],
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import diopy;import sys;print(sys.modules[\"diopy\"])'",
+        ],
     );
-    assert!(stderr.contains("/anysnake2/venv/linked_in/diopy"));
-    assert!(!stderr.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
+    println!("stdout 1: {}", stdout);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("/anysnake2/venv/linked_in/diopy"));
+    // so we don't see the 'build' comands
+    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(), 
+        &["run", 
+        "--",
+        "python", 
+        "-c",
+            "'import diopy;import sys;print(sys.modules[\"diopy\"])'",
+    ], false);
+
+    assert!(stdout.contains("/anysnake2/venv/linked_in/diopy"));
+    assert!(!stdout.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
+
+    println!("stdout 1b: {}", stdout);
+
+    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(), 
+        &["run", 
+        "--",
+        "python", 
+        "-c",
+        "'import pypipegraph2; import importlib; print(importlib.metadata.version(\"pypipegraph2\"))'"
+    ], false);
+
+    assert!(stdout.contains("3.1.3"));
+
+    let raw = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
+    let query = "pypipegraph2=\"\"";
+    let replacement = "pypipegraph2={version=\"pypi:3.4.2\"}";
+    let out = raw.replace(query, replacement);
+    assert!(raw != out);
+    ex::fs::write(td.path().join("anysnake2.toml"), out).unwrap();
+    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(), 
+        &["run", 
+        "--",
+        "python", 
+        "-c",
+        "'import pypipegraph2; import importlib; print(importlib.metadata.version(\"pypipegraph2\"))'"
+    ], false);
+
+    println!("stdout2 : {}", stdout);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("3.4.2"));
+    panic!("supposed");
 }

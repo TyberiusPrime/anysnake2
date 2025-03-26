@@ -1184,6 +1184,7 @@ fn install_editable_into_venv(
                     Path('/anysnake2/venv/{safe_pkg}.venv-link').write_text(str(module_path))
                 except ImportError:
                     print('package name did not match module name for {safe_pkg}/{pkg_python_name}')
+                    raise
                 EOT
                 cp /tmp/venv/bin/* /anysnake2/venv/bin 2>/dev/null|| true
                "
