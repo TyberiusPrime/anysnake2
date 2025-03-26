@@ -16,7 +16,7 @@
 
 [python.packages]
 	diopy={build_systems = ["setuptools"], url= "github:TyberiusPrime/diopy/fix_scipy/c60992749d4a620e90fcf016a9636a65e97e17db",editable=true}
-	dppd = {editable=true, build_systems = ["setuptools"]}
+	dppd = {editable=true, build_systems = ["setuptools"], version="0.27"}
 	pypipegraph2=""
 	scanpy=""
 	scipy=""

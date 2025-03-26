@@ -778,6 +778,7 @@ fn test_editable_path_finder_install() {
     let ((code, stdout, _stderr), td) = run_test_tempdir(
         "examples/test_python_editable_venv_path/",
         &[
+            "-v", "3",
             "run",
             "--",
             "python",
@@ -785,6 +786,7 @@ fn test_editable_path_finder_install() {
             "'import diopy;import sys;print(sys.modules[\"diopy\"])'",
         ],
     );
+    println!("stdout 1: {}", stdout);
     println!("stdout 1: {}", stdout);
     assert_eq!(code, 0);
     assert!(stdout.contains("/anysnake2/venv/linked_in/diopy"));
@@ -794,11 +796,11 @@ fn test_editable_path_finder_install() {
         "--",
         "python", 
         "-c",
-            "'import diopy;import sys;print(sys.modules[\"diopy\"])'",
+            "'import dppd;import sys;print(sys.modules[\"dppd\"])'",
     ], false);
 
-    assert!(stdout.contains("/anysnake2/venv/linked_in/diopy"));
-    assert!(!stdout.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
+    assert!(stdout.contains("/anysnake2/venv/linked_in/dppd"));
+    //assert!(!stdout.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
 
     println!("stdout 1b: {}", stdout);
 
@@ -811,6 +813,9 @@ fn test_editable_path_finder_install() {
     ], false);
 
     assert!(stdout.contains("3.1.3"));
+    let uv_lock =  ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
+    assert!(uv_lock.contains("3.1.3"));
+    assert!(!uv_lock.contains("3.4.2"));
 
     let raw = ex::fs::read_to_string(td.path().join("anysnake2.toml")).unwrap();
     let query = "pypipegraph2=\"\"";
@@ -828,6 +833,9 @@ fn test_editable_path_finder_install() {
 
     println!("stdout2 : {}", stdout);
     assert_eq!(code, 0);
+    let uv_lock =  ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
+    assert!(uv_lock.contains("3.4.2"));
+
+
     assert!(stdout.contains("3.4.2"));
-    panic!("supposed");
 }

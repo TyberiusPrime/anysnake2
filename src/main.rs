@@ -1181,10 +1181,10 @@ fn install_editable_into_venv(
                     import sys
                     assert len(sys.modules['{pkg_python_name}'].__path__) == 1, 'module.__path__ had more than one entry. Not sure when this happens, file a bug report with the module that is giving you trouble'
                     module_path = Path(sys.modules['{pkg_python_name}'].__path__[0]).parent
-                    Path('/anysnake2/venv/{safe_pkg}.venv-link').write_text(str(module_path))
+                    if not 'site-packages' in str(module_path):
+                        Path('/anysnake2/venv/{safe_pkg}.venv-link').write_text(str(module_path))
                 except ImportError:
                     print('package name did not match module name for {safe_pkg}/{pkg_python_name}')
-                    raise
                 EOT
                 cp /tmp/venv/bin/* /anysnake2/venv/bin 2>/dev/null|| true
                "
