@@ -61,7 +61,7 @@
 #cffi = "pypi:1.15.1"
 # The source definition is fairly flexible and follows the url definitions for nix flakes
 # see https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake.html#flake-references
-	dppd = {editable = true, url= "github:TyberiusPrime/dppd/master/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", build_systems = ['setuptools']}
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/main/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", build_systems = ['setuptools']}
 # mercurial example
 	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", build_systems = ['setuptools']}
 # so we have something that has an 'entrypoint'

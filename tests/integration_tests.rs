@@ -525,7 +525,7 @@ fn test_fetch_trust_on_first_use() {
         let toml = ex::fs::read_to_string(toml_path).unwrap();
         dbg!(&toml);
 
-        assert!(toml.contains("git+https://github.com/tyberiusprime/dppd?ref=master&rev="));
+        assert!(toml.contains("git+https://github.com/tyberiusprime/dppd?ref=main&rev="));
         assert!(toml.contains("hg+https://hg.sr.ht/~bwe/lvr?rev="));
         assert!(toml.contains("pypi:"));
         assert!(toml.contains("github:TyberiusPrime/i3-instant-layout/master/"));
