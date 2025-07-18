@@ -979,7 +979,7 @@ fn add_flakes(
             ));
             if flake.packages.is_none() {
                 nixpkgs_pkgs.insert(format!(
-                    "({name}.defaultPackage.x86_64-linux or {name}.packages.x86_64-linux.defaults)",
+                    "({name}.defaultPackage.x86_64-linux or {name}.packages.x86_64-linux.default)",
                 ));
             } else if let Some(pkgs) = &flake.packages {
                 for pkg in pkgs {
