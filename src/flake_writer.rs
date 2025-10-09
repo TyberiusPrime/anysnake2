@@ -999,7 +999,10 @@ fn add_r(
 ) {
     fn attrset_from_hashmap(attrset: &HashMap<String, String>) -> String {
         let mut out = String::new();
-        for (pkg_name, override_nix_func) in attrset {
+        let mut keys: Vec<_> = attrset.keys().collect();
+        keys.sort();
+        for pkg_name in keys {
+            let override_nix_func = attrset.get(pkg_name).unwrap();
             out.push_str(&format!("\"{pkg_name}\" = ({override_nix_func});"));
         }
         out
@@ -1584,20 +1587,19 @@ fn check_if_setuptools_needs_expansion(uv_lock_path: &Path) -> Result<bool> {
                 .parse()
                 .context("Failed to parse setuptools version")?;
             match start.cmp(&70) {
-                std::cmp::Ordering::Less => {
-                return Ok(true)}
+                std::cmp::Ordering::Less => return Ok(true),
                 std::cmp::Ordering::Equal => {
-                let second: u32 = ver
-                    .next()
-                    .context("Failed to parse setuptools version")?
-                    .parse()
-                    .context("Failed to parse setuptools version")?;
-                if second < 1 {
-                    return Ok(true);
+                    let second: u32 = ver
+                        .next()
+                        .context("Failed to parse setuptools version")?
+                        .parse()
+                        .context("Failed to parse setuptools version")?;
+                    if second < 1 {
+                        return Ok(true);
+                    }
                 }
+                std::cmp::Ordering::Greater => {}
             }
-                std::cmp::Ordering::Greater => {},
-            } 
             return Ok(false);
         }
     }
