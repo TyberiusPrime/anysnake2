@@ -5,11 +5,11 @@
 
 
 [nixpkgs]
-	url = "github:NixOS/nixpkgs/master/24.05"
+	url = "github:NixOS/nixpkgs/master/25.05"
 
 
 [python] # python section is optional
-	ecosystem_date="2024-11-01" # you get whatever packages the solver would have produced on that day
+	ecosystem_date="2025-10-01" # you get whatever packages the solver would have produced on that day
 	version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 

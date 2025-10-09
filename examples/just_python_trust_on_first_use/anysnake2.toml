@@ -9,7 +9,7 @@
 [nixpkgs]
 # the nixpkgs used inside the container
 	packages = ["which"]
-	url = "github:NixOS/nixpkgs/master/24.05"
+	url = "github:NixOS/nixpkgs/master/25.05"
 
 
 [python] # python section is optional
