@@ -1,13 +1,16 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, error};
 use serde::Serialize;
 use version_compare::Version;
 
-use crate::{
-    config::{self, remove_username_from_url, TofuPythonPackageSource},
-};
+use crate::config::{self, remove_username_from_url, TofuPythonPackageSource};
 use anysnake2::run_without_ctrl_c;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -49,6 +52,87 @@ pub enum TofuVCS {
     },
 }
 
+fn jujustu_clone_and_new(git_repo_dir: &Path, source: &str, branch: &str, rev: &str) -> Result<()> {
+    let dtach_url = format!("{}#jujutsu", anysnake2::get_outside_nixpkgs_url().unwrap());
+    let nix_full_args = vec![
+        "shell",
+        &dtach_url,
+        "-c",
+        "jj",
+        "git",
+        "clone",
+        "--colocate",
+        source,
+        ".",
+    ];
+    let status = Command::new("nix")
+        .args(&nix_full_args)
+        .current_dir(git_repo_dir)
+        .status()?;
+    if !status.success() {
+        bail!(
+            "jujustu init failed (call was nix {:?}, in dir: {})",
+            &nix_full_args,
+            git_repo_dir.display()
+        )
+    }
+    let branch_str = format!("{branch}@origin");
+    let nix_full_args = vec!["shell", &dtach_url, "-c", "jj", "version"];
+    let jj_version = Command::new("nix")
+        .args(&nix_full_args)
+        .current_dir(git_repo_dir)
+        .output().context("Failed to get jujustu version")?;
+    if !jj_version.status.success() {
+        bail!(
+            "jujustu version  failed (call was nix {:?}, in dir: {})",
+            &nix_full_args,
+            git_repo_dir.display()
+        )
+    }
+    let jj_version_str = String::from_utf8_lossy(&jj_version.stdout);
+    let jj_version_float = jj_version_str.trim().parse::<f32>().unwrap_or(0.0);
+    let bookmark_command = if jj_version_float < 0.24 {
+        "branch"
+    } else {
+        "bookmark"
+    };
+
+    let nix_full_args = vec![
+        "shell",
+        &dtach_url,
+        "-c",
+        "jj",
+        bookmark_command,
+        "track",
+        &branch_str,
+    ];
+    let status = Command::new("nix")
+        .args(&nix_full_args)
+        .current_dir(git_repo_dir)
+        .status()?;
+    if !status.success() {
+        bail!(
+            "jujustu bookmark track  failed (call was nix {:?}, in dir: {})",
+            &nix_full_args,
+            git_repo_dir.display()
+        )
+    }
+
+    let nix_full_args = vec!["shell", &dtach_url, "-c", "jj", "new", rev];
+    let status = Command::new("nix")
+        .args(&nix_full_args)
+        .current_dir(git_repo_dir)
+        .status()?;
+    if !status.success() {
+        bail!(
+            "jujustu bookmark track  failed (call was nix {:?}, in dir: {})",
+            &nix_full_args,
+            git_repo_dir.display()
+        )
+    }
+    Ok(())
+}
+
 impl TofuVCS {
     pub fn to_nix_string(&self) -> String {
         //this must include username:password
@@ -87,44 +171,54 @@ impl TofuVCS {
         }
     }
 
-    pub fn clone_repo(&self, target_dir: &str) -> Result<()> {
+    pub fn clone_repo(&self, target_dir: &str, do_jujutsu: bool) -> Result<()> {
         match self {
             TofuVCS::Git { .. } | TofuVCS::GitHub { .. } => {
                 let (url, rev, branch) = self.get_url_rev_branch();
                 run_without_ctrl_c(|| {
                     let inner = || {
-                        let mut proc = std::process::Command::new("git");
-                        proc.args(["clone", &url, target_dir]);
-                        debug!("Running {:?}", proc);
-                        let status = proc
-                            .status()
-                            .with_context(|| format!("Git clone failed for {self}"))?;
-                        if !status.success() {
-                            bail!("Git clone failed for {self}");
-                        }
+                        if do_jujutsu {
+                            jujustu_clone_and_new(
+                                PathBuf::from(target_dir).as_path(),
+                                &url,
+                                branch,
+                                rev,
+                            )?;
+                            Ok(())
+                        } else {
+                            let mut proc = std::process::Command::new("git");
+                            proc.args(["clone", &url, target_dir]);
+                            debug!("Running {:?}", proc);
+                            let status = proc
+                                .status()
+                                .with_context(|| format!("Git clone failed for {self}"))?;
+                            if !status.success() {
+                                bail!("Git clone failed for {self}");
+                            }
 
-                        let mut proc = std::process::Command::new("git");
-                        proc.args(["checkout", branch]);
-                        proc.current_dir(target_dir);
-                        debug!("Running {:?}", proc);
-                        let status = proc
-                            .status()
-                            .with_context(|| format!("Git checkout failed for {self}"))?;
-                        if !status.success() {
-                            bail!("Git checkout failed for {self}");
+                            let mut proc = std::process::Command::new("git");
+                            proc.args(["checkout", branch]);
+                            proc.current_dir(target_dir);
+                            debug!("Running {:?}", proc);
+                            let status = proc
+                                .status()
+                                .with_context(|| format!("Git checkout failed for {self}"))?;
+                            if !status.success() {
+                                bail!("Git checkout failed for {self}");
+                            }
+                            //git reset
+                            let mut proc = std::process::Command::new("git");
+                            proc.args(["reset", "--hard", rev]);
+                            proc.current_dir(target_dir);
+                            debug!("Running {:?}", proc);
+                            let status = proc
+                                .status()
+                                .with_context(|| format!("Git reset failed for {self}"))?;
+                            if !status.success() {
+                                bail!("Git reset failed for {self}");
+                            }
+                            Ok(())
                         }
-                        //git reset
-                        let mut proc = std::process::Command::new("git");
-                        proc.args(["reset", "--hard", rev]);
-                        proc.current_dir(target_dir);
-                        debug!("Running {:?}", proc);
-                        let status = proc
-                            .status()
-                            .with_context(|| format!("Git reset failed for {self}"))?;
-                        if !status.success() {
-                            bail!("Git reset failed for {self}");
-                        }
-                        Ok(())
                     };
 
                     if let Err(msg) = inner() {

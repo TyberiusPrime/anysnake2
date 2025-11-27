@@ -31,13 +31,16 @@
 
 [nixpkgs]
 	allow_unfree = true # set to true to allow unfree packages from nixpkgs
+	overlay = """
+final: prev: { lzma = final.xz;}
+"""
 	packages = [
 		"fish",
 		"gnumake",
 		"gnused",
 		"netcat",
 		"varscan"]
-	url = "github:NixOS/nixpkgs/master/24.05"
+	url = "github:NixOS/nixpkgs/master/24.11"
 
 
 [clones.code] # target directory
@@ -108,7 +111,8 @@
 # the date definies the R version, bioconductor version and R packages you get.
 	packages = [
 		"ACA",
-		"Rcpp"
+		"Rcpp",
+		"DSS"
 	]
 	url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
 

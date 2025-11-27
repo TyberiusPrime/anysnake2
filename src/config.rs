@@ -293,6 +293,7 @@ pub struct NixPkgs {
     pub allow_unfree: bool,
 
     pub permitted_insecure_packages: Option<Vec<String>>,
+    pub overlay: Option<String>
 }
 
 impl NixPkgs {
@@ -302,6 +303,7 @@ impl NixPkgs {
             packages: None,
             allow_unfree: Self::default_allow_unfree(),
             permitted_insecure_packages: None,
+            overlay: None
         }
     }
     pub fn default_allow_unfree() -> bool {
@@ -315,6 +317,8 @@ pub struct TofuNixPkgs {
     pub packages: Vec<String>,
     pub allow_unfree: bool,
     pub permitted_insecure_packages: Option<Vec<String>>,
+    pub overlay: Option<String>
+
 }
 
 #[derive(Deserialize, Debug)]

@@ -82,10 +82,16 @@ pub fn write_flake(
     //various 'collectors'
     let mut inputs: Vec<InputFlake> = Vec::new();
     let mut definitions: BTreeMap<String, String> = BTreeMap::new();
-    let mut overlays: Vec<String> = Vec::new();
+    let mut overlays: Vec<String> =
+        vec!["final: prev: { pkgconfig = final.pkg-config;}".to_string()];
     let mut rust_extensions: Vec<String> = Vec::new();
     let mut nixpkgs_pkgs = BTreeSet::new();
     let mut git_tracked_files = Vec::new();
+
+    if let Some(overlay_func) = &parsed_config.nixpkgs.overlay {
+        overlays.push(overlay_func.clone());
+    }
+    dbg!(&overlays);
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.

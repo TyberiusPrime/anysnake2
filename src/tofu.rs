@@ -340,6 +340,7 @@ impl TofuToTag<config::TofuNixPkgs> for Option<config::NixPkgs> {
             packages: inner_self.packages.unwrap_or_default(),
             allow_unfree: inner_self.allow_unfree,
             permitted_insecure_packages: inner_self.permitted_insecure_packages,
+            overlay: inner_self.overlay,
         };
         Ok(out)
     }

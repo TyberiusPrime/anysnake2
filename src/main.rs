@@ -634,11 +634,7 @@ fn inner_main() -> Result<()> {
             let dtach_socket = match &tofued_config.anysnake2.dtach {
                 true => {
                     if std::env::var("STY").is_err() && std::env::var("TMUX").is_err() {
-                        Some(format!(
-                            "{}_{}",
-                            cmd,
-                            jiff::Zoned::now().datetime()
-                        ))
+                        Some(format!("{}_{}", cmd, jiff::Zoned::now().datetime()))
                     } else {
                         None
                     }
@@ -835,6 +831,7 @@ fn clone(
     name: &str,
     source: &config::TofuPythonPackageSource,
     known_clones: &mut HashMap<String, String>,
+    do_jujutsu: bool,
 ) -> Result<()> {
     let final_dir: PathBuf = [parent_dir, name].iter().collect();
     fs::create_dir_all(&final_dir)?;
@@ -857,27 +854,15 @@ fn clone(
                 download_and_unzip(url, &final_dir)?;
             }
             config::TofuPythonPackageSource::Vcs(tofu_vcs) => {
-                tofu_vcs.clone_repo(&final_dir.to_string_lossy())?;
+                tofu_vcs.clone_repo(&final_dir.to_string_lossy(), do_jujutsu)?;
             }
         }
+
         known_clones.insert(name.to_string(), source.to_string());
     }
     Ok(())
 }
 
-fn jujutsu_init(git_repo_dir: &Path) -> Result<()> {
-    let dtach_url = format!("{}#jujutsu", anysnake2::get_outside_nixpkgs_url().unwrap());
-    let nix_full_args = vec!["shell", &dtach_url, "-c", "jj", "git", "init", "--colocate"];
-    let status = Command::new("nix")
-        .args(nix_full_args)
-        .current_dir(git_repo_dir)
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("jujustu init failed"))
-    }
-}
 
 fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> Result<()> {
     let do_jujustu = parsed_config.clone_options.jujutsu;
@@ -887,9 +872,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
     if let Some(clones) = parsed_config.clones.as_ref() {
         for (target_dir, entries) in clones {
             for (name, source) in entries {
-                let entry = todo
-                    .entry(target_dir.to_string())
-                    .or_default();
+                let entry = todo.entry(target_dir.to_string()).or_default();
                 entry.insert(
                     name.clone(),
                     config::TofuPythonPackageSource::Vcs(source.clone()),
@@ -901,9 +884,7 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
     if let Some(python) = &parsed_config.python {
         for (pkg_name, package) in &python.packages {
             if let Some(editable_path) = &package.editable_path {
-                let entry = todo
-                    .entry(editable_path.to_string())
-                    .or_default();
+                let entry = todo.entry(editable_path.to_string()).or_default();
                 let safe_name = pkg_name.to_string();
                 entry.insert(safe_name, package.source.clone());
             }
@@ -934,13 +915,10 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 }
             }
             for (name, url) in name_urls {
-                clone(flake_dir, target_dir, name, url, known_clones).with_context(|| {
+                clone(flake_dir, target_dir, name, url, known_clones, do_jujustu).with_context(|| {
                     format!("Cloning for {name} into {target_dir} from {url:?}")
                 })?;
-                if do_jujustu {
-                    jujutsu_init(&([target_dir, name].iter().collect::<PathBuf>()))?;
-                }
-            }
+                            }
             Ok(())
         };
         let clone_result = do_clones(&mut known_clones);
@@ -1209,10 +1187,7 @@ fn install_editable_into_venv(
             "--bind".into(),
             format!("{}:/tmp:rw", &td.path().to_string_lossy()),
             "--bind".into(),
-            format!(
-                "{}:/anysnake2/venv:rw",
-                venv_dir.to_string_lossy()
-            ),
+            format!("{}:/anysnake2/venv:rw", venv_dir.to_string_lossy()),
             "--bind".into(),
             format!(
                 "{}:/anysnake2/venv/linked_in/{}:rw",
@@ -1375,7 +1350,6 @@ fn add_r_library_path(
     let ld_libarry_path = stdout.trim();
     Ok(ld_libarry_path.to_string())
 } */
-
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
