@@ -1,0 +1,444 @@
+{
+  "/nix/store/mf22mnny1ghjz2b40wbfynvdj696iy7d-anysnake2-venv.drv": {
+    "args": [
+      "-e",
+      "/nix/store/l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh",
+      "/nix/store/shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh"
+    ],
+    "builder": "/nix/store/rlq03x4cwf8zn73hxaxnx0zn5q9kifls-bash-5.3p3/bin/bash",
+    "env": {
+      "NIX_PYPROJECT_DEPS": "/nix/store/xcpl6ayxj5q702k46vh3v4z70m0xifd7-anysnake2-to-ancient-poetry-uv-0.1.0:/nix/store/j1gi3zxsgg2p3icz7igrb7avlmykcs6n-dppd-0.28:/nix/store/xzla8vlnybr5z74igci6ihqldd5pw6bb-lvr-0.1.2:/nix/store/lyyac6h9ck5c4qw8gl14a6wh97j8c4rb-pip-25.3:/nix/store/vm4xv00n15kzrywarxr8zv86v1f46q44-plotnine-0.8.0:/nix/store/h9nn6lzhg120bvq3pmxw2sldgnfdvl08-pypipegraph-0.190:/nix/store/if4mg3hjx9rg0wr7fwsb13anm0nfr0gb-pypipegraph2-3.4.2:/nix/store/n9bzi0w0mc3sg63wga83q5xjcb5bb5cr-rpy2-3.6.4:/nix/store/mrmb4gd3ipbxqjcfp0l34syj3d1synkq-testrepo-0.66:/nix/store/4g2rpxncxcd5pp76f8nb0c86fb5j66md-testrepo2-0.33:/nix/store/kljxyqzny3c03d4h1534w03ap2zdpg9v-natsort-8.4.0:/nix/store/2b6dga4ffg381rwkvcnm5i13l0sidaph-numpy-2.4.1:/nix/store/yr21dnvip3b8f0rb7x32bxnhdgf2kcsx-pandas-3.0.0:/nix/store/r839qhzpm9m37a409hm554azqgq51d0r-wrapt-2.0.1:/nix/store/fwhh6pjj94mdax6kl3hm7lx3r14prldh-tabulate-0.9.0:/nix/store/2yf4h1x6bm0cz6rlmzmwmhy3dcss8vxm-descartes-1.1.0:/nix/store/9cbh22k0cn0yb5sy745rq8chgpf37w6m-matplotlib-3.10.8:/nix/store/4y1nw4bjjanl6m99lg473zlvx35x6m75-mizani-0.14.4:/nix/store/3cb7i1gpx1dia3x3njass2vqhj6b4l2x-patsy-1.0.2:/nix/store/v92q13y9qvca1pj43kkld80g9ljrb07v-scipy-1.17.0:/nix/store/glrpfi08dj4491sylkv38i75fjzsja2i-statsmodels-0.14.6:/nix/store/92kf0cmr24370rm54ah3268vz1dmak1g-deepdiff-8.6.1:/nix/store/62qsy1fga38cp1p6fxqmph1l6j4z8v8g-filelock-3.20.3:/nix/store/38zyxl9bg9yvpdmvcp7ggvhrvqfpzcdh-lib-programname-2.0.9:/nix/store/ydzj4daaia68bgj5jn2n1rp71gv5jpv8-loguru-0.7.3:/nix/store/fv3w099v3f56nagwnwbclsc9c2n9030j-networkx-3.6.1:/nix/store/alrp4m78c7zp9j30g2zvbgc5inwlmivq-psutil-7.2.2:/nix/store/7v3lzywi2kqz8cq4ghdkhcbw9as6zjyd-pyzstd-0.19.1:/nix/store/c976cp6qmrq3wfn5gcyqqyhrvi705m8j-rich-14.3.1:/nix/store/8fn0mrrmgych4xx10p3j17ihx81dwaj4-textual-7.4.0:/nix/store/6wqqbq9z2cjc9fcafwd1md38zky8wgp1-xxhash-3.6.0:/nix/store/dr052m6xndzl0cv698xaw0gl1vd9kh2y-rpy2-rinterface-3.6.3:/nix/store/vj4fkn9g68daysa23zgayhrgc5kgjriw-rpy2-robjects-3.6.3:/nix/store/qscisbbwb3nxmjm2mc5b3fh4mk1q5lab-python-dateutil-2.9.0.post0:/nix/store/883ak0cdw0czj2nxahdy5gj3w5dcfr8j-contourpy-1.3.3:/nix/store/73gvbhbbh4lmv49w0757faickdq78qg6-cycler-0.12.1:/nix/store/51vg3wlhwdwq8s6234yw2bx268rgq9ph-fonttools-4.61.1:/nix/store/q65si9b71nz3plapblq2yr8rhh82qz0d-kiwisolver-1.4.9:/nix/store/mwy6n52b7in96v7ra1kamwby5calxzdc-packaging-26.0:/nix/store/h22x9iwvp0h6dqxxz13yv08qp4fxr50b-pillow-12.1.0:/nix/store/0ca0wsdrw101ymws6jqzqrhyvdz936m1-pyparsing-3.3.2:/nix/store/gz9p9dnsjjq3jczdmcbzi5fq1khphng6-orderly-set-5.5.0:/nix/store/1x00015w7pdg1m1paqx8gfj9fmvwcnwj-cli-exit-tools-1.2.7:/nix/store/zkqkhs7r5a4nq5h8fmcqxz5ljq1rg41h-click-8.3.1:/nix/store/s8sdkz8b42cawa14nczbwxb9z30mr1p8-lib-detect-testenv-3.0.1:/nix/store/ym1aphzcsc3fjgp993xy2ah8ywxiypng-backports-zstd-1.3.0:/nix/store/xilrfbil5k9n867hnkr1h1iwnbdz3lr0-markdown-it-py-4.0.0:/nix/store/lja4f5brgbbnj0xv980790yz9drm6lxa-pygments-2.19.2:/nix/store/751gk091gqkgqph2iqav30494x5dxbcw-mdit-py-plugins-0.5.0:/nix/store/iwys7r3l0w81mpl2xgjh8gs4l6kqaa92-platformdirs-4.5.1:/nix/store/p39i249di01z28gpm150vcnvarzz68xb-typing-extensions-4.15.0:/nix/store/fg8fz4d8xv66v5mbnp7wa92szdpcppy9-cffi-2.0.0:/nix/store/061w9vlaa71glyqmsz56i1vfr2p9413l-jinja2-3.1.6:/nix/store/f5rhx42h2mi4qj91fvk51nn7ldmny4fa-tzlocal-5.3.1:/nix/store/p80np1qkbawpf21p6w0r5x793zyhf42w-six-1.17.0:/nix/store/8pcvg0r7xsj3msr1qhhrxh10ll5kfw1n-rich-click-1.9.6:/nix/store/wqblvk630fb7gi71y6n3r9i9i1f3jlpj-mdurl-0.1.2:/nix/store/sdk4ql9zwffz38a596278bkl1ck9bdmi-linkify-it-py-2.0.3:/nix/store/3fgdzwq1v635cbklsg72pabsbyc0cz5z-pycparser-3.0:/nix/store/9q54ln02k1bl76nb28mq0lfipplm5cxi-markupsafe-3.0.3:/nix/store/i8mfmc50aqyh0hn8q6ginla6aq00c1dg-uc-micro-py-1.0.3",
+      "__structuredAttrs": "",
+      "buildInputs": "",
+      "builder": "/nix/store/rlq03x4cwf8zn73hxaxnx0zn5q9kifls-bash-5.3p3/bin/bash",
+      "cmakeFlags": "",
+      "configureFlags": "",
+      "depsBuildBuild": "",
+      "depsBuildBuildPropagated": "",
+      "depsBuildTarget": "",
+      "depsBuildTargetPropagated": "",
+      "depsHostHost": "",
+      "depsHostHostPropagated": "",
+      "depsTargetTarget": "",
+      "depsTargetTargetPropagated": "",
+      "doCheck": "",
+      "doInstallCheck": "",
+      "dontBuild": "1",
+      "dontConfigure": "1",
+      "dontMoveLib64": "1",
+      "dontPatch": "1",
+      "dontUnpack": "1",
+      "mesonFlags": "",
+      "mkVirtualenvFlags": "",
+      "name": "anysnake2-venv",
+      "nativeBuildInputs": "/nix/store/wzwwr0cxr8bdp77xhar4gbfrf8ph882h-pyproject-make-venv-hook",
+      "out": "/nix/store/7slkp3j6dygmvdzvz8b93c646cn2f979-anysnake2-venv",
+      "outputs": "out",
+      "patches": "",
+      "propagatedBuildInputs": "",
+      "propagatedNativeBuildInputs": "",
+      "stdenv": "/nix/store/s3w5m3spa1g71hx0yb82lvk6394j3w5j-stdenv-linux",
+      "strictDeps": "",
+      "system": "x86_64-linux",
+      "venvIgnoreCollisions": "",
+      "venvSkip": ""
+    },
+    "inputDrvs": {
+      "/nix/store/0hbrkirph3cckyk24xjgniwg16s84z9g-six-1.17.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/0r6bqd3pp29di09lx3hivrvwgqx8jn1d-networkx-3.6.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/19qrh6mj2m70vrp5qqvpgdhjjld8xgq1-natsort-8.4.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/1ik9kxh67n3nvjvpj2rgyyyz4jyjxd0j-tabulate-0.9.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/2jrw8ggfi6yfpy5q5blvhilsjsj6523x-linkify-it-py-2.0.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/2nw4dzivybhamijjf2b0a93b672r4nz0-matplotlib-3.10.8.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/3nrg6v98p6hrf275nm5ak0y24rhlnay5-psutil-7.2.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/3zin023xv8ng1z1x12aqr6cym3d9hcvk-cli-exit-tools-1.2.7.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/4b4m8mk2rsh3mh19sb633f430di5b3pn-mdit-py-plugins-0.5.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/4mxyr333k7mdpv7mixxbzrgrab7zg3hh-typing-extensions-4.15.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/4wz78ssx4v55zsfs00lj2qamxynnxy6h-tzlocal-5.3.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/5crvzm6a60h65038a67ybvjrmqwxma0d-descartes-1.1.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/6gnw7x67nilvl5dhfc87fn7hmf0vafa3-contourpy-1.3.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/6sw3md2wvwjblhy8gys8hvhm7p511abn-testrepo-0.66.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/7hvaph1dwm7pjlcymfpdaad5w7z3pbyj-pypipegraph2-3.4.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/7yw31wk917mys49snv5v9hnpsh2vrfrk-click-8.3.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/9drr88k9f73bkxk0bzfvxy55lrdgqkk7-pandas-3.0.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/a1hzvj3lrm3s7rsfhxd21wkxfkr1bzmw-pillow-12.1.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/aiizi41nvvk4n9gs95l7n1xxlynymfw8-pyparsing-3.3.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/b424wsqcdvgjsdkiq68hkx7qs364x3pw-textual-7.4.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/bj4iv1b2mpc1iv6qx3jsg60n8jqpnsr4-mdurl-0.1.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/c35w3lr53y7dgiz4v8fbfnzlmy5av05b-wrapt-2.0.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/cqccmcz2jzcghsc39p7bwkw3a1a88mz7-testrepo2-0.33.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/d4h6cycjfig3p4k2azvhg9f2rvn76jcd-backports-zstd-1.3.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/dlshxb7bsks39a6v4z7bjpa4amqa83b5-jinja2-3.1.6.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/fixh8i3vzwfkz0nf0ppgnwm1lx2l516k-orderly-set-5.5.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/fm0ix0b14i7hxaq8j3fr4q19ghckxjd3-rpy2-3.6.4.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/fn6ddq147ikigbpqcjnmm47c7d56j1ch-markdown-it-py-4.0.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/gb5w2d1grg209rll73s68b88f7xzfkza-pip-25.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/gl35ivad7lqg09q2a9c94h7mpmiv39cw-xxhash-3.6.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/h7j4hz3zma1srngznqkl5hdsgzdlk8qw-pygments-2.19.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/ijzbp9kjvwvhghaqz852p73s6rf6r4k6-markupsafe-3.0.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/isx07f9wcb60gg6y8a0gx2fhi61gkhgj-deepdiff-8.6.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/j06fm3v2xa2jbgxw2fz698b5nhlccw5p-loguru-0.7.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/kx07hzjj4nwkq1dzrdfk7gcpbk78lxaq-filelock-3.20.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/l89z8kv5ncrcvs7ajw741x32l67j97bk-pypipegraph-0.190.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/mqmif2dhxc63yq2120abzvbqlsh6ap81-numpy-2.4.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/nmd2mdrbqxmx2iz31d02awz81v8zw6nb-cycler-0.12.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/p0mkh5cq218n5k9i4gs8pd494qc7d42c-scipy-1.17.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/phvlfz6wimrmrwb02qskcnc2ihzkx29z-python-dateutil-2.9.0.post0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/pnjvpwgka59d6fwpp9fnz42ll2ai4ffm-stdenv-linux.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/qcwcqaand7xgb5raba00i2yqqw3f7kh9-pycparser-3.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/qfgd0adza3rd7kn4zr9k0h62q5dwq9zn-pyproject-make-venv-hook.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/qkgsxpbw1h30if6i499hyasmb235vzi3-rpy2-robjects-3.6.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/qz9d8zgyvznf9dxfb12r3rb469llq6i7-rich-14.3.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/s0bb666pxzbqhlljh5swzwmc4mi39bpj-dppd-0.28.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/s18ip6ck5s5hmibvixrighwq89l11dm5-patsy-1.0.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/sc2s92wmk4xsajk6j27ga08b2g79q7sb-fonttools-4.61.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/v43vvpdqh43rkl5sind0375pdsrls5m8-rich-click-1.9.6.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/v8cwdd5x159vrmp9p5nngmw9rsml4d7d-platformdirs-4.5.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/vwmk63kc9sysjif65h7fdwnqr5h8jfm6-bash-5.3p3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/w06yymmn5y7xzf4a13y9paqwc68diqsk-statsmodels-0.14.6.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/wxf6aabbxxb52knwpv9gixfc71fvsjmr-cffi-2.0.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/wyi6smgfx441m10dwlw61bkbxyibra15-mizani-0.14.4.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/wz78gabzmpb0yrhfjvhzm16mj48cr6fq-uc-micro-py-1.0.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/x9yjndz46dg84a8p47fcjvqya7rf3jqh-pyzstd-0.19.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/xgsf5q5kcvldsxiq0mq250vvl1m33ycj-anysnake2-to-ancient-poetry-uv-0.1.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/xhvkk3bnarwm4fcmx33lqcdv2yw4cmhx-plotnine-0.8.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/y6jj68v0ykjmmisp9rhz0k2m2n1qar51-rpy2-rinterface-3.6.3.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/yk0mbv906lbhabms4hafacmg7q94skha-lib-detect-testenv-3.0.1.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/z4dqpka7q1w3s7in4qqdy5ivca1wg3cd-packaging-26.0.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/zgl31637isgzwpf40mwnh849adjc9g3w-kiwisolver-1.4.9.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/zy4920a5wv1a256wn0g2ys0xdcynql8z-lib-programname-2.0.9.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      },
+      "/nix/store/zyc8pqpynamhnrvz70ijn11q8vfl1x72-lvr-0.1.2.drv": {
+        "dynamicOutputs": {},
+        "outputs": [
+          "out"
+        ]
+      }
+    },
+    "inputSrcs": [
+      "/nix/store/l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh",
+      "/nix/store/shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh"
+    ],
+    "name": "anysnake2-venv",
+    "outputs": {
+      "out": {
+        "path": "/nix/store/7slkp3j6dygmvdzvz8b93c646cn2f979-anysnake2-venv"
+      }
+    },
+    "system": "x86_64-linux"
+  }
+}

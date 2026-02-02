@@ -81,7 +81,8 @@ fn jujustu_clone_and_new(git_repo_dir: &Path, source: &str, branch: &str, rev: &
     let jj_version = Command::new("nix")
         .args(&nix_full_args)
         .current_dir(git_repo_dir)
-        .output().context("Failed to get jujustu version")?;
+        .output()
+        .context("Failed to get jujustu version")?;
     if !jj_version.status.success() {
         bail!(
             "jujustu version  failed (call was nix {:?}, in dir: {})",

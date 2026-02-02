@@ -28,7 +28,9 @@ pub fn install_ctrl_c_handler() -> Result<()> {
 }
 
 pub fn define_outside_nipkgs_url(url: String) {
-    OUTSIDE_NIXPKGS_URL.set(url).expect("Trying to set outside nixpkgs url twice");
+    OUTSIDE_NIXPKGS_URL
+        .set(url)
+        .expect("Trying to set outside nixpkgs url twice");
 }
 
 pub fn get_outside_nixpkgs_url() -> Option<&'static str> {

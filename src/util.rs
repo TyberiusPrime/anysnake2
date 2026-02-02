@@ -278,15 +278,14 @@ pub fn get_pypi_package_source_url(
             .context("unexpected json format in pypi response")?
             .iter()
             .filter_map(|(_k, v)| {
-                let y = v.as_array()?[0]
-                    .as_object()
-                    ?;
+                let y = v.as_array()?[0].as_object()?;
                 if y["yanked"].as_bool().unwrap_or(false) {
                     return None;
                 }
                 v.as_array()
             })
-            .last().context("No non yanked release found?")?
+            .last()
+            .context("No non yanked release found?")?
     };
     for file in files {
         if file["packagetype"] == "sdist" {

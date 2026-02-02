@@ -1,0 +1,289 @@
+# fully featured anysnake2.toml example
+# this is fully tofu resolved as well.
+[anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
+# We leverage nix flakes to run exactly that version.
+# rev = "dev" = do not switch to fixed version, used in development.
+	url2 = "dev" # replace with fixed version outside of tests/examples.
+# leave off to auto detect the newest version
+# looks like this TOFU
+# url = "github:TyberiusPrime/anysnake2/main/1.15.5"
+
+# You can leave this off initially, it will be filled with the newest version
+
+	use_binary = false # default, optional, switches the default url. Ignored if url = is set.
+
+
+# The rev must be a tag or sha-hash from the following configured url.
+# url = "https://github.com/TyberiusPrime/anysnake2_release_flakes" # if you want to override this.
+# (if use_binary is false, the default is  https://github.com/TyberiusPrime/anysnake2),
+# and there will be a rust build step involved.
+
+# do_not_modify_flake = true # if set to true,
+                             # flake/flake.nix is never overwritten,
+							 # but stored in flake/flake.generated.nix.
+							 # And nix build is called every run
+							 # This is an escape hatch.
+
+
+# the nixpkgs used to run singularity and nixfmt
+
+[nixpkgs]
+	allow_unfree = true # set to true to allow unfree packages from nixpkgs
+	overlay = """
+final: prev: { lzma = final.xz;}
+"""
+	packages = [
+		"fish",
+		"gnumake",
+		"gnused",
+		"netcat",
+		"varscan"]
+	url = "github:NixOS/nixpkgs/master/25.11"
+
+
+[clones.code] # target directory
+# Unlike python.package.<xyz>.editable = true/folder
+# these just get cloned into the target directory (once).
+# if you change the rev here and have an already existing checkout
+# anysnake2 will abort
+	fpick= "git+https://github.com//TyberiusPrime/fpick?ref=main&rev=0ddd3756be8a603ae05cabc1b001ebe01e3c38a0"
+
+
+[python] # python section is optional
+	ecosystem_date = "2026-01-30"
+# at times, broken python packages need you to set environment variables
+# when 'uv lock' is being done,
+# hence this option
+	uv_lock_env = {"SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL"= "True"}
+	version="3.13" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+
+
+[python.packages]
+#cffi = "pypi:1.15.1"
+# The source definition is fairly flexible and follows the url definitions for nix flakes
+# see https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake.html#flake-references
+	dppd = {editable = true, url= "github:TyberiusPrime/dppd/main/d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7", build_systems = ['setuptools']}
+# mercurial example
+	lvr = {url= "hg+https://hg.sr.ht/~bwe/lvr?rev=db6f0a3254fbd3939d6b6b8c6d1711e7129faba1", build_systems = ['setuptools']}
+# so we have something that has an 'entrypoint'
+	pypipegraph = {editable = "hackonme", url= "github:TyberiusPrime/pypipegraph/master/1430704960b069ba25de30210059dcaf374d4ae7", build_systems = ['setuptools'] } # editable may be a folder!
+# you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
+	pypipegraph2=">2.0"
+# You can circumvent the ecosystem date restriction from above
+# by manually specifying a fixed pypi version
+#	scanpy = ""
+#scipy=""
+#sometimes you just need to supply a nativeBuildInput to get poetry2nix working, but do not want to specify the version
+#session-info = {poetry2nix.nativeBuildInputs=['setuptools']}
+# or for C dependencies
+# packages that depend on other packages from this list should 'just work'.
+
+	testrepo={url = "github:TyberiusPrime/_anysnake2_test_repo/main/97d57e17c1bd4a5f547fa1c1be57c2f0a1d2ec6f", build_systems = ['setuptools']}
+	testrepo2={url = "github:TyberiusPrime/_anysnake2_test_repo2/main/a42420f8ba0a6bc9bda0425cd665515fb92dc2b4", build_systems = ['setuptools']}
+
+
+[python.packages.plotnine]
+	override_attrs.postInstall = """''
+	        touch $out/lib/python3.13/site-packages/plotnine/post_install_worked
+''"""
+# and this is how you patch it after poetry's dependency resolution
+# but before it's actually being build
+	override_attrs.postPatch = """''
+	substituteInPlace setup.py --replace-fail "version=versioneer.get_version()," "version='0.8.0'," \
+		--replace-fail "cmdclass=versioneer.get_cmdclass()," ""
+''"""
+# escape hatch for packages that just can't define their version number from the checked out
+# path. ( We copy the package to the nix store, then supply uv with a writeable version
+# for it to figure out the package version number. Some packages that's not enough)
+# this get's passed to bash. With set -xoeu pipefail
+	patch_before_lock= """
+	sed -i 's/git_refnames = ""/git_refnames = " (tag: v0.8.0)"/' plotnine/_version.py
+	sed -i 's/version=versioneer.get_version()/version="0.8.0"/' setup.py
+	sed -i 's/cmdclass=versioneer.get_cmdclass(),//' setup.py
+"""
+	url = "github:has2k1/plotnine/main/6c82cdc20d6f81c96772da73fc07a672a0a0a6ef"
+
+
+[R] # R section is optional
+	date = "2024-10-30"
+# the date definies the R version, bioconductor version and R packages you get.
+	packages = [
+		"ACA",
+		"Rcpp",
+		"DSS"
+	]
+	url = "github:TyberiusPrime/nixR/main/574ea366ca506eb014e494a7488251d13b00d9fc"
+
+
+# you can apply overrideAttrs to
+# individual R packages, for those times you really really need to patch 'em
+# see https://nixos.org/manual/nixpkgs/stable/#sec-pkg-overrideAttrs
+# they take a function just like the example below
+[R.override_attrs]
+	ACA = '''
+old: {
+postInstall = ''
+  echo "Yes" >$out/library/ACA/override_in_place
+'';
+}
+'''
+
+
+[rust]
+	url = "github:oxalica/rust-overlay/master/bcdd8d37594f0e201639f55889c01c827baf5c75"
+# version/rust section is optional. leave of for no rust
+	version = "1.92.0" # =stable.
+
+
+# default packages is ["defaultPackage.x86_64-linux"],
+	# in which case you can ommit this entry
+	# packages = ["defaultPackage.x86_64-linux"]
+
+[flakes.STAR]
+	dir = "STAR" # changed from anysnake < 2.0
+	rev = "8d50ea4a3e1a1e69ba9f7c1981913e4862ab49ef"
+	url = "github:IMTMarburg/flakes/main/356700f69497e12371aab6fe529d276893aaaf16"
+
+
+# You can pull in arbitrary packages from arbitrary flakes
+
+[flakes.hello]
+# relative paths are tricky:
+# you can use an url like $ANYSNAKE2_ROOT/path/to/flake for local flakes
+# $ANYSNAKE2_ROOT will be replaced by abspath('anysnake2.toml') (or whatever your config file is)
+	follows = ["nixpkgs"] # so we overwrite the flakes dependencies
+	url = "github:TyberiusPrime/hello_flake/main/e54fde09a6156f2798f8545db7e113b87b7acb13"
+
+
+#i to use nightly, add to nipkgs.packages 'rust-bin.nightly."2020-01-01".default'
+
+
+[container]
+#home = "$HOME/singularity_home/$USER" # where to locate the singularity home. Defaults to $HOME
+	dtach = true # whether to run your container wrapped in dtach https://github.com/crigler/dtach
+
+
+[container.volumes_ro]
+	"/opt" = "/opt"
+
+
+[container.volumes_rw]
+# #home get's special treatment, container section
+	"." = "/project"
+
+
+# if you want to give the singularity container access to docker
+# note that that's essentially root access
+# "/var/run/docker.sock" = "/var/run/docker.sock"
+
+
+[env]
+	MBF_EXTERNAL_HOSTNAME = "${NICE_HOSTNAME}"
+# define enviromental variables
+	MBF_EXTERNAL_PREBUILD_PATH="/machine/ffs/prebuild/externals/"
+
+
+# Commands are optional and let you define predefined
+# scripts to run.
+
+[cmd.default]
+# the post_run runs even if the run failed
+	post_run_inside = """
+echo "post run inside - status was $ANYSNAKE_RUN_STATUS"
+"""
+# runs independend of the sucess inside (same as post_run_inside)
+	post_run_outside = """
+echo 'post run outside'
+"""
+# if this fails, execution stops without starting the container
+	pre_run_outside = """
+echo "pre run outside"
+"""
+# run happens inside the container
+	run = """
+echo 'run_inside'
+set -x # show what we're executing
+cd /project
+echo 'pythonpath $PYTHONPATH'
+python run.py
+hello
+no_such-command
+"""
+# this runs *while* the singularity process is running,
+# and get's killed() when the singularity process finishes
+	while_run_outside ="""
+while :
+do
+    # usage idea: snapshot zfs at regular intervals
+	sleep 100;
+done
+"""
+
+
+[cmd.jupyter]
+	run = """
+jupyter
+"""
+
+
+[cmd.shell]
+	run = """fish
+"""
+
+
+# network ports are exposed by default (using host network!)
+
+[cmd.test_R]
+	run = """
+R -e "library(ACA); library(Rcpp); print(sessionInfo())"
+"""
+
+
+[cmd.test_rpy2]
+	run = """
+python -c "import rpy2.robjects as ro; print(ro.r('.libPaths()')); ro.r('library(ACA);'); ro.r('library(Rcpp);'); print(ro.r('sessionInfo()'))"
+"""
+
+
+[dev_shell] # optional
+	inputs = [ # optional
+		# these are packages that show up only when you do 'nix develop'
+		"rust-analyzer"
+	]
+	shell = "fish" # optional
+
+
+[outside_nixpkgs]
+	url = "github:NixOS/nixpkgs/master/24.05"
+
+
+[ancient_poetry]
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/9eeb39b8fdd8352bfc6f1af7eab79f88bd0a6eb3"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/0668446adbd7d78818011f5b67409061586867d5"
+
+
+[flake-util]
+	url = "github:numtide/flake-utils/main/11707dc2f618dd54ca8739b309ec4fc024de578b"
+
+
+[clone_options]
+	jujutsu = true
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/042904167604c681a090c07eb6967b4dd4dae88c"
+
+
+[clone_options.regex]
+# to make cloning internal repositories etc easier,
+# we support regexs to replace URLs *in the clones only*
+	"@gh/([^/]+/[^/]+)"="git+https://github.com/$2/$1"

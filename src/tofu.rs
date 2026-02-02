@@ -36,7 +36,8 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
                         let parsed_entries: Result<HashMap<String, ParsedVCS>> = entries
                             .into_iter()
                             .map(|(k, v)| {
-                                let replaced_v = apply_clone_regexps(&v, converted_clone_regexps.as_ref());
+                                let replaced_v =
+                                    apply_clone_regexps(&v, converted_clone_regexps.as_ref());
                                 let parsed_v = ParsedVCS::try_from(replaced_v.as_str()).context(
                             "Failed to parse clone url. Before regex: {v:?}, after: {replaced_v:?}",
                         )?;
@@ -79,12 +80,12 @@ impl Tofu<config::TofuConfigToml> for config::ConfigToml {
             updates,
         );
 
-        let outside_nixpkgs= self.outside_nixpkgs.tofu_to_tag(
-                &["outside_nixpkgs", "url"],
-                updates,
-                "github:NixOS/nixpkgs",
-                NIXPKGS_TAG_REGEX,
-            )?; //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
+        let outside_nixpkgs = self.outside_nixpkgs.tofu_to_tag(
+            &["outside_nixpkgs", "url"],
+            updates,
+            "github:NixOS/nixpkgs",
+            NIXPKGS_TAG_REGEX,
+        )?; //todo: only tofu newest nixpkgs release.. Doesn't this do this already?
         anysnake2::define_outside_nipkgs_url(outside_nixpkgs.to_nix_string());
 
         Ok(config::TofuConfigToml {
@@ -180,15 +181,38 @@ fn add_rpy2_if_missing(python: &mut Option<config::Python>, _updates: &mut TomlU
             "NIX_LDFLAGS".to_string(),
             "''-L${pkgs.bzip2.out}/lib -L${pkgs.xz.out}/lib -L${pkgs.zlib.out}/lib -L${pkgs.icu.out}/lib -L${pkgs.libdeflate}/lib''".to_string(),
         );
-        overrides.insert(
-            "postPatch".to_string(),
-            "''
-              substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
-                          \"os.environ['R_HOME'] = openrlib.R_HOME
-                      os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
-                ''
-            ".to_string(),
-        );
+        //moved to flake writer format overrides
+        // overrides.insert(
+        //     "postPatch".to_string(),
+        //     "''
+        //     if [[ -f 'rpy2/rinterface_lib/embedded.py' ]]; then
+        //       substituteInPlace 'rpy2/rinterface_lib/embedded.py' --replace \"os.environ['R_HOME'] = openrlib.R_HOME\" \\
+        //                   \"os.environ['R_HOME'] = openrlib.R_HOME
+        //             os.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\"
+        //     fi
+        //         ''
+        //         ".to_string());
+        // overrides.insert(
+        //     "postBuild".to_string(),
+        //     "''
+        //         WHEEL_NAME=\"$(find -name '*.whl')\"
+        //         if [ \"$(echo \"$WHEEL_NAME\" | wc -l)\" -eq 1 ] && [ -n \"$WHEEL_NAME\" ]; then
+        //             # exactly one line, assume its a wheel.
+        //             mkdir temp
+        //
+        //             WHEEL_NAME=$(realpath $WHEEL_NAME)
+        //             ${pkgs.unzip}/bin/unzip \"$WHEEL_NAME\" -d temp
+        //             echo -e \"\\nos.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\" >> temp/rpy2/rinterface_lib/__init__.py
+        //             cd temp && ${pkgs.zip}/bin/zip -m -r \"$WHEEL_NAME\" *
+        //             cd ..
+        //             rmdir temp
+        //         else
+        //             # not a wheel, the postPatch should do it
+        //             # echo -e \"\\nos.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\" >> rpy2/rinterface_lib/__init__.py
+        //         fi
+        //     ''
+        //     ".to_string(),
+        // );
         python
             .packages
             .get_mut(&key)
@@ -210,13 +234,13 @@ fn add_pre_2_0_url_and_rev(
     });
 
     let pre_2_0_url = incoming_pre_2_0_url.cloned();
-    let pre_2_0_url = pre_2_0_url
-        .unwrap_or_else(|| {
+    let pre_2_0_url = pre_2_0_url.unwrap_or_else(|| {
         (if use_binary {
             "github:TyberiusPrime/anysnake2_release_flakes"
         } else {
             "github:TyberiusPrime/anysnake2"
-        }).to_string()
+        })
+        .to_string()
     });
     let pre_2_0_rev = match &parsed_url {
         config::TofuVCSorDev::Dev => "dev".to_string(),

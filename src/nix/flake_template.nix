@@ -21,11 +21,11 @@
         #later entries beat earlier entries in terms of /bin symlinks
         script = let
           bash = let
-            s = builtins.tryEval bashInteractive_5;
+            s = builtins.tryEval (pkgs.bashInteractive_5 or pkgs.bashInteractive);
           in
             if s.success
             then s.value
-            else bashInteractive;
+            else pkgs.bashInteractive;
         in ''
           ${coreutils}
           ${bash}

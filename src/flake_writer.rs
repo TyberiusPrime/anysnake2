@@ -91,7 +91,7 @@ pub fn write_flake(
     if let Some(overlay_func) = &parsed_config.nixpkgs.overlay {
         overlays.push(overlay_func.clone());
     }
-    dbg!(&overlays);
+    //    dbg!(&overlays);
     //let mut nix_pkg_overlays = Vec::new();
 
     // we always need the flake utils.
@@ -1129,6 +1129,41 @@ fn format_overrides(
             }
         }
     }
+    for target_name in ["rpy2-rinterface", "rpy2"] {
+        let target = anysnake_overrides
+            .entry(target_name.to_string())
+            .or_default();
+        target.insert("postBuild".to_string(),
+                "''
+                    WHEEL_NAME=\"$(find -name '*.whl')\"
+                    if [ \"$(echo \"$WHEEL_NAME\" | wc -l)\" -eq 1 ] && [ -n \"$WHEEL_NAME\" ]; then
+                        # exactly one line, assume its a wheel.
+                        mkdir temp
+
+                        WHEEL_NAME=$(realpath $WHEEL_NAME) 
+                        ${pkgs.unzip}/bin/unzip \"$WHEEL_NAME\" -d temp
+                        if [[ -f temp/rpy2/rinterface_lib/__init__.py ]]; then 
+                            echo -e \"\\nimport os\nos.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\" >> temp/rpy2/rinterface_lib/__init__.py
+                            cd temp && ${pkgs.zip}/bin/zip -m -r \"$WHEEL_NAME\" *
+                            cd ..
+                            rmdir temp
+                        else
+                            # probably a newer rpy2 which ain't got the file.
+                            rm temp -rf
+                        fi
+                    else
+                        # not a wheel
+                        if [[ ! -f rpy2/rinterface_lib/__init__.py ]]; then
+                            echo 'missing file'
+                            exit 1
+                        fi
+                        echo -e \"\\nimport os\nos.environ['R_LIBS_SITE'] = '${R_tracked}/lib/R/library'\" >> rpy2/rinterface_lib/__init__.py
+                    fi
+                ''
+                ".to_string(),
+        );
+    }
+
     (to_vec(anysnake_overrides), to_vec(user_overrides))
 }
 

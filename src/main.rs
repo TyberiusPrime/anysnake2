@@ -863,7 +863,6 @@ fn clone(
     Ok(())
 }
 
-
 fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> Result<()> {
     let do_jujustu = parsed_config.clone_options.jujutsu;
     // the old school 'clones' clones
@@ -915,10 +914,10 @@ fn perform_clones(flake_dir: &Path, parsed_config: &config::TofuConfigToml) -> R
                 }
             }
             for (name, url) in name_urls {
-                clone(flake_dir, target_dir, name, url, known_clones, do_jujustu).with_context(|| {
-                    format!("Cloning for {name} into {target_dir} from {url:?}")
-                })?;
-                            }
+                clone(flake_dir, target_dir, name, url, known_clones, do_jujustu).with_context(
+                    || format!("Cloning for {name} into {target_dir} from {url:?}"),
+                )?;
+            }
             Ok(())
         };
         let clone_result = do_clones(&mut known_clones);

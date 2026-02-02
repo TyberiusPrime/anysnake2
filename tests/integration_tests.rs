@@ -294,8 +294,14 @@ fn test_full_full() {
     assert!(should_be_there.exists());
 
     let rpy2_embededed = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.12/site-packages/rpy2/rinterface_lib/embedded.py");
-    let rpy2_embedded_text = std::fs::read_to_string(rpy2_embededed).unwrap();
-    assert!(rpy2_embedded_text.contains("os.environ['R_LIBS_SITE']"));
+    let rpy2_embedded_text = std::fs::read_to_string(rpy2_embededed).unwrap_or_else(|_|"".to_string());
+    let rpy2_init = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.12/site-packages/rpy2/rinterface_lib/__init__.py");
+    let rpy2_init_text = std::fs::read_to_string(rpy2_init).unwrap_or_else(|_|"".to_string());
+
+    assert!(
+        rpy2_embedded_text.contains("os.environ['R_LIBS_SITE']")
+            || rpy2_init_text.contains("os.environ['R_LIBS_SITE']")
+    );
 
     assert!(test_dir.join("code/fpick").exists(), "Clone didn't exist");
     assert!(
@@ -778,7 +784,8 @@ fn test_editable_path_finder_install() {
     let ((code, stdout, _stderr), td) = run_test_tempdir(
         "examples/test_python_editable_venv_path/",
         &[
-            "-v", "3",
+            "-v",
+            "3",
             "run",
             "--",
             "python",
@@ -791,13 +798,17 @@ fn test_editable_path_finder_install() {
     assert_eq!(code, 0);
     assert!(stdout.contains("/anysnake2/venv/linked_in/diopy"));
     // so we don't see the 'build' comands
-    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(), 
-        &["run", 
-        "--",
-        "python", 
-        "-c",
+    let (_code, stdout, _stderr) = run_test(
+        &td.path().to_string_lossy(),
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
             "'import dppd;import sys;print(sys.modules[\"dppd\"])'",
-    ], false);
+        ],
+        false,
+    );
 
     assert!(stdout.contains("/anysnake2/venv/linked_in/dppd"));
     //assert!(!stdout.contains("-anysnake2-venv/lib/python3.12/site-packages/diopy/"));
@@ -813,7 +824,8 @@ fn test_editable_path_finder_install() {
     ], false);
 
     assert!(stdout.contains("3.1.3"));
-    let uv_lock =  ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
+    let uv_lock =
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
     assert!(uv_lock.contains("3.1.3"));
     assert!(!uv_lock.contains("3.4.2"));
 
@@ -823,7 +835,7 @@ fn test_editable_path_finder_install() {
     let out = raw.replace(query, replacement);
     assert!(raw != out);
     ex::fs::write(td.path().join("anysnake2.toml"), out).unwrap();
-    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(), 
+    let (_code, stdout, _stderr) = run_test(&td.path().to_string_lossy(),
         &["run", 
         "--",
         "python", 
@@ -833,9 +845,129 @@ fn test_editable_path_finder_install() {
 
     println!("stdout2 : {}", stdout);
     assert_eq!(code, 0);
-    let uv_lock =  ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
+    let uv_lock =
+        ex::fs::read_to_string(td.path().join(".anysnake2_flake/uv_rewritten/uv.lock")).unwrap();
     assert!(uv_lock.contains("3.4.2"));
 
-
     assert!(stdout.contains("3.4.2"));
+}
+
+#[test]
+fn test_full_full_2511() {
+    let lock = NamedLock::create("anysnaketest_full_25.11").unwrap();
+    let _guad = lock.lock().unwrap();
+
+    rm_clones("examples/full_25.11");
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full_25.11",
+        &["run", "--", "R", "--version"],
+        true,
+    );
+    dbg!(&stdout);
+    assert!(stdout.contains("4.4.1"));
+    let out = Command::new("git")
+        .args(["log"])
+        .current_dir("examples/full_25.11/code/dppd")
+        .output()
+        .expect("git log call failed");
+    assert!(std::str::from_utf8(&out.stdout)
+        .unwrap()
+        .split('\n')
+        .next()
+        .unwrap()
+        .contains("d16b71a43b731fcf0c0e7e1c50dfcc80d997b7d7"));
+
+    let test_dir = PathBuf::from("examples/full_25.11");
+
+    let should_be_there= test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.13/site-packages/plotnine/post_install_worked");
+    assert!(should_be_there.exists());
+
+    let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/hello");
+    assert!(should_be_there.exists());
+
+    let should_be_there = test_dir.join(".anysnake2_flake/result/rootfs/bin/STAR");
+    assert!(should_be_there.exists());
+
+    let rpy2_init = test_dir.join(".anysnake2_flake/result/rootfs/usr/lib/python3.13/site-packages/rpy2/rinterface_lib/__init__.py");
+    let rpy2_init_text = std::fs::read_to_string(rpy2_init).unwrap();
+    assert!(rpy2_init_text.contains("os.environ['R_LIBS_SITE']"));
+
+    assert!(test_dir.join("code/fpick").exists(), "Clone didn't exist");
+    assert!(
+        test_dir.join("code/fpick/.git").exists(),
+        "Clone wasn't a .git repo?"
+    );
+    assert!(
+        test_dir.join("code/fpick/.jj").exists(),
+        "Clone wasn't a .jj repo?"
+    );
+}
+
+#[test]
+fn test_full_r_packages_25_11() {
+    let lock = NamedLock::create("anysnaketest_full_25.11").unwrap();
+    let _guad = lock.lock().unwrap();
+    let test_dir = "examples/full_25.11";
+
+    rm_clones(test_dir);
+    let (_code, stdout, _stderr) = run_test(
+        test_dir,
+        &["run", "--", "R", "-e", "'library(ACA);sessionInfo();'"],
+        true,
+    );
+    assert!(stdout.contains("ACA_1.1"));
+
+    let override_test_file = PathBuf::from("examples/full_25.11")
+        .join(".anysnake2_flake/result/rootfs/R_libs/ACA/override_in_place");
+    assert!(override_test_file.exists());
+    assert_eq!(
+        std::fs::read_to_string(override_test_file).unwrap(),
+        "Yes\n"
+    );
+}
+
+#[test]
+fn test_full_hello_25_11() {
+    let lock = NamedLock::create("anysnaketest_full_25.11").unwrap();
+    let _guad = lock.lock().unwrap();
+
+    rm_clones("examples/full_25.11");
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full_25.11",
+        &["run", "--", "hello", "--version"],
+        true,
+    );
+    assert!(stdout.contains("Hello World"));
+}
+
+#[test]
+fn test_full_rpy2_25_11() {
+    let lock = NamedLock::create("anysnaketest_full_25.11").unwrap();
+    let _guad = lock.lock().unwrap();
+
+    rm_clones("examples/full_25.11");
+    let (_code, stdout, _stderr) = run_test(
+        "examples/full_25.11",
+        &[
+            "run",
+            "--",
+            "python",
+            "-c",
+            "'import rpy2.robjects as ro; print(ro.r(\"5+5\"));'",
+        ],
+        true,
+    );
+    assert!(stdout.contains("10"));
+}
+
+#[test]
+fn test_full_rpy2_sitepaths_25_11() {
+    let lock = NamedLock::create("anysnaketest_full_25.11").unwrap();
+    let _guad = lock.lock().unwrap();
+
+    rm_clones("examples/full_25.11");
+    let (_code, stdout, _stderr) = run_test("examples/full_25.11", &["test_rpy2"], true);
+    dbg!(&stdout);
+    assert!(stdout.contains("Rcpp_1.0.13"));
+    assert!(stdout.contains("ACA_1.1"));
 }

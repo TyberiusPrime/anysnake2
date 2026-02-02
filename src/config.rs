@@ -71,7 +71,6 @@ pub struct CloneOptions {
     pub clone_regexps: Option<HashMap<String, String>>,
 }
 
-
 #[derive(Deserialize, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct ConfigToml {
@@ -293,7 +292,7 @@ pub struct NixPkgs {
     pub allow_unfree: bool,
 
     pub permitted_insecure_packages: Option<Vec<String>>,
-    pub overlay: Option<String>
+    pub overlay: Option<String>,
 }
 
 impl NixPkgs {
@@ -303,7 +302,7 @@ impl NixPkgs {
             packages: None,
             allow_unfree: Self::default_allow_unfree(),
             permitted_insecure_packages: None,
-            overlay: None
+            overlay: None,
         }
     }
     pub fn default_allow_unfree() -> bool {
@@ -317,8 +316,7 @@ pub struct TofuNixPkgs {
     pub packages: Vec<String>,
     pub allow_unfree: bool,
     pub permitted_insecure_packages: Option<Vec<String>>,
-    pub overlay: Option<String>
-
+    pub overlay: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -348,7 +346,6 @@ pub enum ParsedPythonPackageDefinition {
     Simple(String),
     Complex(HashMap<String, toml::Value>),
 } */
-
 
 #[derive(Debug, Clone)]
 pub enum PythonPackageSource {
@@ -615,8 +612,7 @@ impl<'de> Deserialize<'de> for PythonPackageDefinition {
                             .map(|(k, v)| {
                                 Ok((
                                     k.to_string(),
-                                    v.as_str().map(std::string::ToString::to_string)
-                                        .context(
+                                    v.as_str().map(std::string::ToString::to_string).context(
                                         "override_attrs value was not a string (with nix code)",
                                     )?,
                                 ))
@@ -788,7 +784,5 @@ pub struct TofuR {
 }
 
 fn parse_my_date(input: &str) -> Result<jiff::civil::Date> {
-    Ok(
-        input.parse()?
-    )
+    Ok(input.parse()?)
 }
