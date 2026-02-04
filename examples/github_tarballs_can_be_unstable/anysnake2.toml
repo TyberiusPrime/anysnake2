@@ -9,8 +9,8 @@
 
 
 [python] # python section is optional
-	ecosystem_date="2025-10-01" # you get whatever packages the solver would have produced on that day
-	version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+	ecosystem_date="2026-02-01" # you get whatever packages the solver would have produced on that day
+	version="3.12" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
 
 
 [python.packages]
