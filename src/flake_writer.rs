@@ -1565,7 +1565,7 @@ fn rewrite_poetry(
     ex::fs::write(output_filename, out)?;
 
     let str_flake_dir = flake_dir.canonicalize()?.to_string_lossy().to_string();
-    dbg!(&str_flake_dir);
+    //dbg!(&str_flake_dir);
 
     let filename = "uv.lock";
     let input_filename = flake_dir.join("uv").join(filename);
