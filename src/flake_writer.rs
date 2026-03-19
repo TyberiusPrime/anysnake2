@@ -412,7 +412,11 @@ fn prep_packages_for_pyproject_toml(
             }
             config::TofuPythonPackageSource::Url(url) => {
                 let mut out_map: toml::Table = toml::Table::new();
-                out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
+                if url.starts_with("git") {
+                    out_map.insert("git".to_string(), toml::Value::String(url.to_string()));
+                } else {
+                    out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
+                }
                 result.insert(name.to_string(), toml::Value::Table(out_map));
             }
             config::TofuPythonPackageSource::Vcs(vcs) => match vcs {
@@ -1564,7 +1568,7 @@ fn rewrite_poetry(
     }
     ex::fs::write(output_filename, out)?;
 
-    let str_flake_dir = flake_dir.canonicalize()?.to_string_lossy().to_string();
+    //let str_flake_dir = flake_dir.canonicalize()?.to_string_lossy().to_string();
     //dbg!(&str_flake_dir);
 
     let filename = "uv.lock";

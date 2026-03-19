@@ -1,37 +1,64 @@
 # this will not work with the 2024 poetry2nix - poetry2nix is explicitly 
 # only supporting the current release at any one point in time.
 [anysnake2]
+	rev = "dev" # pre 2.0 - 2.0+ uses url2
+	url = "github:TyberiusPrime/anysnake2_release_flakes" # pre 2.0 - 2.0+ uses url2
 # We leverage nix flakes to run exactly that version.
-url2 = "dev"
+	url2 = "dev"
+
 
 [nixpkgs]
-packages = ['strace', 'python38']
-url = "github:NixOS/nixpkgs/master/22.05"
+	packages = [
+		"python38",
+		"strace"]
+	url = "github:NixOS/nixpkgs/master/22.05"
+
 
 [python] # python section is optional
-version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
-ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
+	ecosystem_date="2022-11-23" # you get whatever packages the solver would have produced on that day
+	version="3.10" # does not go down to 3.8.x. That's implicit in the nixpkgs (for now)
+
 
 [python.packages]
 # you can use version specifiers from https://www.python.org/dev/peps/pep-0440/#id53
-rpy2="3.5.5" # starting with 3.5.6 it no longer compiles on 22.05
-scipy=""
+	rpy2="3.5.5" # starting with 3.5.6 it no longer compiles on 22.05
+	scipy=""
 
 
 [R] # R section is optional
-date="2022-05-10" # you get whatever packages were current that day.
-packages = [
-	"Rcpp",
-	"stringi"
+	date="2022-05-10" # you get whatever packages were current that day.
+	packages = [
+		"Rcpp",
+		"stringi"
 
 ]
-url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
+	url = "github:TyberiusPrime/nixR/main/bbfed71d90b2967f2226dd1cdb11b9060a5bef24"
+
+
+[dev_shell]
+	inputs = []
+	shell = "bash"
+
 
 [outside_nixpkgs]
-url = "github:NixOS/nixpkgs/master/22.11"
+	url = "github:NixOS/nixpkgs/master/22.11"
+
 
 [ancient_poetry]
-url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
+	url = "git+https://codeberg.org/TyberiusPrime/ancient-poetry.git?ref=main&rev=204fc9fc15af8097ea0e40b80ef9b8d0691b832b"
+
+
+[uv2nix]
+	url = "github:adisbladis/uv2nix/master/c1513845d7ac9a4755a3a665d308d008b1ed3914"
+
+
+[uv2nix_override_collection]
+	url = "github:TyberiusPrime/uv2nix_hammer_overrides/main/efc9f213860490692e27f0854e26b8ac62acfff3"
+
 
 [flake-util]
-url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+	url = "github:numtide/flake-utils/main/b1d9ab70662946ef0850d488da1c9019f3a9752a"
+
+
+[pyproject_build_systems]
+	url = "github:pyproject-nix/build-system-pkgs/master/b6e74f433b02fa4b8a7965ee24680f4867e2926f"
