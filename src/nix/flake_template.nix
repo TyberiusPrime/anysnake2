@@ -41,6 +41,7 @@
           pname = "anysnake2-flake-inputs";
           version = "0.1";
           unpackPhase = ":";
+          installPhase = ":";
           buildPhase = let
             str_inputs =
               builtins.concatStringsSep "\n"

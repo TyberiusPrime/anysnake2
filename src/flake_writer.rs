@@ -412,11 +412,7 @@ fn prep_packages_for_pyproject_toml(
             }
             config::TofuPythonPackageSource::Url(url) => {
                 let mut out_map: toml::Table = toml::Table::new();
-                if url.starts_with("git") {
-                    out_map.insert("git".to_string(), toml::Value::String(url.to_string()));
-                } else {
-                    out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
-                }
+                out_map.insert("url".to_string(), toml::Value::String(url.to_string()));
                 result.insert(name.to_string(), toml::Value::Table(out_map));
             }
             config::TofuPythonPackageSource::Vcs(vcs) => match vcs {

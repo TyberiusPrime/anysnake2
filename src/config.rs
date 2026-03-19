@@ -368,6 +368,7 @@ impl PythonPackageSource {
         Ok(
             if url.starts_with("github:")
                 | url.starts_with("git+https")
+                | url.starts_with("git+ssh")
                 | url.starts_with("hg+https:/")
             {
                 let vcs = ParsedVCS::try_from(url)?;
